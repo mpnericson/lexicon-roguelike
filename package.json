@@ -5,7 +5,8 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev:web": "npx serve ."
+    "dev:web": "npx serve .",
+    "update-dictionary": "bash scripts/update-dictionary.sh"
   },
   "keywords": [],
   "author": "",

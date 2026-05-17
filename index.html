@@ -1061,12 +1061,29 @@ async function validWord(word){
 // =====================================================================
 function freeSquare(){var c=[];for(var i=0;i<B*B;i++)if(!S.board[i])c.push(i);return c.length?c[Math.floor(Math.random()*c.length)]:-1;}
 function wrand(pool,w){var arr=[];for(var i=0;i<SQ.length;i++){var d=SQ[i];if(pool.indexOf(d.id)<0)continue;var wt=Math.round((w[d.rarity]||0)*10);for(var j=0;j<wt;j++)arr.push(d.id);}return arr.length?arr[Math.floor(Math.random()*arr.length)]:null;}
+function wrandN(pool,w,n){
+  var used={},out=[];
+  for(var k=0;k<n;k++){
+    var arr=[];
+    for(var i=0;i<SQ.length;i++){
+      var d=SQ[i];if(pool.indexOf(d.id)<0||used[d.id])continue;
+      var wt=Math.round((w[d.rarity]||0)*10);
+      for(var j=0;j<wt;j++)arr.push(d.id);
+    }
+    if(!arr.length)break;
+    var id=arr[Math.floor(Math.random()*arr.length)];
+    used[id]=1;out.push(id);
+  }
+  return out;
+}
 function refreshShop(){
   shopPool.sq=[];
-  for(var i=0;i<3;i++)shopPool.sq.push({id:wrand(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8}),pos:freeSquare(),sold:false});
+  var sqIds=wrandN(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8},3);
+  for(var i=0;i<sqIds.length;i++)shopPool.sq.push({id:sqIds[i],pos:freeSquare(),sold:false});
   var offered=shuffle(['gold','blue','red']).slice(0,2);
   var vcosts={gold:4,blue:5,red:6};
-  shopPool.tileCards=offered.map(function(v){var l=shuffle(Object.keys(LS))[0];return{letter:l,variant:v,cost:vcosts[v],bought:false,id:uid()};});
+  var letters=shuffle(Object.keys(LS));
+  shopPool.tileCards=offered.map(function(v,i){return{letter:letters[i],variant:v,cost:vcosts[v],bought:false,id:uid()};});
   shopPool.tilePack={sold:false};
 }
 function openShop(){if(!shopPool.sq.length)refreshShop();renderShop();document.getElementById('shop-modal').style.display='flex';}
@@ -1122,7 +1139,7 @@ function buyTileCard(i){
 function buyArcanePack(){
   if(!S.devMode&&S.gold<3){toast('Not enough gold!');return;}
   if(!S.devMode)S.gold-=3;renderHUD();
-  var contents=[];for(var j=0;j<3;j++){var id=wrand(SQ.map(function(d){return d.id;}),{common:4,uncommon:2,rare:1});if(id)contents.push(id);}
+  var contents=wrandN(SQ.map(function(d){return d.id;}),{common:4,uncommon:2,rare:1},3);
   openPackReveal('Arcane Pack',contents);
 }
 function buyTilePack(){
