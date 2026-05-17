@@ -11,6 +11,17 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 #top-bar{display:flex;align-items:center;gap:10px;min-height:76px;flex-shrink:0}
 #board-area{flex:1;display:flex;justify-content:center;align-items:center;overflow:hidden;min-height:0;position:relative}
 #bottom-bar{display:flex;align-items:flex-end;gap:10px;height:116px;flex-shrink:0;padding-bottom:4px}
+#shop-screen{position:fixed;top:0;left:0;width:100%;height:100%;background:#0f0f1e;z-index:200;display:none;flex-direction:column;padding:16px;overflow-y:auto}
+#shop-screen-header{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:1px solid #2a2a4a;margin-bottom:16px;flex-shrink:0}
+#shop-queue-bar{display:none;background:#12122a;border:1px solid #3a5a3a;border-radius:8px;padding:8px 14px;margin-bottom:12px;color:#80c080;font-size:13px;flex-shrink:0}
+.sq-hand-item{background:#12122a;border:2px solid;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:grab;position:absolute;top:0;width:56px;height:64px}
+.sq-hand-item .sqh-name{font-size:8px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:50px}
+.sq-staged-cell{box-shadow:inset 0 0 0 2px rgba(255,255,255,0.55)!important;cursor:pointer!important}
+#play-controls{display:flex;flex-direction:column;gap:6px}
+#placing-controls{display:none;flex-direction:column;gap:6px}
+#shuffle-btn{width:32px;height:64px;background:#2a3a2a;border:2px solid #4a6a4a;border-radius:8px;color:#80c080;font-size:20px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.1s,transform 0.1s;}
+#shuffle-btn:hover{background:#3a4a3a;color:#aaeaaa;}
+#shuffle-btn:active{transform:scale(0.9);}
 #game-title{font-size:26px;color:#f0e080;letter-spacing:3px;flex-shrink:0}
 .hud-block{background:#12122a;border:1px solid #3a3a5a;border-radius:8px;padding:6px 12px;text-align:center;flex-shrink:0}
 .hud-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#8880a8}
@@ -29,6 +40,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .ante-dot.done{background:#5aaa5a;border-color:#5aaa5a}
 .ante-dot.cur{background:#f0e080;border-color:#f0e080}
 #board-wrap{display:inline-grid;gap:2px;background:#0a0a18;padding:6px;border-radius:8px;border:1px solid #2a2a4a}
+#board-wrap.tiles-hidden .board-tile{visibility:hidden}
+#board-preview-wrap.tiles-hidden .tile{visibility:hidden}
 .sq{border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:bold;position:relative;border:1px solid rgba(255,255,255,0.06)}
 .sq.drop-target{outline:2px solid #f0e080;outline-offset:-2px}
 .sq-lbl{font-size:7px;line-height:1;text-align:center;pointer-events:none}
@@ -153,7 +166,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
       <div class="progress-row"><div class="bar-bg"><div class="bar-fill" id="blind-bar" style="width:0%"></div></div><div id="score-txt">0</div></div>
       <div class="ante-dots" id="ante-dots"></div>
     </div>
-    <button class="top-btn" onclick="openBoardPreview()">Board</button>
+    <button class="top-btn" id="board-tile-toggle-btn" onclick="toggleBoardTiles()">Hide Tiles</button>
     <div id="menu-wrap">
       <button class="top-btn" onclick="toggleMenu()">≡ Menu</button>
       <div id="menu-dropdown" style="display:none">
@@ -168,13 +181,20 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
   </div>
   <div id="bottom-bar">
     <div id="hand-area"></div>
+    <button id="shuffle-btn" onclick="shuffleHand()" title="Shuffle hand">⇄</button>
     <div id="right-panel">
-      <button class="btn btn-green" onclick="playWord()" style="font-size:14px;padding:10px 16px">Play Word</button>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-red" onclick="discardTiles()" style="flex:1;font-size:12px;padding:8px 6px;margin:0">Discard</button>
-        <button class="btn btn-gray" onclick="checkWordCost()" style="flex:1;font-size:12px;padding:8px 6px;margin:0">Check $1</button>
+      <div id="play-controls">
+        <button class="btn btn-green" onclick="playWord()" style="font-size:14px;padding:10px 16px">Play Word</button>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-red" onclick="discardTiles()" style="flex:1;font-size:12px;padding:8px 6px;margin:0">Discard</button>
+          <button class="btn btn-gray" onclick="checkWordCost()" style="flex:1;font-size:12px;padding:8px 6px;margin:0">Check $1</button>
+        </div>
+        <div id="bag-btn" onclick="openBagModal()"><div id="bag-count">98</div><div id="bag-label">tiles in bag</div></div>
       </div>
-      <div id="bag-btn" onclick="openBagModal()"><div id="bag-count">98</div><div id="bag-label">tiles in bag</div></div>
+      <div id="placing-controls">
+        <button class="btn btn-green" onclick="confirmPlacement()" style="font-size:14px;padding:10px 16px">Confirm</button>
+        <div id="placing-info" style="font-size:11px;color:#8880a8;text-align:center;padding:2px 0"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -186,15 +206,16 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
   <div class="sa-block"><div class="sa-lbl">Score</div><div id="sa-score">0</div></div>
 </div>
 <!-- Modals -->
-<div id="shop-modal" class="modal-overlay" style="display:none">
-  <div class="modal" style="max-width:780px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div><h2 style="margin-bottom:2px">The Scriptorium</h2><div class="msub" id="shop-sub" style="margin:0"></div></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-gray" style="width:auto;padding:7px 16px;margin:0" onclick="openBoardPreview()">View Board</button>
-        <button class="btn btn-gray" style="width:auto;padding:7px 16px;margin:0" onclick="closeShop()">Skip →</button>
-      </div>
+<div id="shop-screen">
+  <div id="shop-screen-header">
+    <div><h2 style="margin-bottom:2px">The Scriptorium</h2><div class="msub" id="shop-sub" style="margin:0"></div></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-gray" style="width:auto;padding:7px 16px;margin:0" onclick="openBoardPreview()">View Board</button>
+      <button class="btn btn-green" style="width:auto;padding:7px 16px;margin:0" onclick="leaveShop()">Leave Shop</button>
     </div>
+  </div>
+  <div id="shop-queue-bar"></div>
+  <div style="flex:1;overflow-y:auto">
     <div class="shop-sec"><div class="shop-sec-title">Cards</div><div id="shop-cards" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
     <div class="shop-sec"><div class="shop-sec-title">Packs</div><div id="shop-packs-row" style="display:flex;gap:10px;flex-wrap:wrap"></div></div>
     <div class="shop-sec">
@@ -232,7 +253,10 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
   <div class="modal" style="max-width:none;width:auto;display:inline-flex;flex-direction:column;padding:18px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h2>Board</h2>
-      <button class="btn btn-gray" style="width:auto;padding:7px 16px;margin:0" onclick="document.getElementById('board-preview-modal').style.display='none'">Close</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-gray" id="preview-tile-toggle-btn" style="width:auto;padding:7px 16px;margin:0" onclick="togglePreviewTiles()">Hide Tiles</button>
+        <button class="btn btn-gray" style="width:auto;padding:7px 16px;margin:0" onclick="document.getElementById('board-preview-modal').style.display='none'">Close</button>
+      </div>
     </div>
     <div id="board-preview-wrap" style="background:#0a0a18;padding:6px;border-radius:8px;border:1px solid #2a2a4a"></div>
   </div>
@@ -259,7 +283,11 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 </div>
 <div id="pack-modal" class="modal-overlay" style="display:none">
   <div class="modal" style="text-align:center">
-    <h2 id="pack-title"></h2><div class="msub">Choose one square to keep.</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h2 id="pack-title"></h2>
+      <button class="btn btn-gray" style="width:auto;padding:7px 16px;margin:0" onclick="skipPack()">Skip</button>
+    </div>
+    <div class="msub" style="margin-bottom:12px">Choose one square to keep, or skip.</div>
     <div class="prg" id="pack-reveal"></div>
   </div>
 </div>
@@ -373,8 +401,12 @@ function buildBag(){
 function startGame(){
   closeAllModals();
   S={bag:buildBag(),hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),
-     ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtb:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,devMode:false};
+     ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtb:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,devMode:false,
+     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{}};
   shopPool={sq:[],tileCards:[],tilePack:null};activeDrag=null;
+  document.getElementById('shop-screen').style.display='none';
+  document.getElementById('play-controls').style.display='flex';
+  document.getElementById('placing-controls').style.display='none';
   HP.x=[];HP.vx=[];HP.tiles=[];
   drawFull();renderAll();
 }
@@ -569,7 +601,15 @@ function renderBoard(){
       if(lbl){var s=document.createElement('div');s.className='sq-lbl';s.textContent=lbl;sq.appendChild(s);}
       if(bt&&viewingBoard)sq.style.opacity='0.4';
       var classic=(sid==='dl'||sid==='tl'||sid==='dw'||sid==='tw');
-      if(sid&&!classic&&!bt){sq.style.cursor='pointer';(function(idx,did){sq.addEventListener('click',function(){openSqInspect(idx,did);});})(i,sid);}
+      if(sid&&!classic&&!bt&&S.phase!=='placing'){sq.style.cursor='pointer';(function(idx,did){sq.addEventListener('click',function(){openSqInspect(idx,did);});})(i,sid);}
+      if(S.phase==='placing'&&isSqStaged(i)){
+        var si2=S.sqStaged[i];var sq2item=S.sqHand[si2];var d2=sqd(sq2item.id);
+        if(d2){var ss2=sqStyle(sq2item.id);sq.style.background=ss2.bg;sq.style.color=ss2.fg;
+          sq.classList.add('sq-staged-cell');
+          var lbl2=document.createElement('div');lbl2.className='sq-lbl';lbl2.textContent=d2.icon;sq.appendChild(lbl2);
+          (function(bidx,si2l){sq.addEventListener('click',function(){S.sqHand[si2l].placed=false;delete S.sqStaged[bidx];renderSqHand();renderBoard();});})(i,si2);
+        }
+      }
     }
     wrap.appendChild(sq);
   }
@@ -594,6 +634,63 @@ function renderHand(){
     area.appendChild(face);
     attachHandTileDrag(face,oi,vi,t,disp,sc,vis);
   }
+}
+function isSqStaged(idx){return S.sqStaged&&S.sqStaged.hasOwnProperty(idx);}
+function renderSqHand(){
+  hpBounds();
+  var area=document.getElementById('hand-area');area.innerHTML='';
+  var vis=S.sqHand.filter(function(sq){return !sq.placed;});
+  var n=vis.length;
+  HP.tiles=vis.slice();
+  if(HP.x.length!==n){HP.x=hpRest(n);HP.vx=Array(n).fill(0);}
+  for(var vi=0;vi<vis.length;vi++){
+    var item=vis[vi];var d=sqd(item.id);if(!d)continue;
+    var face=document.createElement('div');
+    face.className='hand-tile sq-hand-item';
+    face.style.cssText='left:'+(HP.x[vi]-28)+'px;top:0;border-color:'+d.fg+';color:'+d.fg+';background:#12122a;';
+    face.innerHTML='<span style="font-size:20px">'+d.icon+'</span><span class="sqh-name">'+d.name+'</span>';
+    area.appendChild(face);
+    attachSqDrag(face,vi,item);
+  }
+  var unplaced=vis.length;
+  document.getElementById('placing-info').textContent=unplaced>0?'Drag squares onto the board':'All placed — confirm!';
+}
+function attachSqDrag(face,vi,item){
+  face.addEventListener('pointerdown',function(ev){
+    ev.preventDefault();ev.stopPropagation();
+    if(activeDrag)return;
+    var sx=ev.clientX,sy=ev.clientY;var moved=false,clone=null;HP.held=vi;
+    var d=sqd(item.id);
+    function move(me){
+      var dx=me.clientX-sx,dy=me.clientY-sy;
+      if(!moved&&(Math.abs(dx)>4||Math.abs(dy)>4)){
+        moved=true;
+        clone=makeDragClone('<span style="font-size:20px">'+d.icon+'</span><span style="font-size:8px;display:block;text-align:center">'+d.name+'</span>',
+          'width:56px;height:64px;background:#12122a;border:2px solid '+d.fg+';border-radius:8px;color:'+d.fg+';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;');
+        face.style.opacity='0';
+        activeDrag={src:'sqhand',vi:vi,cx:me.clientX,cy:me.clientY};
+      }
+      if(!moved)return;
+      var si=sqAt(me.clientX,me.clientY);
+      if(si>=0&&!S.board[si]&&!isSqStaged(si)){setHL(si);}else{clearHL();}
+      clone.style.left=(me.clientX-28)+'px';clone.style.top=(me.clientY-32)+'px';
+      activeDrag.cx=me.clientX;activeDrag.cy=me.clientY;
+    }
+    function up(me){
+      document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
+      HP.held=-1;if(clone){clone.remove();clone=null;}face.style.opacity='1';clearHL();
+      if(moved){
+        var si=sqAt(me.clientX,me.clientY);
+        if(si>=0&&!S.board[si]&&!isSqStaged(si)){
+          var globalIdx=S.sqHand.indexOf(item);
+          S.sqStaged[si]=globalIdx;item.placed=true;
+          renderSqHand();renderBoard();
+        }
+      }
+      activeDrag=null;
+    }
+    document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);
+  });
 }
 
 // =====================================================================
@@ -1022,6 +1119,16 @@ async function playWord(){
 function flashTiles(nt){
   for(var i=0;i<nt.length;i++){var el=document.querySelector('[data-sq-idx="'+nt[i].idx+'"] .board-tile');if(!el)continue;el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');setTimeout((function(e){return function(){e.classList.remove('flash');};})(el),580);}
 }
+function shuffleHand(){
+  if(S.phase!=='play')return;
+  var freeIdxs=[],freeTiles=[];
+  for(var i=0;i<S.hand.length;i++){if(S.hand[i]&&!S.hand[i].onBoard){freeIdxs.push(i);freeTiles.push(S.hand[i]);}}
+  if(freeTiles.length<2)return;
+  for(var i=freeTiles.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=freeTiles[i];freeTiles[i]=freeTiles[j];freeTiles[j]=tmp;}
+  for(var i=0;i<freeIdxs.length;i++)S.hand[freeIdxs[i]]=freeTiles[i];
+  renderHand();
+  for(var i=0;i<HP.vx.length;i++)HP.vx[i]+=(Math.random()-0.5)*22;
+}
 function discardTiles(){
   if(S.disc<=0){toast('No discards remaining!');return;}
   var sel=[];for(var i=0;i<S.hand.length;i++)if(S.hand[i]&&S.hand[i].sel&&!S.hand[i].onBoard)sel.push(i);
@@ -1083,24 +1190,63 @@ function wrandN(pool,w,n){
 function refreshShop(){
   shopPool.sq=[];
   var sqIds=wrandN(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8},3);
-  for(var i=0;i<sqIds.length;i++)shopPool.sq.push({id:sqIds[i],pos:freeSquare(),sold:false});
+  for(var i=0;i<sqIds.length;i++)shopPool.sq.push({id:sqIds[i],sold:false});
   var offered=shuffle(['gold','blue','red']).slice(0,2);
   var vcosts={gold:4,blue:5,red:6};
   var letters=shuffle(Object.keys(LS));
   shopPool.tileCards=offered.map(function(v,i){return{letter:letters[i],variant:v,cost:vcosts[v],bought:false,id:uid()};});
   shopPool.tilePack={sold:false};
 }
-function openShop(){if(!shopPool.sq.length)refreshShop();renderShop();document.getElementById('shop-modal').style.display='flex';}
+function enterShopPhase(){
+  S.phase='shop';
+  if(!shopPool.sq.length)refreshShop();
+  renderShop();
+  document.getElementById('shop-screen').style.display='flex';
+}
+function leaveShop(){
+  document.getElementById('shop-screen').style.display='none';
+  if(S.pendingSquares.length>0){enterPlacingPhase();}
+  else{S.phase='play';}
+}
+function enterPlacingPhase(){
+  S.phase='placing';
+  S.sqHand=S.pendingSquares.map(function(p){return{id:p.id,placed:false};});
+  S.pendingSquares=[];S.sqStaged={};
+  HP.x=[];HP.vx=[];HP.tiles=[];
+  document.getElementById('play-controls').style.display='none';
+  document.getElementById('placing-controls').style.display='flex';
+  document.getElementById('shuffle-btn').style.display='none';
+  renderSqHand();renderBoard();
+}
+function confirmPlacement(){
+  for(var idx in S.sqStaged){
+    var si=S.sqStaged[idx];var sq=S.sqHand[si];
+    S.board[parseInt(idx)]=sq.id;S.placed.push({id:sq.id,sqIdx:parseInt(idx)});
+  }
+  var unplaced=S.sqHand.filter(function(sq){return !sq.placed;}).length;
+  S.sqHand=[];S.sqStaged={};S.phase='play';
+  document.getElementById('play-controls').style.display='flex';
+  document.getElementById('placing-controls').style.display='none';
+  document.getElementById('shuffle-btn').style.display='';
+  HP.x=[];HP.vx=[];HP.tiles=[];
+  renderHand();renderBoard();renderHUD();
+  if(unplaced>0)toast(unplaced+' unplaced square'+(unplaced>1?'s':'')+' forfeited.');
+}
+function openShop(){enterShopPhase();}
 function renderShop(){
   document.getElementById('shop-sub').textContent='Gold: $'+S.gold;
+  var n=S.pendingSquares.length;
+  var qbar=document.getElementById('shop-queue-bar');
+  qbar.style.display=n>0?'block':'none';
+  qbar.textContent=n+' square'+(n!==1?'s':'')+' queued for placement — leave shop to place '+(n===1?'it':'them')+'.';
   var sc=document.getElementById('shop-cards');sc.innerHTML='';
   // Square cards
   for(var i=0;i<shopPool.sq.length;i++){
     var item=shopPool.sq[i];var d=sqd(item.id);if(!d)continue;
     var rc=d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
     var card=document.createElement('div');card.className='shop-card';if(item.sold)card.style.opacity='0.4';
-    card.innerHTML='<div class="scr '+rc+'">'+d.rarity+'</div><div class="scn" style="color:'+d.fg+'">'+d.icon+' '+d.name+'</div><div class="scd">'+d.desc+'</div><div class="scp">'+(item.pos>=0?rcl(item.pos):'No space')+'</div><div class="scc">$'+d.cost+'</div>';
-    if(!item.sold&&item.pos>=0){var btn=document.createElement('button');btn.className='btn btn-gold';btn.style.cssText='padding:5px;font-size:11px;margin-top:0';btn.textContent='Buy';(function(j){btn.onclick=function(){buySq(j);};})(i);card.appendChild(btn);}
+    card.innerHTML='<div class="scr '+rc+'">'+d.rarity+'</div><div class="scn" style="color:'+d.fg+'">'+d.icon+' '+d.name+'</div><div class="scd">'+d.desc+'</div><div class="scc">$'+d.cost+'</div>';
+    if(!item.sold){var btn=document.createElement('button');btn.className='btn btn-gold';btn.style.cssText='padding:5px;font-size:11px;margin-top:0';btn.textContent='Buy';(function(j){btn.onclick=function(){buySq(j);};})(i);card.appendChild(btn);}
     sc.appendChild(card);
   }
   // Variant tile cards
@@ -1214,7 +1360,26 @@ function forgeUpgrade(tileId,variant,cost){
   if(!S.devMode)S.gold-=cost;renderShop();renderHUD();
   var n={gold:'Gold',blue:'Blue',red:'Red'};toast(n[variant]+' tile forged!');
 }
-function openBoardPreview(){renderBoardPreview();document.getElementById('board-preview-modal').style.display='flex';}
+function toggleBoardTiles(){
+  var wrap=document.getElementById('board-wrap');
+  var btn=document.getElementById('board-tile-toggle-btn');
+  var hidden=wrap.classList.toggle('tiles-hidden');
+  btn.textContent=hidden?'Show Tiles':'Hide Tiles';
+}
+function togglePreviewTiles(){
+  var wrap=document.getElementById('board-preview-wrap');
+  var btn=document.getElementById('preview-tile-toggle-btn');
+  var hidden=wrap.classList.toggle('tiles-hidden');
+  btn.textContent=hidden?'Show Tiles':'Hide Tiles';
+}
+function openBoardPreview(){
+  var wrap=document.getElementById('board-preview-wrap');
+  wrap.classList.remove('tiles-hidden');
+  var btn=document.getElementById('preview-tile-toggle-btn');
+  if(btn)btn.textContent='Hide Tiles';
+  renderBoardPreview();
+  document.getElementById('board-preview-modal').style.display='flex';
+}
 function openAlchemistModal(){
   var hasAl=false;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='alchemist'){hasAl=true;break;}
   if(!hasAl||S.alchemistUsed){toast(S.alchemistUsed?'Alchemist already used this blind!':'Alchemist not placed.');return;}
@@ -1290,9 +1455,16 @@ function openCollection(){
 }
 function devGiveSquare(sqId){
   if(!S.devMode)return;
-  var pos=freeSquare();if(pos<0){toast('No empty squares on board!');return;}
-  S.board[pos]=sqId;var d=sqd(sqId);S.placed.push({id:sqId,sqIdx:pos});
-  renderBoard();renderHUD();toast((d?d.name:sqId)+' placed at '+rcl(pos)+'!');
+  var d=sqd(sqId);
+  if(S.phase==='shop'||S.phase==='placing'){
+    S.pendingSquares.push({id:sqId});
+    if(S.phase==='shop')renderShop();
+    toast((d?d.name:sqId)+' queued for placement!');
+  } else {
+    var pos=freeSquare();if(pos<0){toast('No empty squares on board!');return;}
+    S.board[pos]=sqId;S.placed.push({id:sqId,sqIdx:pos});
+    renderBoard();renderHUD();toast((d?d.name:sqId)+' placed at '+rcl(pos)+'!');
+  }
 }
 function toggleDevMode(){
   S.devMode=!S.devMode;
@@ -1300,25 +1472,28 @@ function toggleDevMode(){
   document.getElementById('devmode-item').style.color=S.devMode?'#80f080':'';
   document.getElementById('menu-dropdown').style.display='none';
   toast(S.devMode?'Dev Mode ON — all purchases free!':'Dev Mode OFF');
-  renderHUD();renderShop&&typeof renderShop==='function'&&document.getElementById('shop-modal').style.display==='flex'?renderShop():null;
+  renderHUD();if(S.phase==='shop')renderShop();
 }
-function buySq(i){var item=shopPool.sq[i];var d=sqd(item.id);if(!item||item.sold||!d)return;if(!S.devMode&&S.gold<d.cost){toast('Not enough gold!');return;}if(item.pos<0){toast('No empty squares!');return;}if(!S.devMode)S.gold-=d.cost;S.board[item.pos]=item.id;S.placed.push({id:item.id,sqIdx:item.pos});item.sold=true;renderShop();renderBoard();renderHUD();toast(d.name+' placed at '+rcl(item.pos)+'!');}
+function buySq(i){var item=shopPool.sq[i];var d=sqd(item.id);if(!item||item.sold||!d)return;if(!S.devMode&&S.gold<d.cost){toast('Not enough gold!');return;}if(!S.devMode)S.gold-=d.cost;item.sold=true;S.pendingSquares.push({id:item.id});renderShop();renderHUD();toast(d.name+' queued — place it after leaving shop!');}
 function openPackReveal(name,contents){
-  document.getElementById('pack-title').textContent=name;document.getElementById('shop-modal').style.display='none';
+  document.getElementById('pack-title').textContent=name;
+  document.getElementById('shop-screen').style.display='none';
   var grid=document.getElementById('pack-reveal');grid.innerHTML='';
   for(var i=0;i<contents.length;i++){
-    var d=sqd(contents[i]);if(!d)continue;var pos=freeSquare();var rc=d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
+    var d=sqd(contents[i]);if(!d)continue;
+    var rc=d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
     var card=document.createElement('div');card.className='prc';
-    card.innerHTML='<div style="font-size:20px;font-weight:bold;color:'+d.fg+'">'+d.icon+'</div><div style="font-size:13px;font-weight:bold;color:'+d.fg+'">'+d.name+'</div><div style="font-size:11px;color:#9090b0;margin:4px 0">'+d.desc+'</div><div style="font-size:10px;color:#6080a0">'+(pos>=0?'Position: '+rcl(pos):'No space')+'</div><div class="scr '+rc+'" style="margin-top:4px">'+d.rarity+'</div>';
-    (function(did,p,c){c.onclick=function(){if(p<0){toast('No empty squares!');return;}S.board[p]=did;S.placed.push({id:did,sqIdx:p});c.classList.add('chosen');c.textContent='Chosen';var cs=grid.getElementsByClassName('prc');for(var k=0;k<cs.length;k++){cs[k].style.pointerEvents='none';cs[k].style.opacity='0.4';}c.style.opacity='1';renderBoard();setTimeout(function(){document.getElementById('pack-modal').style.display='none';openShop();},600);};})(contents[i],pos,card);
+    card.innerHTML='<div style="font-size:20px;font-weight:bold;color:'+d.fg+'">'+d.icon+'</div><div style="font-size:13px;font-weight:bold;color:'+d.fg+'">'+d.name+'</div><div style="font-size:11px;color:#9090b0;margin:4px 0">'+d.desc+'</div><div class="scr '+rc+'" style="margin-top:4px">'+d.rarity+'</div>';
+    (function(did,c){c.onclick=function(){S.pendingSquares.push({id:did});c.classList.add('chosen');c.textContent='Queued!';var cs=grid.getElementsByClassName('prc');for(var k=0;k<cs.length;k++){cs[k].style.pointerEvents='none';cs[k].style.opacity='0.4';}c.style.opacity='1';setTimeout(function(){document.getElementById('pack-modal').style.display='none';enterShopPhase();},600);};})(contents[i],card);
     grid.appendChild(card);
   }
   document.getElementById('pack-modal').style.display='flex';
 }
+function skipPack(){document.getElementById('pack-modal').style.display='none';enterShopPhase();}
 function buyTile(i){var tl=shopPool.tiles[i];if(!tl||tl.bought)return;if(S.gold<3){toast('Not enough gold!');return;}S.gold-=3;tl.bought=true;S.bag.push({letter:tl.letter,isBlank:false,id:uid()});S.bag=shuffle(S.bag);renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;toast(tl.letter+' added to bag!');}
 function refreshTileOffer(){if(S.gold<1){toast('Not enough gold!');return;}S.gold-=1;shopPool.tiles=shuffle(Object.keys(DIST)).slice(0,5).map(function(l){return{letter:l,bought:false};});renderShop();renderHUD();}
 function hammerTile(tile){if(!S.devMode&&S.gold<3){toast('Not enough gold!');return;}var idx=-1;for(var i=0;i<S.bag.length;i++)if(S.bag[i].id===tile.id){idx=i;break;}if(idx<0){toast('Tile not found.');return;}if(!S.devMode)S.gold-=3;S.bag.splice(idx,1);renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;toast((tile.isBlank?'Blank':tile.letter)+' destroyed!');}
-function closeShop(){document.getElementById('shop-modal').style.display='none';}
+function closeShop(){document.getElementById('shop-screen').style.display='none';S.phase='play';}
 function openSqInspect(sqIdx,defId){
   var d=sqd(defId);if(!d)return;var sell=Math.floor(d.cost/2);
   document.getElementById('sq-icon').textContent=d.icon;document.getElementById('sq-name').textContent=d.name;document.getElementById('sq-name').style.color=d.fg;
@@ -1343,11 +1518,12 @@ function advanceBlind(){
   document.getElementById('round-modal').style.display='none';S.bi++;
   if(S.bi>=3){S.ai++;S.bi=0;if(S.ai>=ANTES.length){showWin();return;}clearBoardLetters();S.bag=buildBag();toast('New ante — letters cleared, squares kept!');}
   S.score=0;S.plays=4;S.disc=3;S.wtb=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;
-  recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null};openShop();
+  S.pendingSquares=[];S.sqHand=[];S.sqStaged={};
+  recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null};enterShopPhase();
 }
 function showGO(msg){document.getElementById('gameover-msg').textContent=msg;document.getElementById('gameover-modal').style.display='flex';}
 function showWin(){document.getElementById('win-modal').style.display='flex';}
-function closeAllModals(){['shop-modal','pack-modal','sq-modal','bag-modal','blank-modal','round-modal','gameover-modal','win-modal','hammer-modal','forge-modal','board-preview-modal','alchemist-modal','collection-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});}
+function closeAllModals(){['pack-modal','sq-modal','bag-modal','blank-modal','round-modal','gameover-modal','win-modal','hammer-modal','forge-modal','board-preview-modal','alchemist-modal','collection-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});document.getElementById('shop-screen').style.display='none';}
 function openBagModal(){
   var counts={};for(var i=0;i<S.bag.length;i++){var l=S.bag[i].isBlank?'_':S.bag[i].letter;counts[l]=(counts[l]||0)+1;}
   document.getElementById('bag-mc').textContent=S.bag.length+' tiles remaining.';
