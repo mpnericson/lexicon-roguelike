@@ -730,6 +730,10 @@ function recallTile(sqIdx){
 function recallAll(){
   for(var i=0;i<B*B;i++){var bt=S.bt[i];if(bt&&bt.isNew){if(S.board[i]==='fossil')continue;var t=S.hand[bt.handIdx];if(t){t.onBoard=false;t._boardSq=undefined;}S.bt[i]=null;}}
 }
+function clearBoardLetters(){
+  S.bt=Array(B*B).fill(null);
+  for(var i=0;i<S.hand.length;i++){if(S.hand[i]&&S.hand[i].onBoard){S.hand[i].onBoard=false;S.hand[i]._boardSq=undefined;}}
+}
 function toggleSel(idx){if(S.hand[idx]&&!S.hand[idx].onBoard){S.hand[idx].sel=!S.hand[idx].sel;renderHand();}}
 
 // =====================================================================
@@ -1337,7 +1341,7 @@ function blindComplete(){
 }
 function advanceBlind(){
   document.getElementById('round-modal').style.display='none';S.bi++;
-  if(S.bi>=3){S.ai++;S.bi=0;if(S.ai>=ANTES.length){showWin();return;}S.board=Array(B*B).fill(null);S.bt=Array(B*B).fill(null);S.placed=[];S.bag=buildBag();toast('New ante - fresh board!');}
+  if(S.bi>=3){S.ai++;S.bi=0;if(S.ai>=ANTES.length){showWin();return;}clearBoardLetters();S.bag=buildBag();toast('New ante — letters cleared, squares kept!');}
   S.score=0;S.plays=4;S.disc=3;S.wtb=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;
   recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null};openShop();
 }
