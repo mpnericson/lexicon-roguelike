@@ -1033,9 +1033,22 @@ function discardTiles(){
 // =====================================================================
 // DICTIONARY
 // =====================================================================
+function parseDict(txt){
+  return new Set(txt.split('\n').map(function(w){return w.trim().toUpperCase();}).filter(function(w){return w.length>0;}));
+}
 async function loadDict(){
-  try{var fs=require('fs'),path=require('path');var txt=fs.readFileSync(path.join(__dirname,'dictionary.txt'),'utf8');DICT=new Set(txt.split('\n').map(function(w){return w.trim().toUpperCase();}).filter(function(w){return w.length>0;}));console.log('Dict: '+DICT.size+' words');}
-  catch(e){console.log('No local dict, using API');DICT=null;}
+  try{
+    var r=await fetch(new URL('dictionary.txt',location.href));
+    if(r.ok){DICT=parseDict(await r.text());console.log('Dict: '+DICT.size+' words');return;}
+  }catch(e){}
+  try{
+    if(typeof require!=='undefined'){
+      var fs=require('fs'),path=require('path');
+      var txt=fs.readFileSync(path.join(__dirname,'dictionary.txt'),'utf8');
+      DICT=parseDict(txt);console.log('Dict: '+DICT.size+' words');return;
+    }
+  }catch(e){}
+  console.log('No local dict, using API');DICT=null;
 }
 async function validWord(word){
   if(word.length<2)return false;
@@ -1333,8 +1346,7 @@ function openBlankChooser(hi,cb2){
 function toast(msg){var el=document.getElementById('toast');el.textContent=msg;el.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(function(){el.style.display='none';},2500);}
 window.addEventListener('resize',function(){hpBounds();renderBoard();});
 document.addEventListener('click',function(e){var m=document.getElementById('menu-wrap');var dd=document.getElementById('menu-dropdown');if(dd&&m&&!m.contains(e.target))dd.style.display='none';});
-loadDict();startGame();
-requestAnimationFrame(hpStep);
+(async function(){await loadDict();startGame();requestAnimationFrame(hpStep);})();
 </script>
 </body>
 </html>
