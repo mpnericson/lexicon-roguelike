@@ -42,6 +42,8 @@ function scoreWord(wt,word,isMain){
   if(S.ts>0)em+=S.ts;
   var maxLS=Math.max.apply(null,Object.keys(LS).map(function(k){return LS[k];}));
   var magnetIdxs=[];for(var i=0;i<S.placed.length;i++){if(S.placed[i].id==='magnet')magnetIdxs.push(S.placed[i].sqIdx);}
+  var chessKingActive=false;for(var i=0;i<S.placed.length;i++){if(S.placed[i].id==='chess_king'){chessKingActive=true;break;}}
+  var chessAuraIdxs=[];for(var i=0;i<S.placed.length;i++){var _pid=S.placed[i].id;if(_pid==='chess_knight'||_pid==='chess_bishop'||_pid==='chess_rook'||_pid==='chess_queen'){var _au=chessGetAura(S.placed[i].sqIdx,_pid);for(var _j=0;_j<_au.length;_j++)chessAuraIdxs.push(_au[_j]);}}
   var midasMax=0;
   for(var i=0;i<wt.length;i++){
     var t=wt[i],tc=t.sc,d=t.sid?sqd(t.sid):null;
@@ -54,6 +56,8 @@ function scoreWord(wt,word,isMain){
     if(d&&d.apply&&(t.isNew||d.applyAlways)){var res=d.apply(tc,t,word,st);tc+=res.cb||0;em+=res.mb||0;}
     if(t.isBlank&&st.rune)tc+=maxLS;
     for(var mi=0;mi<magnetIdxs.length;mi++){if(adjSq(t.idx,magnetIdxs[mi])){tc*=2;break;}}
+    for(var ci=0;ci<chessAuraIdxs.length;ci++){if(t.idx===chessAuraIdxs[ci]){tc*=3;break;}}
+    if(chessKingActive&&t.isNew){for(var ci=0;ci<chessAuraIdxs.length;ci++){if(t.idx===chessAuraIdxs[ci]){wm*=3;break;}}}
     if(st.midas&&tc>midasMax)midasMax=tc;
     letters+=tc;
     if(t.variant==='red'){
@@ -98,6 +102,8 @@ function scoreWordDetailed(wt,word,isMain){
   var letters=0,wm=1,em=0,events=[];
   var maxLS=Math.max.apply(null,Object.keys(LS).map(function(k){return LS[k];}));
   var magnetIdxs=[];for(var i=0;i<S.placed.length;i++){if(S.placed[i].id==='magnet')magnetIdxs.push(S.placed[i].sqIdx);}
+  var chessKingActive2=false;for(var i=0;i<S.placed.length;i++){if(S.placed[i].id==='chess_king'){chessKingActive2=true;break;}}
+  var chessAuraIdxs2=[];for(var i=0;i<S.placed.length;i++){var _pid2=S.placed[i].id;if(_pid2==='chess_knight'||_pid2==='chess_bishop'||_pid2==='chess_rook'||_pid2==='chess_queen'){var _au2=chessGetAura(S.placed[i].sqIdx,_pid2);for(var _j2=0;_j2<_au2.length;_j2++)chessAuraIdxs2.push(_au2[_j2]);}}
   var midasMax=0;
   var placed=isMain?sortedPlaced():[];
   // PRE phase
@@ -123,6 +129,8 @@ function scoreWordDetailed(wt,word,isMain){
     }
     if(t.isBlank&&st.rune)tc+=maxLS;
     for(var mi=0;mi<magnetIdxs.length;mi++){if(adjSq(t.idx,magnetIdxs[mi])){tc*=2;break;}}
+    for(var ci=0;ci<chessAuraIdxs2.length;ci++){if(t.idx===chessAuraIdxs2[ci]){tc*=3;if(!ev.sqEff)ev.sqEff={icon:'♟',fg:'#d0d0f0',kind:'letter',label:'×3 chess aura'};break;}}
+    if(chessKingActive2&&t.isNew){for(var ci=0;ci<chessAuraIdxs2.length;ci++){if(t.idx===chessAuraIdxs2[ci]){wm*=3;ev.sqEff={icon:'♚',fg:'#f0e040',kind:'mult',label:'♚ King TW'};break;}}}
     if(st.midas&&tc>midasMax)midasMax=tc;
     letters+=tc;
     if(t.variant==='red'){

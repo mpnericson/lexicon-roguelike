@@ -51,7 +51,7 @@ function renderBoard(){
       if(lbl){var s=document.createElement('div');s.className='sq-lbl';s.textContent=lbl;sq.appendChild(s);}
       if(bt&&viewingBoard)sq.style.opacity='0.4';
       var classic=(sid==='dl'||sid==='tl'||sid==='dw'||sid==='tw');
-      if(sid&&!classic&&!bt&&S.phase!=='placing'){sq.style.cursor='pointer';(function(idx,did){sq.addEventListener('click',function(){openSqInspect(idx,did);});})(i,sid);}
+      if(sid&&!classic&&!bt&&S.phase!=='placing'){sq.style.cursor='pointer';(function(idx,did){if(did.indexOf('chess_')===0){sq.addEventListener('mouseenter',function(){_chessHoverOn(idx,did);});sq.addEventListener('mouseleave',_chessHoverOff);}sq.addEventListener('click',function(){openSqInspect(idx,did);});})(i,sid);}
       if(S.phase==='placing'&&isSqStaged(i)){
         var si2=S.sqStaged[i];var sq2item=S.sqHand[si2];var d2=sqd(sq2item.id);
         if(d2){var ss2=sqStyle(sq2item.id);sq.style.background=ss2.bg;sq.style.color=ss2.fg;

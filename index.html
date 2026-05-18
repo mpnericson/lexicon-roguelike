@@ -44,6 +44,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 #board-preview-wrap.tiles-hidden .tile{visibility:hidden}
 .sq{border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:bold;position:relative;border:1px solid rgba(255,255,255,0.06)}
 .sq.drop-target{outline:2px solid #f0e080;outline-offset:-2px}
+.sq-chess-hover::before{content:'';position:absolute;inset:0;border-radius:3px;background:white;pointer-events:none;animation:chess-aura-pulse 1.8s ease-in-out infinite}
+@keyframes chess-aura-pulse{0%,100%{opacity:0.03}50%{opacity:0.13}}
 .sq-lbl{font-size:7px;line-height:1;text-align:center;pointer-events:none}
 .tile{border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#d4c5a0;border:2px solid #8B7355;position:relative;touch-action:none}
 .tile.blank-t{background:#c8b896}
@@ -380,6 +382,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
   </div>
 </div>
 <script src="src/data.js"></script>
+<script src="src/stickers_final.js"></script>
 <script src="src/physics.js"></script>
 <script src="src/game.js"></script>
 <script src="src/render.js"></script>

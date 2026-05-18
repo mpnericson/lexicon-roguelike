@@ -20,7 +20,7 @@ function startGame(seed){
   var s=(seed!==undefined&&seed!==null)?((parseInt(seed)>>>0)||1):Math.floor(Math.random()*900000)+100000;
   _rngSeed(s);
   S={bag:buildBag(),hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),
-     ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtb:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,devMode:false,
+     ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtb:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,palUnlocked:false,devMode:false,
      phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s};
   shopPool={sq:[],tileCards:[],tilePack:null};activeDrag=null;
   document.getElementById('shop-screen').style.display='none';
@@ -54,7 +54,7 @@ function blindComplete(){
   var reward=2+S.bi*2+(S.ai*2);
   var playsBonus=S.plays>0?S.plays:0;
   S.gold+=reward+playsBonus;
-  document.getElementById('round-title').textContent=cb()[0]+' complete!';
+  document.getElementById('round-title').textContent=(cb()[0]?cb()[0]+' cleared!':'Round complete!');
   var msg='You scored '+S.score.toLocaleString()+', beating '+tgt().toLocaleString()+'.';
   if(playsBonus>0)msg+=' +$'+playsBonus+' efficiency bonus!';
   document.getElementById('round-msg').textContent=msg;
@@ -68,7 +68,7 @@ function advanceBlind(){
   if(newAnte){S.ai++;S.bi=0;if(S.ai>=ANTES.length){showWin();return;}}
   animBoardToShop(function(){
     if(newAnte){clearBoardLetters();S.bag=buildBag();toast('New ante — letters cleared, stickers kept!');}
-    S.score=0;S.plays=4;S.disc=3;S.wtb=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;
+    S.score=0;S.plays=4;S.disc=3;S.wtb=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;S.palUnlocked=false;
     S.pendingSquares=[];S.sqHand=[];S.sqStaged={};
     recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null};enterShopPhase();
   });

@@ -17,15 +17,21 @@ async function playWord(){
     if(!conn){toast('Word must connect to an existing word!');return;}
   }
   var boss=cb()[3];
-  if(boss==='boss_long'&&main.word.length<5){toast('The Anagram demands 5+ letters!');return;}
-  if(boss==='boss_pal'&&main.word!==main.word.split('').reverse().join('')){toast('The Palindrome demands a palindrome!');return;}
-  if(boss==='boss_hv'){var hv=false;for(var i=0;i<main.tiles.length;i++)if(!main.tiles[i].isBlank&&(LS[main.tiles[i].letter]||0)>=5){hv=true;break;}if(!hv){toast('The Final Glyph requires a 5+ pt tile!');return;}}
+  if(boss==='boss_long'&&main.word.length<5){toast('Constraint: use 5+ tiles!');return;}
+  if(boss==='boss_hv'){var hv=false;for(var i=0;i<main.tiles.length;i++)if(!main.tiles[i].isBlank&&(LS[main.tiles[i].letter]||0)>=5){hv=true;break;}if(!hv){toast('Constraint: word must include a 5+ point tile!');return;}}
+  var palLocked=boss==='boss_pal'&&!S.palUnlocked;
+  var justUnlocked=false;
+  if(palLocked&&isExtendedPalindrome(main.word)){S.palUnlocked=true;palLocked=false;justUnlocked=true;}
   var res=calcAll(nt,dir);
   for(var i=0;i<res.words.length;i++){var v=await validWord(res.words[i].word);if(!v){flashTiles(nt);if(!S.devMode){S.gold=Math.max(0,S.gold-2);renderHUD();toast('"'+res.words[i].word+'" is not a word — fined $2!');}else{toast('"'+res.words[i].word+'" is not a word.');}return;}}
-  var detailed=scoreWordDetailed(main.tiles,main.word,true);
-  var crossLetters=Math.max(0,res.grand-detailed.total-(res.bingo?50:0));
-  await runScoreAnim(detailed.events,crossLetters,res.bingo,res.grand);
-  S.score+=res.grand;S.gold+=res.tgold;S.wtb=(S.wtb||0)+1;S.discPressure=0;
+  if(!palLocked){
+    if(justUnlocked)toast('Palindrome! Scoring is now live.');
+    var detailed=scoreWordDetailed(main.tiles,main.word,true);
+    var crossLetters=Math.max(0,res.grand-detailed.total-(res.bingo?50:0));
+    await runScoreAnim(detailed.events,crossLetters,res.bingo,res.grand);
+    S.score+=res.grand;S.gold+=res.tgold;
+  }else{toast('Scoring locked — play a palindrome first!');}
+  S.wtb=(S.wtb||0)+1;S.discPressure=0;
   if(S.wtb%3===0)for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='tome'){S.ts=(S.ts||0)+1;break;}
   var blueTiles=[];
   for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){S.bt[i].isNew=false;S.bt[i].flying=false;var t=S.hand[S.bt[i].handIdx];if(t){if(t.variant==='blue'){var nb=(t.blueBonus||0)+(t.isBlank?0:(LS[t.letter]||0));blueTiles.push({letter:t.letter,isBlank:t.isBlank,id:t.id,variant:'blue',blueBonus:nb});}t._done=true;}}}
