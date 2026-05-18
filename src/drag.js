@@ -21,11 +21,10 @@ function sqAt(x,y){
 
 function inHand(x,y){var r=document.getElementById('hand-area').getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top-20&&y<=r.bottom+20;}
 
-function attachHandTileDrag(face,oi,vi,tile,disp,sc,vis){
+function attachHandTileDrag(face,oi,vi,tile,vis){
   face.addEventListener('pointerdown',function(ev){
     ev.preventDefault();ev.stopPropagation();
     if(activeDrag)return;
-    if(tile.isBlank&&!tile.blankAs){openBlankChooser(oi,null);return;}
     var sx=ev.clientX,sy=ev.clientY;var sr=face.getBoundingClientRect();
     var moved=false,clone=null;HP.held=vi;
     function move(me){
@@ -51,16 +50,24 @@ function attachHandTileDrag(face,oi,vi,tile,disp,sc,vis){
         if(vi<HP.tiles.length-1)HP.vx[vi+1]+=3;
         toggleSel(oi);return;
       }
-      if(!clone)return;clearHL();activeDrag.cx=-9999;
+      if(!clone)return;clearHL();
       var sq=sqAt(me.clientX,me.clientY);var ih=inHand(me.clientX,me.clientY);
       if(sq>=0&&!S.bt[sq]){
+        activeDrag.cx=-9999;
         var sqEl=document.querySelector('[data-sq-idx="'+sq+'"]');var tr=sqEl?sqEl.getBoundingClientRect():null;
         if(tr){clone.style.transition='left .13s,top .13s,transform .13s';clone.style.left=(tr.left+tr.width/2-28)+'px';clone.style.top=(tr.top+tr.height/2-32)+'px';clone.style.transform='scale(0.85)';}
-        setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);placeTile(oi,sq);activeDrag=null;renderBoard();renderHand();},140);
+        if(tile.isBlank&&!tile.blankAs){
+          setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);activeDrag=null;
+            openBlankChooser(oi,function(){placeTile(oi,sq);renderBoard();renderHand();});
+          },140);
+        } else {
+          setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);placeTile(oi,sq);activeDrag=null;renderBoard();renderHand();},140);
+        }
       } else if(ih){
-        var ins=computeInsert(me.clientX,vi);
-        setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);reorderHand(oi,ins,vis);activeDrag=null;renderHand();},60);
+        var ins=computeInsert(me.clientX,vi);var dropX=me.clientX;
+        setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);reorderHand(oi,ins,vis,dropX);activeDrag=null;renderHand();},120);
       } else {
+        activeDrag.cx=-9999;
         clone.style.transition='left .14s,top .14s,transform .14s';clone.style.left=sr.left+'px';clone.style.top=sr.top+'px';clone.style.transform='scale(1)';
         setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);activeDrag=null;renderHand();},140);
       }
@@ -74,20 +81,29 @@ function computeInsert(mouseX,dragVi){
   for(var i=0;i<n;i++){if(i===dragVi)continue;if(mouseX<HP.x[i])return i;}return n;
 }
 
-function reorderHand(fromOi,insertAt,vis){
+function reorderHand(fromOi,insertAt,vis,dropX){
+  hpBounds();
+  var oldX={};
+  for(var k=0;k<vis.length;k++)oldX[vis[k].t.id]=HP.x[k]||0;
   var fv=-1;for(var k=0;k<vis.length;k++)if(vis[k].oi===fromOi){fv=k;break;}
-  if(fv<0)return;var rem=vis.splice(fv,1)[0];
+  if(fv<0)return;
+  oldX[vis[fv].t.id]=dropX!==undefined?dropX:((HP.aL+HP.aR)/2);
+  var rem=vis.splice(fv,1)[0];
   var adj=insertAt>fv?insertAt-1:insertAt;adj=Math.max(0,Math.min(vis.length,adj));vis.splice(adj,0,rem);
   var ob=[];for(var k=0;k<S.hand.length;k++)if(S.hand[k]&&S.hand[k].onBoard)ob.push(S.hand[k]);
   var nh=vis.map(function(e){return e.t;});for(var k=0;k<ob.length;k++)nh.push(ob[k]);
   for(var bi=0;bi<B*B;bi++){if(S.bt[bi]&&S.bt[bi].handIdx!==undefined){for(var k=0;k<nh.length;k++){if(nh[k]&&nh[k].onBoard&&nh[k]._boardSq===bi){S.bt[bi].handIdx=k;break;}}}}
-  HP.x=[];HP.vx=[];S.hand=nh;
+  HP.fromX=vis.map(function(e){return oldX[e.t.id]!==undefined?oldX[e.t.id]:((HP.aL+HP.aR)/2);});
+  HP.toX=hpRest(vis.length);
+  HP.settleAt=performance.now();
+  HP.x=HP.fromX.slice();HP.vx=Array(vis.length).fill(0);S.hand=nh;
 }
 
 function attachBoardTileDrag(face,sqIdx,sz){
   face.addEventListener('pointerdown',function(ev){
     ev.preventDefault();ev.stopPropagation();if(activeDrag)return;
     if(S.board[sqIdx]==='fossil'&&S.bt[sqIdx]&&S.bt[sqIdx].isNew){toast('Fossil: tile is locked in place!');return;}
+    var shiftHeld=ev.shiftKey;
     var sr=face.getBoundingClientRect();var sx=ev.clientX,sy=ev.clientY;var moved=false,clone=null;
     function move(me){
       var dx=me.clientX-sx,dy=me.clientY-sy;
@@ -103,7 +119,7 @@ function attachBoardTileDrag(face,sqIdx,sz){
     }
     function up(me){
       document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
-      if(!moved){recallTile(sqIdx);return;}if(!clone)return;clearHL();
+      if(!moved){if(shiftHeld){recallAll();renderBoard();renderHand();}else{recallTile(sqIdx);}return;}if(!clone)return;clearHL();
       if(S.bt[sqIdx])S.bt[sqIdx].flying=false;
       var over=sqAt(me.clientX,me.clientY);var ih=inHand(me.clientX,me.clientY);
       if(ih){
@@ -173,7 +189,7 @@ function placeTile(handIdx,sqIdx){
 function recallTile(sqIdx){
   var bt=S.bt[sqIdx];if(!bt||!bt.isNew)return;
   if(S.board[sqIdx]==='fossil'){toast('Fossil: tile is locked in place!');return;}
-  var t=S.hand[bt.handIdx];if(t){t.onBoard=false;t._boardSq=undefined;}
+  var t=S.hand[bt.handIdx];if(t){t.onBoard=false;t._boardSq=undefined;if(t.isBlank)t.blankAs=null;}
   S.bt[sqIdx]=null;renderBoard();renderHand();
 }
 

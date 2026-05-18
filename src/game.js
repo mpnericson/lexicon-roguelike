@@ -79,10 +79,60 @@ function closeAllModals(){
 function toast(msg){var el=document.getElementById('toast');el.textContent=msg;el.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(function(){el.style.display='none';},2500);}
 
 function openBagModal(){
-  var counts={};for(var i=0;i<S.bag.length;i++){var l=S.bag[i].isBlank?'_':S.bag[i].letter;counts[l]=(counts[l]||0)+1;}
   document.getElementById('bag-mc').textContent=S.bag.length+' tiles remaining.';
-  var cont=document.getElementById('bag-counts');cont.innerHTML='';var ks=Object.keys(counts).sort();
-  for(var i=0;i<ks.length;i++){var el=document.createElement('div');el.className='bag-l';el.textContent=(ks[i]==='_'?'Blank':ks[i])+' x'+counts[ks[i]];cont.appendChild(el);}
+  var cont=document.getElementById('bag-counts');cont.innerHTML='';
+  cont.style.cssText='display:flex;flex-direction:column;gap:12px';
+
+  var variants=S.bag.filter(function(t){return t.variant;});
+  var plains=S.bag.filter(function(t){return !t.variant;});
+
+  function secLabel(text){
+    var l=document.createElement('div');
+    l.style.cssText='font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#8880a8;margin-bottom:4px';
+    l.textContent=text;return l;
+  }
+  function tileEl(letter,isBlank,sc,variant){
+    var badge=variant==='gold'?'<span class="vbadge vbadge-gold">$</span>':
+              variant==='blue'?'<span class="vbadge vbadge-blue">+'+(LS[letter]||0)+'</span>':
+              variant==='red'?'<span class="vbadge vbadge-red">×2</span>':'';
+    var el=document.createElement('div');
+    el.className='tile'+(isBlank?' blank-t':'')+(variant?' var-'+variant:'');
+    el.style.cssText='width:44px;height:52px;position:relative;flex-shrink:0;cursor:default';
+    el.innerHTML='<span class="tl" style="font-size:18px">'+letter+'</span><span class="ts" style="font-size:7px">'+sc+'</span>'+badge;
+    return el;
+  }
+
+  if(variants.length>0){
+    var vsec=document.createElement('div');
+    vsec.appendChild(secLabel('Special Tiles'));
+    var vrow=document.createElement('div');vrow.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
+    for(var i=0;i<variants.length;i++){
+      var t=variants[i];
+      vrow.appendChild(tileEl(t.isBlank?'':t.letter,t.isBlank,t.isBlank?0:(LS[t.letter]||0),t.variant));
+    }
+    vsec.appendChild(vrow);cont.appendChild(vsec);
+  }
+
+  if(plains.length>0){
+    var psec=document.createElement('div');
+    psec.appendChild(secLabel('Tiles'));
+    var counts={};
+    for(var i=0;i<plains.length;i++){var l=plains[i].isBlank?'_':plains[i].letter;counts[l]=(counts[l]||0)+1;}
+    var prow=document.createElement('div');prow.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
+    var ks=Object.keys(counts).sort();
+    for(var i=0;i<ks.length;i++){
+      var l=ks[i],cnt=counts[l],isBlank=(l==='_');
+      var el=tileEl(isBlank?'':l,isBlank,isBlank?0:(LS[l]||0),null);
+      if(cnt>1){
+        var ct=document.createElement('span');
+        ct.style.cssText='position:absolute;top:1px;left:3px;font-size:8px;font-weight:bold;color:#2a1f0e;line-height:1';
+        ct.textContent='×'+cnt;el.appendChild(ct);
+      }
+      prow.appendChild(el);
+    }
+    psec.appendChild(prow);cont.appendChild(psec);
+  }
+
   document.getElementById('bag-modal').style.display='flex';
 }
 

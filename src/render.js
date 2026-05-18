@@ -73,7 +73,7 @@ function renderHand(){
   hpRebuild(vis);
   for(var vi=0;vi<vis.length;vi++){
     var t=vis[vi].t,oi=vis[vi].oi;
-    var disp=t.isBlank?(t.blankAs||'?'):t.letter;
+    var disp=t.isBlank?(t.blankAs||''):t.letter;
     var sc=t.isBlank?(t._alchSc||0):((LS[t.letter]||0)+(t.variant==='blue'?(t.blueBonus||0):0));
     var badge=t.variant==='gold'?'<span class="vbadge vbadge-gold">$</span>':t.variant==='blue'?'<span class="vbadge vbadge-blue">+'+(LS[t.letter]||0)+'</span>':t.variant==='red'?'<span class="vbadge vbadge-red">×2</span>':'';
     var face=document.createElement('div');
@@ -83,7 +83,7 @@ function renderHand(){
     var isDragging=activeDrag&&activeDrag.src==='hand'&&activeDrag.vi===vi;
     if(isDragging)face.style.opacity='0';
     area.appendChild(face);
-    attachHandTileDrag(face,oi,vi,t,disp,sc,vis);
+    attachHandTileDrag(face,oi,vi,t,vis);
   }
 }
 

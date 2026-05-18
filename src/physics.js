@@ -7,7 +7,8 @@ var HP={
   tiles:[],x:[],vx:[],held:-1,
   TILE_W:56,GAP:0,
   DAMP:0.55,SPRING:0.14,
-  RAF:null,aL:0,aR:0
+  RAF:null,aL:0,aR:0,
+  fromX:[],toX:[],settleAt:0,settleDur:150
 };
 
 function hpBounds(){
@@ -31,10 +32,20 @@ function hpRebuild(vis){
   hpBounds();
   var n=vis.length;
   HP.tiles=vis.slice();
-  if(HP.x.length!==n){HP.x=hpRest(n);HP.vx=Array(n).fill(0);}
+  if(HP.x.length!==n){HP.x=hpRest(n);HP.vx=Array(n).fill(0);HP.fromX=[];HP.toX=[];HP.settleAt=0;}
 }
 
 function hpStep(){
+  var now=performance.now();
+  if(HP.settleAt>0){
+    var t=Math.min(1,(now-HP.settleAt)/HP.settleDur);
+    var ease=1-Math.pow(1-t,3);
+    for(var i=0;i<HP.tiles.length;i++)
+      if(HP.fromX[i]!==undefined&&HP.toX[i]!==undefined)
+        HP.x[i]=HP.fromX[i]+(HP.toX[i]-HP.fromX[i])*ease;
+    if(t>=1)HP.settleAt=0;
+    hpDraw();HP.RAF=requestAnimationFrame(hpStep);return;
+  }
   var n=HP.tiles.length;
   hpBounds();
   var dragVi=activeDrag&&activeDrag.src==='hand'?activeDrag.vi:-1;
