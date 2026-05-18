@@ -120,9 +120,20 @@ function toggleDevMode(){
   S.devMode=!S.devMode;
   document.getElementById('devmode-item').textContent='Dev Mode: '+(S.devMode?'ON':'Off');
   document.getElementById('devmode-item').style.color=S.devMode?'#80f080':'';
+  var devItems=document.querySelectorAll('.dev-only');
+  for(var i=0;i<devItems.length;i++)devItems[i].style.display=S.devMode?'block':'none';
   document.getElementById('menu-dropdown').style.display='none';
   toast(S.devMode?'Dev Mode ON — all purchases free!':'Dev Mode OFF');
   renderHUD();if(S.phase==='shop')renderShop();
+}
+
+function devTestClose(){
+  document.getElementById('menu-dropdown').style.display='none';
+  animBoardToShop(function(){ renderBoard();renderHand(); });
+}
+function devTestOpen(){
+  document.getElementById('menu-dropdown').style.display='none';
+  animShopToBoard(function(){ _burstHandTiles(); });
 }
 
 function toggleMenu(){

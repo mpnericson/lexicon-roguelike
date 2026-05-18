@@ -105,17 +105,18 @@ function _liftAndFly(tile, layer, tx, ty, flightDur, onDone) {
 // Creates two half-clones of the board, positioned in a container over the board.
 // isStartFolded: if true, both halves begin edge-on (90°) so opening can unfold them.
 // CLOSE_SCALE: how far the board zooms toward the viewer during fold
-var FOLD_SCALE = 2.6;
-
 function _makeBoardFold(boardEl, isStartFolded) {
   var r = boardEl.getBoundingClientRect();
   var W = r.width, BH = r.height;
   var h = Math.floor(BH / 2);
 
-  // Black void behind the fold — visible through the "mouth" as board opens toward viewer
-  var darkVoid = document.createElement('div');
-  darkVoid.style.cssText = 'position:fixed;inset:0;z-index:808;background:#000;';
-  document.body.appendChild(darkVoid);
+  // Scale at which the board exactly fills the viewport — computed from actual geometry
+  var cx = r.left + W/2, cy = r.top + BH/2;
+  var fillScale = Math.max(
+    Math.max(cx, window.innerWidth  - cx) / (W/2),
+    Math.max(cy, window.innerHeight - cy) / (BH/2)
+  ) * 1.2; // 20% overshoot ensures coverage arrives well before animation end
+
 
   // Perspective container — shared perspective so both halves share one vanishing point
   // perspective-origin at fold line (50% height = center of board)
@@ -126,7 +127,7 @@ function _makeBoardFold(boardEl, isStartFolded) {
     'perspective:'+(BH*1.1)+'px',   // tight perspective = dramatic depth
     'perspective-origin:50% 50%',   // vanishing point at fold line
     'transform-origin:50% 50%',
-    'transform:scale('+(isStartFolded?FOLD_SCALE:1)+')'
+    'transform:scale('+(isStartFolded?fillScale:1)+')'
   ].join(';');
   document.body.appendChild(perspCont);
 
@@ -163,8 +164,8 @@ function _makeBoardFold(boardEl, isStartFolded) {
 
   return {
     perspCont: perspCont, topWrap: topWrap, botWrap: botWrap,
-    darkVoid: darkVoid, BH: BH,
-    cleanup: function() { perspCont.remove(); darkVoid.remove(); boardEl.style.visibility = ''; }
+    BH: BH, fillScale: fillScale,
+    cleanup: function() { perspCont.remove(); boardEl.style.visibility = ''; }
   };
 }
 
@@ -181,7 +182,8 @@ function animShopToBoard(onBoardReady) {
 
   // Board starts fully open toward viewer (mouth wide), zoomed in — will fold flat and zoom out
   var fold = _makeBoardFold(boardEl, true);
-  var perspCont = fold.perspCont, topWrap = fold.topWrap, botWrap = fold.botWrap, BH = fold.BH;
+  var perspCont = fold.perspCont, topWrap = fold.topWrap, botWrap = fold.botWrap;
+  var fillScale = fold.fillScale;
 
   var dur = 700;
   var start = performance.now();
@@ -193,7 +195,7 @@ function animShopToBoard(onBoardReady) {
     var angle = (1 - e) * 90;
     topWrap.style.transform = 'rotateX('+(-angle)+'deg)';
     botWrap.style.transform = 'rotateX('+(angle)+'deg)';
-    perspCont.style.transform = 'scale('+(1 + (1 - e) * (FOLD_SCALE - 1))+')';
+    perspCont.style.transform = 'scale('+(1 + (1 - e) * (fillScale - 1))+')';
 
     if (t < 1) { requestAnimationFrame(step); return; }
 
@@ -309,29 +311,25 @@ function _closeBoard(onDone) {
   var perspCont = fold.perspCont, topWrap = fold.topWrap, botWrap = fold.botWrap, BH = fold.BH;
   var bg = getComputedStyle(document.body).backgroundColor || '#0f0f1e';
 
-  var dur = 1100;
+  var fillScale = fold.fillScale;
+  var dur = 950;
   var start = performance.now();
 
-  // Three-phase snap: long lazy hold → explosive whoomph (with overshoot) → elastic settle
+  // Three-phase snap: slow linear creep → explosive snap (with overshoot) → elastic settle
   function snapEase(t) {
-    if (t < 0.73) return Math.pow(t / 0.73, 5) * 0.05;            // lazily drifts to 4.5° over 73%
-    if (t < 0.89) { var s=(t-0.73)/0.16; return 0.05+Math.pow(s,0.32)*1.11; } // explosive snap to 103.5°
-    var s=(t-0.89)/0.11; return 1.16-(1-Math.pow(1-s,2))*0.16;   // settle back to 90°
-  }
-  // Scale also waits, then surges in sync with the snap
-  function scaleEase(t) {
-    if (t < 0.73) return Math.pow(t/0.73, 7) * 0.06;
-    var s=(t-0.73)/0.27; return 0.06+Math.pow(s,0.5)*0.94;
+    if (t < 0.60) return (t / 0.60) * 0.25;                              // linear: 0° → 22.5° — visible from frame 1
+    if (t < 0.79) { var s=(t-0.60)/0.19; return 0.25+Math.pow(s,0.35)*0.84; } // snap to ~98°
+    var s=(t-0.79)/0.21; return 1.09-(1-Math.pow(1-s,2))*0.09;           // settle to 90°
   }
 
   function step(now) {
     var t = Math.min(1, (now - start) / dur);
     var e = snapEase(t);
-    var eScale = scaleEase(t);
+    var eScale = Math.pow(t, 0.4); // aggressively front-loaded — full coverage before snap fires
 
     topWrap.style.transform = 'rotateX('+(-e * 90)+'deg)';
     botWrap.style.transform = 'rotateX('+(e * 90)+'deg)';
-    perspCont.style.transform = 'scale('+(1 + eScale * (FOLD_SCALE - 1))+')';
+    perspCont.style.transform = 'scale('+(1 + eScale * (fillScale - 1))+')';
 
     if (t < 1) { requestAnimationFrame(step); return; }
 
