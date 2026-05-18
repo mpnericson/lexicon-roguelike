@@ -4,7 +4,11 @@
 function isPalindrome(w){return w.length>1&&w===w.split('').reverse().join('');}
 function adjSq(a,b){var ar=Math.floor(a/B),ac=a%B,br=Math.floor(b/B),bc=b%B;return Math.abs(ar-br)<=1&&Math.abs(ac-bc)<=1&&a!==b;}
 function uid(){return Math.random().toString(36).slice(2,8);}
-function shuffle(a){var b=a.slice();for(var i=b.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=b[i];b[i]=b[j];b[j]=t;}return b;}
+// Seeded PRNG — Mulberry32. _rngSeed initialises; _rng() returns [0,1).
+var _rngState=0;
+function _rngSeed(s){_rngState=s>>>0;}
+function _rng(){_rngState=(_rngState+0x6D2B79F5)|0;var t=Math.imul(_rngState^_rngState>>>15,1|_rngState);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}
+function shuffle(a){var b=a.slice();for(var i=b.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var t=b[i];b[i]=b[j];b[j]=t;}return b;}
 function sqd(id){for(var i=0;i<SQ.length;i++)if(SQ[i].id===id)return SQ[i];return null;}
 function rcl(i){return String.fromCharCode(65+i%B)+(Math.floor(i/B)+1);}
 
@@ -41,7 +45,7 @@ var SQ=[
   {id:'lexicon_s_eye',name:"Lexicon's Eye",desc:'Q, X, Z, J score double letter score this turn.',rarity:'rare',cost:7,bg:'#0a2a1a',fg:'#60e0a0',icon:'LE',priority:2,onPre:function(w,st){st.lxeye=true;}},
   {id:'midas_touch',name:'Midas Touch',desc:'The highest-value tile earns triple letter score.',rarity:'rare',cost:9,bg:'#3a2a00',fg:'#f0d040',icon:'MD',onPre:function(w,st){st.midas=true;}},
   {id:'bounty',name:'Bounty',desc:'+10 letter score per letter beyond 5.',rarity:'common',cost:4,bg:'#0a2a0a',fg:'#60c060',icon:'BN',onPost:function(w,st){if(w.length>5)st.gc=(st.gc||0)+(w.length-5)*10;}},
-  {id:'jackpot',name:'Jackpot',desc:'5% chance the tile placed here scores ×10.',rarity:'rare',cost:7,bg:'#2a0a2a',fg:'#f060f0',icon:'JP',type:'local',apply:function(tc,t,w,st){if(Math.random()<0.05)return{cb:tc*9,mb:0};return{cb:0,mb:0};}},
+  {id:'jackpot',name:'Jackpot',desc:'5% chance the tile placed here scores ×10.',rarity:'rare',cost:7,bg:'#2a0a2a',fg:'#f060f0',icon:'JP',type:'local',apply:function(tc,t,w,st){if(_rng()<0.05)return{cb:tc*9,mb:0};return{cb:0,mb:0};}},
   {id:'fossil',name:'Fossil',desc:'Tile placed here is locked (no recall) but scores ×3 on all future words.',rarity:'rare',cost:8,bg:'#2a1a0a',fg:'#c08040',icon:'FO',type:'local',applyAlways:true,apply:function(tc,t,w,st){if(!t.isNew)return{cb:tc*2,mb:0};return{cb:0,mb:0};}},
   {id:'lucky_blank',name:'Lucky Blank',desc:'Each blank tile in the word grants +3 multiplier.',rarity:'uncommon',cost:5,bg:'#1a1a2a',fg:'#a0a0f0',icon:'LB',onPre:function(w,st){st.lucky_blank=true;}},
   {id:'scholar',name:'Scholar',desc:'Words made only of 1-point tiles gain +6 multiplier.',rarity:'uncommon',cost:5,bg:'#0a1a2a',fg:'#80c0ff',icon:'SH',onPre:function(w,st){st.scholar=true;}},

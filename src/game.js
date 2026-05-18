@@ -15,11 +15,13 @@ function buildBag(){
   return shuffle(bag);
 }
 
-function startGame(){
+function startGame(seed){
   closeAllModals();
+  var s=(seed!==undefined&&seed!==null)?((parseInt(seed)>>>0)||1):Math.floor(Math.random()*900000)+100000;
+  _rngSeed(s);
   S={bag:buildBag(),hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtb:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,devMode:false,
-     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{}};
+     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s};
   shopPool={sq:[],tileCards:[],tilePack:null};activeDrag=null;
   document.getElementById('shop-screen').style.display='none';
   document.getElementById('play-controls').style.display='flex';
@@ -62,10 +64,14 @@ function blindComplete(){
 
 function advanceBlind(){
   document.getElementById('round-modal').style.display='none';S.bi++;
-  if(S.bi>=3){S.ai++;S.bi=0;if(S.ai>=ANTES.length){showWin();return;}clearBoardLetters();S.bag=buildBag();toast('New ante — letters cleared, stickers kept!');}
-  S.score=0;S.plays=4;S.disc=3;S.wtb=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;
-  S.pendingSquares=[];S.sqHand=[];S.sqStaged={};
-  recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null};enterShopPhase();
+  var newAnte=S.bi>=3;
+  if(newAnte){S.ai++;S.bi=0;if(S.ai>=ANTES.length){showWin();return;}}
+  animBoardToShop(function(){
+    if(newAnte){clearBoardLetters();S.bag=buildBag();toast('New ante — letters cleared, stickers kept!');}
+    S.score=0;S.plays=4;S.disc=3;S.wtb=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;
+    S.pendingSquares=[];S.sqHand=[];S.sqStaged={};
+    recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null};enterShopPhase();
+  });
 }
 
 function showGO(msg){document.getElementById('gameover-msg').textContent=msg;document.getElementById('gameover-modal').style.display='flex';}

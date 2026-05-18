@@ -64,10 +64,15 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .btn-red{background:#7a2d2d;color:#f0d0d0;box-shadow:0 3px 0 #4a1a1a}.btn-red:hover{background:#8a3a3a}
 .btn-gold{background:#7a6a10;color:#fff0b0;box-shadow:0 3px 0 #4a4000}.btn-gold:hover{background:#8a7a20}
 .btn-gray{background:#2a2a4a;color:#a0a0c0;box-shadow:0 3px 0 #1a1a2a}.btn-gray:hover{background:#3a3a5a}
-#bag-btn{background:#12122a;border:1px solid #3a3a5a;border-radius:8px;padding:8px 12px;cursor:pointer;text-align:center}
+#bag-btn{background:#12122a;border:1px solid #3a3a5a;border-radius:8px;padding:4px 8px;cursor:pointer;text-align:center;transition:border-color .15s}
 #bag-btn:hover{border-color:#f0e080}
-#bag-count{font-size:22px;font-weight:bold}
-#bag-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#8880a8}
+#bag-count{font-size:14px;font-weight:bold;line-height:1;color:#d4c5a0}
+#bag-icon-wrap{display:flex;justify-content:center;margin-bottom:1px;transform-origin:center bottom}
+.bag-open{display:none}
+#bag-btn:hover .bag-closed,.bag-vacuuming .bag-closed{display:none}
+#bag-btn:hover .bag-open,.bag-vacuuming .bag-open{display:block}
+@keyframes bag-shake-hover{0%{transform:rotate(0)scale(1)}18%{transform:rotate(-7deg)scale(1.08)}36%{transform:rotate(7deg)scale(1.08)}54%{transform:rotate(-4deg)scale(1.03)}72%{transform:rotate(4deg)scale(1.03)}88%{transform:rotate(-1deg)}100%{transform:rotate(0)scale(1)}}
+#bag-btn:hover #bag-icon-wrap{animation:bag-shake-hover .38s ease-in-out}
 .view-btn{position:absolute;top:-24px;right:0;font-size:11px;background:#2a2a4a;border:1px solid #4a4a6a;border-radius:4px;padding:3px 8px;cursor:pointer;color:#a0a0c0}
 .view-btn:hover{border-color:#f0e080;color:#f0e080}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:200}
@@ -132,6 +137,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .menu-item{padding:11px 16px;font-size:13px;cursor:pointer;color:#e8e0d0;font-family:Georgia;border-bottom:1px solid #1e1e3a}
 .menu-item:last-child{border-bottom:none}.menu-item:hover{background:#1e1e3a;color:#f0e080}
 .menu-item.danger{color:#ff8080}.menu-item.danger:hover{background:#2a0a0a}
+#seed-display:hover{background:transparent!important;color:#8880a8!important}
 #hammer-grid,#forge-grid-inner{display:flex;flex-wrap:wrap;gap:6px;max-height:340px;overflow-y:auto;padding:2px}
 .shop-card-tile{background:#1e1e3a;border:1px solid #4a4a7a;border-radius:8px;padding:10px;min-width:110px;max-width:140px;text-align:center}
 #board-preview-wrap{display:inline-grid;gap:2px}
@@ -148,6 +154,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .sa-op{font-size:20px;color:#6060a0;padding-bottom:6px}
 @keyframes bump{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
 .sa-bump{animation:bump .18s ease-out}
+@keyframes bag-absorb{0%{transform:scale(1)rotate(0)}28%{transform:scale(1.22)rotate(-5deg);filter:brightness(1.6)}58%{transform:scale(1.1)rotate(4deg)}100%{transform:scale(1)rotate(0)}}
+#bag-btn.bag-absorb #bag-icon-wrap{animation:bag-absorb .24s ease-out}
 </style>
 </head>
 <body>
@@ -172,6 +180,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
       <div id="menu-dropdown" style="display:none">
         <div class="menu-item" onclick="openCollection()">Sticker Collection</div>
         <div class="menu-item" id="devmode-item" onclick="toggleDevMode()">Dev Mode: Off</div>
+        <div class="menu-item" id="seed-display" style="color:#8880a8;font-size:11px;cursor:default;pointer-events:none">Seed: —</div>
+        <div class="menu-item" onclick="seedRun()">New Seeded Run</div>
         <div class="menu-item danger" onclick="giveUpRun()">Give Up Run</div>
       </div>
     </div>
@@ -184,12 +194,47 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
     <button id="shuffle-btn" onclick="shuffleHand()" title="Shuffle hand">⇄</button>
     <div id="right-panel">
       <div id="play-controls">
-        <button class="btn btn-green" onclick="playWord()" style="font-size:14px;padding:10px 16px">Play Word</button>
+        <button class="btn btn-green" onclick="playWord()" style="font-size:14px;padding:6px 16px;margin:0">Play Word</button>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-red" onclick="discardTiles()" style="flex:1;font-size:12px;padding:8px 6px;margin:0">Discard</button>
-          <button class="btn btn-gray" onclick="checkWordCost()" style="flex:1;font-size:12px;padding:8px 6px;margin:0">Check $1</button>
+          <button class="btn btn-red" onclick="discardTiles()" style="flex:1;font-size:12px;padding:5px 6px;margin:0">Discard</button>
+          <button class="btn btn-gray" onclick="checkWordCost()" style="flex:1;font-size:12px;padding:5px 6px;margin:0">Check $1</button>
         </div>
-        <div id="bag-btn" onclick="openBagModal()"><div id="bag-count">98</div><div id="bag-label">tiles in bag</div></div>
+        <div id="bag-btn" onclick="openBagModal()">
+          <div id="bag-icon-wrap">
+            <svg class="bag-closed" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 11" width="18" height="22" style="display:block">
+              <rect x="3" y="0" width="3" height="1" fill="#3a1800"/>
+              <rect x="2" y="1" width="1" height="1" fill="#3a1800"/><rect x="6" y="1" width="1" height="1" fill="#3a1800"/>
+              <rect x="1" y="2" width="7" height="1" fill="#6a3010"/>
+              <rect x="0" y="3" width="1" height="5" fill="#3a1800"/><rect x="8" y="3" width="1" height="5" fill="#3a1800"/>
+              <rect x="1" y="3" width="7" height="5" fill="#c07838"/>
+              <rect x="1" y="3" width="1" height="5" fill="#d89050"/>
+              <rect x="7" y="4" width="1" height="4" fill="#8a4820"/>
+              <rect x="1" y="8" width="1" height="1" fill="#3a1800"/><rect x="7" y="8" width="1" height="1" fill="#3a1800"/>
+              <rect x="2" y="8" width="5" height="1" fill="#c07838"/>
+              <rect x="2" y="9" width="1" height="1" fill="#3a1800"/><rect x="6" y="9" width="1" height="1" fill="#3a1800"/>
+              <rect x="3" y="9" width="3" height="1" fill="#8a4820"/>
+              <rect x="3" y="10" width="3" height="1" fill="#3a1800"/>
+            </svg>
+            <svg class="bag-open" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 11" width="18" height="22" style="display:block">
+              <rect x="3" y="0" width="3" height="1" fill="#3a1800"/>
+              <rect x="2" y="1" width="1" height="1" fill="#3a1800"/><rect x="6" y="1" width="1" height="1" fill="#3a1800"/>
+              <rect x="1" y="2" width="2" height="1" fill="#6a3010"/><rect x="6" y="2" width="2" height="1" fill="#6a3010"/>
+              <rect x="3" y="2" width="3" height="1" fill="#1a0800"/>
+              <rect x="0" y="3" width="2" height="1" fill="#3a1800"/><rect x="7" y="3" width="2" height="1" fill="#3a1800"/>
+              <rect x="2" y="3" width="5" height="1" fill="#1a0800"/>
+              <rect x="0" y="4" width="1" height="4" fill="#3a1800"/><rect x="8" y="4" width="1" height="4" fill="#3a1800"/>
+              <rect x="1" y="4" width="7" height="4" fill="#c07838"/>
+              <rect x="1" y="4" width="1" height="4" fill="#d89050"/>
+              <rect x="7" y="5" width="1" height="3" fill="#8a4820"/>
+              <rect x="1" y="8" width="1" height="1" fill="#3a1800"/><rect x="7" y="8" width="1" height="1" fill="#3a1800"/>
+              <rect x="2" y="8" width="5" height="1" fill="#c07838"/>
+              <rect x="2" y="9" width="1" height="1" fill="#3a1800"/><rect x="6" y="9" width="1" height="1" fill="#3a1800"/>
+              <rect x="3" y="9" width="3" height="1" fill="#8a4820"/>
+              <rect x="3" y="10" width="3" height="1" fill="#3a1800"/>
+            </svg>
+          </div>
+          <div id="bag-count">98</div>
+        </div>
       </div>
       <div id="placing-controls">
         <button class="btn btn-green" onclick="confirmPlacement()" style="font-size:14px;padding:10px 16px">Confirm</button>
@@ -312,6 +357,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 <div id="blank-modal" class="modal-overlay" style="display:none">
   <div class="modal"><h2>Choose a letter</h2><p style="color:#a0a0c0;font-size:13px;margin-bottom:14px">Your blank tile will act as this letter.</p><div class="blank-grid" id="blank-grid"></div></div>
 </div>
+<div id="anim-layer"></div>
 <div id="round-modal" class="modal-overlay" style="display:none">
   <div class="modal" style="text-align:center"><h2 id="round-title"></h2>
     <p style="color:#a0a0c0;font-size:13px;margin-bottom:8px" id="round-msg"></p>
@@ -341,6 +387,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 <script src="src/dict.js"></script>
 <script src="src/shop.js"></script>
 <script src="src/ui.js"></script>
+<script src="src/anim.js"></script>
 <script src="src/init.js"></script>
 </body>
 </html>

@@ -1,9 +1,9 @@
 // =====================================================================
 // SHOP — sticker shop, packs, tile upgrades, forge, hammer
 // =====================================================================
-function freeSquare(){var c=[];for(var i=0;i<B*B;i++)if(!S.board[i])c.push(i);return c.length?c[Math.floor(Math.random()*c.length)]:-1;}
+function freeSquare(){var c=[];for(var i=0;i<B*B;i++)if(!S.board[i])c.push(i);return c.length?c[Math.floor(_rng()*c.length)]:-1;}
 
-function wrand(pool,w){var arr=[];for(var i=0;i<SQ.length;i++){var d=SQ[i];if(pool.indexOf(d.id)<0)continue;var wt=Math.round((w[d.rarity]||0)*10);for(var j=0;j<wt;j++)arr.push(d.id);}return arr.length?arr[Math.floor(Math.random()*arr.length)]:null;}
+function wrand(pool,w){var arr=[];for(var i=0;i<SQ.length;i++){var d=SQ[i];if(pool.indexOf(d.id)<0)continue;var wt=Math.round((w[d.rarity]||0)*10);for(var j=0;j<wt;j++)arr.push(d.id);}return arr.length?arr[Math.floor(_rng()*arr.length)]:null;}
 
 function wrandN(pool,w,n){
   var used={},out=[];
@@ -15,7 +15,7 @@ function wrandN(pool,w,n){
       for(var j=0;j<wt;j++)arr.push(d.id);
     }
     if(!arr.length)break;
-    var id=arr[Math.floor(Math.random()*arr.length)];
+    var id=arr[Math.floor(_rng()*arr.length)];
     used[id]=1;out.push(id);
   }
   return out;
@@ -40,9 +40,12 @@ function enterShopPhase(){
 }
 
 function leaveShop(){
-  document.getElementById('shop-screen').style.display='none';
-  if(S.pendingSquares.length>0){enterPlacingPhase();}
-  else{S.phase='play';}
+  if(S.pendingSquares.length>0){
+    animShopToBoard(function(){ enterPlacingPhase(); });
+  } else {
+    S.phase='play';
+    animShopToBoard(function(){ _burstHandTiles(); });
+  }
 }
 
 function enterPlacingPhase(){
@@ -69,6 +72,7 @@ function confirmPlacement(){
   HP.x=[];HP.vx=[];HP.tiles=[];
   renderHand();renderBoard();renderHUD();
   if(unplaced>0)toast(unplaced+' unplaced sticker'+(unplaced>1?'s':'')+' forfeited.');
+  _burstHandTiles();
 }
 
 function openShop(){enterShopPhase();}
@@ -137,8 +141,8 @@ function buyTilePack(){
   if(!S.devMode)S.gold-=3;shopPool.tilePack.sold=true;
   var packLetters=Object.keys(DIST);var varTypes=['gold','blue','red'];var added=[];
   for(var i=0;i<5;i++){
-    var l=packLetters[Math.floor(Math.random()*packLetters.length)];
-    var v=Math.random()<0.25?varTypes[Math.floor(Math.random()*varTypes.length)]:null;
+    var l=packLetters[Math.floor(_rng()*packLetters.length)];
+    var v=_rng()<0.25?varTypes[Math.floor(_rng()*varTypes.length)]:null;
     S.bag.push({letter:l,isBlank:false,id:uid(),variant:v,blueBonus:0});
     added.push((v?v[0].toUpperCase()+v.slice(1)+' ':'')+l);
   }

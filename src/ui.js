@@ -125,8 +125,25 @@ function toggleDevMode(){
   renderHUD();if(S.phase==='shop')renderShop();
 }
 
-function toggleMenu(){var dd=document.getElementById('menu-dropdown');dd.style.display=dd.style.display==='none'?'block':'none';}
+function toggleMenu(){
+  var dd=document.getElementById('menu-dropdown');
+  if(dd.style.display==='none'){
+    var sd=document.getElementById('seed-display');
+    if(sd)sd.textContent='Seed: '+(S.seed||'—');
+    dd.style.display='block';
+  } else {
+    dd.style.display='none';
+  }
+}
 function giveUpRun(){document.getElementById('menu-dropdown').style.display='none';showGO('You gave up the run.');}
+function seedRun(){
+  document.getElementById('menu-dropdown').style.display='none';
+  var input=prompt('Enter a seed number to start a new run:','');
+  if(input===null)return;
+  var n=parseInt(input);
+  if(isNaN(n)||n<=0){toast('Invalid seed — must be a positive number.');return;}
+  startGame(n);
+}
 
 async function checkWordCost(){
   if(!S.devMode&&S.gold<1){toast('Need $1 to check a word!');return;}
