@@ -3,6 +3,7 @@
 // =====================================================================
 window.addEventListener('resize',function(){hpBounds();renderBoard();});
 document.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&S.phase==='play'&&!e.target.closest('.modal-overlay'))playWord();
   if(e.key==='Delete'&&S.phase==='play')discardTiles();
 });
 document.addEventListener('click',function(e){

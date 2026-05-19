@@ -89,6 +89,6 @@ SQ.push(
 
   {id:'chess_king', name:'King',
    desc:'Every square in any chess piece aura becomes a Triple Word square.',
-   rarity:'rare', cost:16, qty:1, bg:'#2a2000', fg:'#f0e040', icon:'♚',
+   rarity:'legendary', cost:20, qty:1, bg:'#1a1500', fg:'#ffd700', icon:'♚',
    onPre:function(w,st){st.chessKingActive=true;}}
 );

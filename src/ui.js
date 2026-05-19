@@ -1,6 +1,71 @@
 // =====================================================================
 // UI — board preview, sticker collection, inspectors, dev tools
 // =====================================================================
+var _devTab = 'tiles';
+
+function devSetTab(tab) {
+  var p = document.getElementById('dev-palette');
+  if (_devTab === tab && p.style.display !== 'none') { p.style.display = 'none'; _updateDevTabs(); return; }
+  _devTab = tab;
+  p.style.display = 'block';
+  devRenderPalette();
+  _updateDevTabs();
+}
+
+function _updateDevTabs() {
+  var open = document.getElementById('dev-palette').style.display !== 'none';
+  ['tiles','blanks','stickers'].forEach(function(t) {
+    var b = document.getElementById('dev-tab-' + t);
+    if (b) b.className = 'dev-tab' + (open && _devTab === t ? ' active' : '');
+  });
+}
+
+function devRenderPalette() {
+  var p = document.getElementById('dev-palette');
+  if (!p) return;
+  if (_devTab === 'tiles') {
+    var html = '<div style="font-size:9px;color:#606080;margin-bottom:6px">Click to add to hand</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px">';
+    var alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (var i = 0; i < alpha.length; i++) {
+      var l = alpha[i], sc = LS[l] || 0;
+      html += '<div class="tile dev-tile-pick" onclick="devAddTile(\''+l+'\')" style="width:30px;height:36px;position:relative;flex-shrink:0">'
+        + '<span class="tl" style="font-size:13px">'+l+'</span>'
+        + '<span class="ts" style="font-size:6px">'+sc+'</span></div>';
+    }
+    html += '<div class="tile blank-t dev-tile-pick" onclick="devAddBlank()" title="Blank" style="width:30px;height:36px;position:relative;flex-shrink:0">'
+      + '<span class="tl" style="font-size:13px">&nbsp;</span>'
+      + '<span class="ts" style="font-size:6px">0</span></div>';
+    html += '</div>';
+    p.innerHTML = html;
+  } else if (_devTab === 'blanks') {
+    var bn = S.hand.filter(function(t){return t&&t.isBlank&&!t.onBoard;}).length;
+    p.innerHTML = '<div style="text-align:center;padding:4px 0">'
+      + '<div class="tile blank-t dev-tile-pick" onclick="devAddBlank()" style="width:52px;height:60px;position:relative;margin:0 auto 8px">'
+      + '<span class="tl" style="font-size:22px">&nbsp;</span>'
+      + '<span class="ts" style="font-size:8px">0</span></div>'
+      + '<div style="font-size:11px;color:#a0a0c0;margin-bottom:3px">'+bn+' blank'+(bn===1?'':'s')+' in hand</div>'
+      + '<div style="font-size:9px;color:#504860">Blanks score the letter\'s value</div></div>';
+  } else if (_devTab === 'stickers') {
+    var n = (S.pendingSquares||[]).length;
+    p.innerHTML = '<div style="font-size:11px;color:#a0a0c0;margin-bottom:6px">'+n+' sticker'+(n===1?'':'s')+' in inventory</div>'
+      + (n > 0 ? '<button class="btn btn-gold" onclick="enterPlacingFromDev()" style="padding:5px;font-size:11px;margin-bottom:6px">Place on Board</button>' : '')
+      + '<button class="btn btn-gray" onclick="openCollection()" style="padding:5px;font-size:10px">Browse Collection</button>';
+  }
+}
+
+function devAddTile(letter) {
+  if (!S.devMode) return;
+  S.hand.push({letter:letter,isBlank:false,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null,blueBonus:0});
+  renderHand();
+}
+
+function devAddBlank() {
+  if (!S.devMode) return;
+  S.hand.push({letter:'_',isBlank:true,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null,blueBonus:0,_devBlank:true});
+  renderHand();
+}
+
 function toggleBoardTiles(){
   var wrap=document.getElementById('board-wrap');
   var btn=document.getElementById('board-tile-toggle-btn');
@@ -77,7 +142,7 @@ function openCollection(){
     var row=document.createElement('div');row.className='shop-row';
     for(var j=0;j<items.length;j++){(function(d){
       var isPlaced=false;for(var k=0;k<S.placed.length;k++)if(S.placed[k].id===d.id){isPlaced=true;break;}
-      var rc=d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
+      var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
       var card=document.createElement('div');card.className='shop-card';
       if(isPlaced)card.style.cssText='border-color:#5aaa5a;background:#0a2a0a';
       card.innerHTML='<div class="scr '+rc+'">'+d.rarity+'</div>'
@@ -105,15 +170,17 @@ function openSqInspect(sqIdx,defId){
 function devGiveSquare(sqId){
   if(!S.devMode)return;
   var d=sqd(sqId);
-  if(S.phase==='shop'||S.phase==='placing'){
+  if(S.phase==='placing'){
+    S.sqHand.push({id:sqId,placed:false});
+    renderSqHand();
+  } else {
     S.pendingSquares.push({id:sqId});
     if(S.phase==='shop')renderShop();
-    toast((d?d.name:sqId)+' sticker queued for placement!');
-  } else {
-    var pos=freeSquare();if(pos<0){toast('No empty board cells!');return;}
-    S.board[pos]=sqId;S.placed.push({id:sqId,sqIdx:pos});
-    renderBoard();renderHUD();toast((d?d.name:sqId)+' placed at '+rcl(pos)+'!');
   }
+  renderHUD();
+  var dp=document.getElementById('dev-palette');
+  if(_devTab==='stickers'&&dp&&dp.style.display!=='none')devRenderPalette();
+  toast((d?d.name:sqId)+' added to sticker inventory!');
 }
 
 function toggleDevMode(){

@@ -32,7 +32,11 @@ function startGame(seed){
 
 function drawFull(){
   var n=7-S.hand.length;
-  for(var i=0;i<n&&S.bag.length>0;i++){var t=S.bag.pop();S.hand.push({letter:t.letter,isBlank:t.isBlank,id:t.id,blankAs:null,sel:false,onBoard:false,variant:t.variant||null,blueBonus:t.blueBonus||0});}
+  if(S.devMode){
+    for(var i=0;i<n;i++)S.hand.push({letter:'_',isBlank:true,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null,blueBonus:0,_devBlank:true});
+  } else {
+    for(var i=0;i<n&&S.bag.length>0;i++){var t=S.bag.pop();S.hand.push({letter:t.letter,isBlank:t.isBlank,id:t.id,blankAs:null,sel:false,onBoard:false,variant:t.variant||null,blueBonus:t.blueBonus||0});}
+  }
   if(!S.censorApplied){
     var hasCensor=false;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='censor'){hasCensor=true;break;}
     if(hasCensor&&S.hand.length>1){
@@ -146,7 +150,11 @@ function openBlankChooser(hi,cb2){
   var grid=document.getElementById('blank-grid');grid.innerHTML='';
   'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(function(l){
     var btn=document.createElement('button');btn.className='blank-btn';btn.textContent=l;
-    btn.onclick=function(){S.hand[hi].blankAs=l;document.getElementById('blank-modal').style.display='none';if(cb2)cb2();renderHand();};
+    btn.onclick=function(){
+      var t=S.hand[hi];t.blankAs=l;
+      if(t._devBlank)t._alchSc=LS[l]||0;
+      document.getElementById('blank-modal').style.display='none';if(cb2)cb2();renderHand();
+    };
     grid.appendChild(btn);
   });
   document.getElementById('blank-modal').style.display='flex';

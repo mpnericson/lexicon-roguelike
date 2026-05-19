@@ -23,7 +23,7 @@ function wrandN(pool,w,n){
 
 function refreshShop(){
   shopPool.sq=[];
-  var sqIds=wrandN(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8},3);
+  var sqIds=wrandN(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8,legendary:0.1},3);
   for(var i=0;i<sqIds.length;i++)shopPool.sq.push({id:sqIds[i],sold:false});
   var offered=shuffle(['gold','blue','red']).slice(0,2);
   var vcosts={gold:4,blue:5,red:6};
@@ -65,14 +65,37 @@ function confirmPlacement(){
     S.board[parseInt(idx)]=sq.id;S.placed.push({id:sq.id,sqIdx:parseInt(idx)});
   }
   var unplaced=S.sqHand.filter(function(sq){return !sq.placed;}).length;
-  S.sqHand=[];S.sqStaged={};S.phase='play';
+  var fromPlay=!!S._devPlacingFromPlay;
+  S.sqHand=[];S.sqStaged={};S.phase='play';S._devPlacingFromPlay=false;
   document.getElementById('play-controls').style.display='flex';
   document.getElementById('placing-controls').style.display='none';
+  document.getElementById('dev-cancel-placing-btn').style.display='none';
   document.getElementById('shuffle-btn').style.display='';
   HP.x=[];HP.vx=[];HP.tiles=[];
   renderHand();renderBoard();renderHUD();
   if(unplaced>0)toast(unplaced+' unplaced sticker'+(unplaced>1?'s':'')+' forfeited.');
-  _burstHandTiles();
+  if(!fromPlay)_burstHandTiles();
+}
+
+function enterPlacingFromDev(){
+  if(!S.devMode||!S.pendingSquares.length){toast('No stickers in inventory.');return;}
+  S._devPlacingFromPlay=true;
+  var dp=document.getElementById('dev-palette');if(dp)dp.style.display='none';
+  if(typeof _updateDevTabs==='function')_updateDevTabs();
+  enterPlacingPhase();
+  document.getElementById('dev-cancel-placing-btn').style.display='';
+}
+
+function cancelDevPlacing(){
+  var unplaced=S.sqHand.filter(function(sq){return!sq.placed;});
+  S.pendingSquares=unplaced.map(function(sq){return{id:sq.id};});
+  S.sqHand=[];S.sqStaged={};S.phase='play';S._devPlacingFromPlay=false;
+  document.getElementById('play-controls').style.display='flex';
+  document.getElementById('placing-controls').style.display='none';
+  document.getElementById('dev-cancel-placing-btn').style.display='none';
+  document.getElementById('shuffle-btn').style.display='';
+  HP.x=[];HP.vx=[];HP.tiles=[];
+  renderHand();renderBoard();renderHUD();
 }
 
 function openShop(){enterShopPhase();}
@@ -86,7 +109,7 @@ function renderShop(){
   var sc=document.getElementById('shop-cards');sc.innerHTML='';
   for(var i=0;i<shopPool.sq.length;i++){
     var item=shopPool.sq[i];var d=sqd(item.id);if(!d)continue;
-    var rc=d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
+    var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
     var qty=d.qty||1;
     var card=document.createElement('div');card.className='shop-card';if(item.sold)card.style.opacity='0.4';
     var qtyBadge=qty>1?'<span style="color:#f0e080;font-weight:bold">'+qty+'×</span> ':'';
@@ -229,7 +252,7 @@ function openPackReveal(name,contents){
   var grid=document.getElementById('pack-reveal');grid.innerHTML='';
   for(var i=0;i<contents.length;i++){
     var d=sqd(contents[i]);if(!d)continue;
-    var rc=d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
+    var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
     var qty=d.qty||1;
     var card=document.createElement('div');card.className='prc';
     var qtyLine=qty>1?'<div style="font-size:12px;color:#f0e080;font-weight:bold;margin-bottom:2px">'+qty+'× bundle</div>':'';

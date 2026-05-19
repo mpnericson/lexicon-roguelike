@@ -4,6 +4,13 @@
 function renderAll(){renderHUD();renderBoard();renderHand();document.getElementById('bag-count').textContent=S.bag.length;}
 
 function renderHUD(){
+  var dhb=document.getElementById('dev-hotbar');if(dhb)dhb.style.display=S.devMode?'flex':'none';
+  var dp=document.getElementById('dev-palette');
+  if(!S.devMode&&dp)dp.style.display='none';
+  var stickerTab=document.getElementById('dev-tab-stickers');
+  if(stickerTab){var n=(S.pendingSquares||[]).length;stickerTab.textContent='Stickers'+(n>0?' ('+n+')':'');}
+  if(S.devMode&&typeof _devTab!=='undefined'&&_devTab==='stickers'&&dp&&dp.style.display!=='none')devRenderPalette();
+  var solb=document.getElementById('solver-btn');if(solb)solb.style.display=S.devMode?'':'none';
   document.getElementById('hud-gold').textContent=S.devMode?'∞ DEV':'$'+S.gold;
   document.getElementById('hud-plays').textContent=S.plays;
   document.getElementById('hud-disc').textContent=S.disc;
