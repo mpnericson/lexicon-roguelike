@@ -7,36 +7,42 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;overflow:hidden;user-select:none;touch-action:none}
-#app{display:flex;flex-direction:column;height:100vh;padding:8px;gap:6px}
-#top-bar{display:flex;align-items:center;gap:10px;min-height:76px;flex-shrink:0}
+#app{display:flex;flex-direction:row;height:100vh;padding:8px;gap:8px}
+/* LEFT PANEL — 24% width */
+#left-panel{display:flex;flex-direction:column;gap:8px;width:24vw;flex-shrink:0;overflow:hidden}
+/* CENTER COLUMN — fills remaining space */
+#center-col{display:flex;flex-direction:column;flex:1;gap:6px;min-width:0}
+/* RIGHT PANEL — 24% width */
+#right-panel{display:flex;flex-direction:column;gap:8px;width:24vw;flex-shrink:0}
+#bounty-section{flex:1;min-height:0;max-height:80vh;overflow-y:auto}
 #board-area{flex:1;display:flex;justify-content:center;align-items:center;overflow:hidden;min-height:0;position:relative}
-#bottom-bar{display:flex;align-items:flex-end;gap:10px;height:116px;flex-shrink:0;padding-bottom:4px}
+#hand-wrap{display:flex;align-items:center;gap:10px;height:80px;flex-shrink:0}
+#hand-area{position:relative;flex:1;height:68px;overflow:visible}
 #shop-screen{position:fixed;top:0;left:0;width:100%;height:100%;background:#0f0f1e;z-index:200;display:none;flex-direction:column;padding:16px;overflow-y:auto}
 #shop-screen-header{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:1px solid #2a2a4a;margin-bottom:16px;flex-shrink:0}
 #shop-queue-bar{display:none;background:#12122a;border:1px solid #3a5a3a;border-radius:8px;padding:8px 14px;margin-bottom:12px;color:#80c080;font-size:13px;flex-shrink:0}
-.sq-hand-item{background:#12122a;border:2px solid;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:grab;position:absolute;top:0;width:56px;height:64px}
-.sq-hand-item .sqh-name{font-size:8px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:50px}
+.sq-hand-item{background:#12122a;border:2px solid;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:grab;position:absolute;top:0;width:68px;height:68px}
+.sq-hand-item .sqh-name{font-size:9px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:62px}
 .sq-staged-cell{box-shadow:inset 0 0 0 2px rgba(255,255,255,0.55)!important;cursor:pointer!important}
 #play-controls{display:flex;flex-direction:column;gap:6px}
 #placing-controls{display:none;flex-direction:column;gap:6px}
-#shuffle-btn{width:32px;height:64px;background:#2a3a2a;border:2px solid #4a6a4a;border-radius:8px;color:#80c080;font-size:20px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.1s,transform 0.1s;}
-#shuffle-btn:hover{background:#3a4a3a;color:#aaeaaa;}
-#shuffle-btn:active{transform:scale(0.9);}
-#game-title{font-size:26px;color:#f0e080;letter-spacing:3px;flex-shrink:0}
-.hud-block{background:#12122a;border:1px solid #3a3a5a;border-radius:8px;padding:6px 12px;text-align:center;flex-shrink:0}
-.hud-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#8880a8}
-.hud-val{font-size:20px;font-weight:bold}
+#shuffle-btn{width:38px;height:68px;background:#2a3a2a;border:2px solid #4a6a4a;border-radius:8px;color:#80c080;font-size:22px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.1s,transform 0.1s}
+.zoom-btn{width:38px;height:31px;background:#12122a;border:2px solid #3a3a5a;border-radius:6px;color:#a0a0c0;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.1s,border-color 0.1s}
+.zoom-btn:hover{background:#1e1e3a;border-color:#f0e080;color:#f0e080}
+.zoom-btn:active{transform:scale(0.92)}
+.btn-icon-gray{background:#2a2a4a;color:#a0a0c0;box-shadow:0 3px 0 #1a1a2a}.btn-icon-gray:hover{background:#3a3a5a}
+#shuffle-btn:hover{background:#3a4a3a;color:#aaeaaa}
+#shuffle-btn:active{transform:scale(0.9)}
+#game-title{font-size:22px;color:#f0e080;letter-spacing:3px;text-align:center;padding:6px 0;flex-shrink:0}
+.hud-block{background:#12122a;border:1px solid #3a3a5a;border-radius:8px;padding:14px 20px;text-align:center;flex-shrink:0}
+.hud-label{font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:#8880a8}
+.hud-val{font-size:26px;font-weight:bold}
 .hud-val.gold{color:#f0c060}
 .hud-val.red{color:#ff8080}
-#blind-panel{flex:1;background:#12122a;border:1px solid #3a3a5a;border-radius:8px;padding:8px 14px;min-width:0}
-#blind-name{font-size:16px;color:#f0e080;font-weight:bold}
-#blind-sub{font-size:11px;color:#8880a8}
-.progress-row{display:flex;align-items:center;gap:8px;margin-top:6px}
-.bar-bg{flex:1;height:8px;background:#1a1a3a;border-radius:4px;overflow:hidden}
-.bar-fill{height:100%;border-radius:4px;background:#2d7a2d;transition:width .4s}
-#score-txt{font-size:12px;color:#5aaa5a;white-space:nowrap}
+#blind-name{font-size:22px;color:#f0e080;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#blind-sub{font-size:12px;color:#8880a8}
 .ante-dots{display:flex;gap:5px;margin-top:4px}
-.ante-dot{width:9px;height:9px;border-radius:50%;border:1px solid #4a4a6a}
+.ante-dot{width:11px;height:11px;border-radius:50%;border:1px solid #4a4a6a}
 .ante-dot.done{background:#5aaa5a;border-color:#5aaa5a}
 .ante-dot.cur{background:#f0e080;border-color:#f0e080}
 #board-wrap{display:inline-grid;gap:2px;background:#0a0a18;padding:6px;border-radius:8px;border:1px solid #2a2a4a}
@@ -56,10 +62,12 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .board-tile.is-new{background:#f0e080!important;border-color:#a89000!important;box-shadow:0 2px 0 #7a6800!important;cursor:grab}
 .board-tile.flash{animation:flash .55s ease-in-out}
 @keyframes flash{0%{transform:translateX(0)}10%{transform:translateX(-6px);background:#ff4040!important;border-color:#cc0000!important}25%{transform:translateX(6px);background:#ff4040!important;border-color:#cc0000!important}40%{transform:translateX(-5px)}55%{transform:translateX(5px)}70%{transform:translateX(-3px)}85%{transform:translateX(3px)}100%{transform:translateX(0)}}
-#hand-area{position:relative;flex:1;height:72px;overflow:visible}
-.hand-tile{width:56px;height:64px;box-shadow:0 4px 0 #6b5535;cursor:grab;position:absolute;top:0}
-#right-panel{display:flex;flex-direction:column;gap:6px;width:190px;flex-shrink:0;justify-content:flex-end}
-.btn{padding:9px 16px;border-radius:6px;border:none;cursor:pointer;font-family:Georgia;font-weight:bold;font-size:13px;width:100%;display:block;margin-bottom:5px}
+.hand-tile{width:68px;height:68px;box-shadow:0 4px 0 #6b5535;cursor:grab;position:absolute;top:0}
+.btn-icon{height:80px;border-radius:10px;border:none;cursor:pointer;font-size:34px;display:flex;align-items:center;justify-content:center;flex:1;font-family:Georgia}
+.btn-icon:active{transform:scale(.95)}
+.btn-icon-green{background:#2d7a2d;color:#d0f0d0;box-shadow:0 3px 0 #1a4a1a}.btn-icon-green:hover{background:#3a8a3a}
+.btn-icon-red{background:#7a2d2d;color:#f0d0d0;box-shadow:0 3px 0 #4a1a1a}.btn-icon-red:hover{background:#8a3a3a}
+.btn{padding:11px 16px;border-radius:6px;border:none;cursor:pointer;font-family:Georgia;font-weight:bold;font-size:15px;width:100%;display:block;margin-bottom:5px}
 .btn:last-child{margin-bottom:0}
 .btn:active{transform:scale(.97)}
 .btn-green{background:#2d7a2d;color:#d0f0d0;box-shadow:0 3px 0 #1a4a1a}.btn-green:hover{background:#3a8a3a}
@@ -68,8 +76,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .btn-gray{background:#2a2a4a;color:#a0a0c0;box-shadow:0 3px 0 #1a1a2a}.btn-gray:hover{background:#3a3a5a}
 #bag-btn{background:#12122a;border:1px solid #3a3a5a;border-radius:8px;padding:4px 8px;cursor:pointer;text-align:center;transition:border-color .15s}
 #bag-btn:hover{border-color:#f0e080}
-#bag-count{font-size:14px;font-weight:bold;line-height:1;color:#d4c5a0}
-#bag-icon-wrap{display:flex;justify-content:center;margin-bottom:1px;transform-origin:center bottom}
+#bag-count{font-size:18px;font-weight:bold;line-height:1;color:#d4c5a0}
+#bag-icon-wrap{display:flex;justify-content:center;margin-bottom:2px;transform-origin:center bottom}
 .bag-open{display:none}
 #bag-btn:hover .bag-closed,.bag-vacuuming .bag-closed{display:none}
 #bag-btn:hover .bag-open,.bag-vacuuming .bag-open{display:block}
@@ -95,12 +103,15 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .dev-tab{flex:1;font-size:10px;padding:4px 2px;background:#0a0a1a;border:1px solid #3a3a5a;color:#7070a0;border-radius:6px;cursor:pointer;font-family:Georgia;transition:border-color .1s,color .1s}
 .dev-tab:hover{border-color:#6060a0;color:#c0c0e0}
 .dev-tab.active{background:#151530;border-color:#7070c0;color:#d0d0ff}
-#dev-palette{display:none;position:fixed;right:8px;top:88px;width:186px;max-height:calc(100vh - 280px);overflow-y:auto;background:#0d0d20;border:1px solid #2a2a4a;border-radius:8px;padding:10px;z-index:150;box-shadow:0 4px 16px rgba(0,0,0,.7)}
+#dev-palette{display:none;position:fixed;right:8px;top:60px;width:186px;max-height:calc(100vh - 200px);overflow-y:auto;background:#0d0d20;border:1px solid #2a2a4a;border-radius:8px;padding:10px;z-index:150;box-shadow:0 4px 16px rgba(0,0,0,.7)}
 .dev-tile-pick{cursor:pointer;transition:transform .1s}.dev-tile-pick:hover{transform:translateY(-2px);border-color:#f0e080!important}
 .sq-solver-new{outline:2px solid #00e5ff!important;outline-offset:-2px;z-index:2}
 .sq-solver-existing{outline:2px solid rgba(0,229,255,0.35)!important;outline-offset:-2px}
 .sq-solver-lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#00e5ff;pointer-events:none;background:rgba(0,229,255,0.1);border-radius:3px;z-index:3}
-#solver-panel{display:none;position:fixed;right:8px;top:310px;width:186px;max-height:calc(100vh - 430px);overflow-y:auto;background:#0d0d20;border:1px solid #2a3a5a;border-radius:8px;padding:10px 12px;z-index:149;box-shadow:0 4px 16px rgba(0,0,0,.6)}
+.sq-easy-new{outline:2px solid #60e060!important;outline-offset:-2px;z-index:2;animation:easy-pulse 1.8s ease-in-out infinite}
+.sq-easy-existing{outline:2px solid rgba(96,224,96,0.3)!important;outline-offset:-2px}
+@keyframes easy-pulse{0%,100%{outline-color:#60e060}50%{outline-color:#c0ffc0}}
+#solver-panel{display:none;position:fixed;right:8px;top:280px;width:186px;max-height:calc(100vh - 400px);overflow-y:auto;background:#0d0d20;border:1px solid #2a3a5a;border-radius:8px;padding:10px 12px;z-index:149;box-shadow:0 4px 16px rgba(0,0,0,.6)}
 .solver-row{display:flex;align-items:center;padding:4px 0;border-bottom:1px solid #1a1a3a;cursor:pointer;gap:4px}
 .solver-row:last-child{border-bottom:none}
 .solver-row:hover{background:#0a0a30;border-radius:3px}
@@ -110,11 +121,6 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .pack-card .pd{font-size:11px;color:#9090b0;margin-bottom:8px}
 .pack-card .pc{font-size:16px;color:#f0c060;font-weight:bold}
 .tile-offer{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.to-slot{width:52px;height:60px;border-radius:6px;background:#d4c5a0;border:2px solid #8B7355;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;flex-shrink:0}
-.to-slot:hover{background:#f0e080;border-color:#a89000}
-.to-slot.bought{opacity:.4;pointer-events:none}
-.to-slot .tl{font-size:22px;font-weight:bold;color:#2a1f0e}
-.to-slot .ts{font-size:8px;color:#5a4530;position:absolute;bottom:2px;right:4px}
 .h-tiles{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .h-tile{width:48px;height:56px;border-radius:5px;background:#d4c5a0;border:2px solid #8B7355;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;flex-shrink:0}
 .h-tile:hover{background:#ff8080;border-color:#cc4040}
@@ -128,7 +134,6 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .blank-btn{padding:8px 4px;border-radius:4px;border:1px solid #3a3a5a;background:#1e1e3a;color:#d4c5a0;font-weight:bold;font-size:15px;cursor:pointer}
 .blank-btn:hover{background:#2a2a5a;border-color:#f0e080}
 #bag-counts{display:flex;flex-wrap:wrap;gap:4px}
-.bag-l{background:#1e1e3a;border:1px solid #3a3a5a;border-radius:4px;padding:3px 7px;font-size:12px;color:#d4c5a0}
 #toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#f0e080;color:#2a1f0e;padding:8px 20px;border-radius:8px;font-weight:bold;font-size:14px;display:none;z-index:300;box-shadow:0 4px 12px rgba(0,0,0,.5)}
 .tile.var-gold{background:#c8a020!important;border-color:#886800!important}.tile.var-gold .tl,.tile.var-gold .ts{color:#1e1000!important}
 .tile.var-blue{background:#3870a8!important;border-color:#1a4880!important}.tile.var-blue .tl,.tile.var-blue .ts{color:#d0eaff!important}
@@ -138,13 +143,6 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .board-tile.is-new.var-red{background:#c83838!important;border-color:#882020!important;box-shadow:0 2px 0 #581818!important}
 .vbadge{position:absolute;top:1px;left:2px;font-size:6px;font-weight:bold;line-height:1;border-radius:2px;padding:0 2px;pointer-events:none}
 .vbadge-gold{background:#5a3800;color:#f0d060}.vbadge-blue{background:#0a2a5a;color:#80c8ff}.vbadge-red{background:#5a0a0a;color:#ff9090}
-.forge-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.forge-slot{display:flex;flex-direction:column;align-items:center;gap:3px}
-.forge-tile{width:44px;height:52px;border-radius:5px;background:#d4c5a0;border:2px solid #8B7355;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;pointer-events:none;flex-shrink:0}
-.forge-tile .tl{font-size:18px;font-weight:bold;color:#2a1f0e}.forge-tile .ts{font-size:7px;color:#5a4530;position:absolute;bottom:2px;right:3px}
-.forge-btns{display:flex;gap:2px}
-.forge-btn{padding:2px 5px;font-size:9px;border:none;border-radius:3px;cursor:pointer;font-family:Georgia;font-weight:bold;color:#fff}
-.forge-btn:hover{opacity:.8}
 .top-btn{background:#12122a;border:1px solid #3a3a5a;border-radius:6px;color:#a0a0c0;padding:4px 10px;cursor:pointer;font-family:Georgia;font-size:12px;flex-shrink:0}
 .top-btn:hover{border-color:#f0e080;color:#f0e080}
 #menu-wrap{position:relative;flex-shrink:0}
@@ -154,125 +152,186 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 .menu-item.danger{color:#ff8080}.menu-item.danger:hover{background:#2a0a0a}
 #seed-display:hover{background:transparent!important;color:#8880a8!important}
 #hammer-grid,#forge-grid-inner{display:flex;flex-wrap:wrap;gap:6px;max-height:340px;overflow-y:auto;padding:2px}
-.shop-card-tile{background:#1e1e3a;border:1px solid #4a4a7a;border-radius:8px;padding:10px;min-width:110px;max-width:140px;text-align:center}
 #board-preview-wrap{display:inline-grid;gap:2px}
 @keyframes bink{0%{transform:scale(1)}35%{transform:scale(1.28);background:#fffde7!important;box-shadow:0 0 20px rgba(255,220,60,.9),0 2px 0 #7a6800!important}100%{transform:scale(1)}}
 .binking{animation:bink .38s ease-out!important}
-.score-pop{position:fixed;pointer-events:none;z-index:600;font-weight:bold;border-radius:5px;padding:2px 9px;white-space:nowrap;font-family:Georgia,serif;animation:pop-up .65s ease-out forwards}
+.score-pop{position:fixed;pointer-events:none;z-index:810;font-weight:bold;border-radius:5px;padding:2px 9px;white-space:nowrap;font-family:Georgia,serif;animation:pop-up .65s ease-out forwards}
 @keyframes pop-up{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-46px)}}
-#score-anim-bar{position:fixed;bottom:132px;left:50%;transform:translateX(-50%);z-index:400;background:rgba(8,8,24,.95);border:1px solid #5a5a8a;border-radius:14px;padding:12px 28px;display:none;align-items:flex-end;gap:18px;box-shadow:0 8px 32px rgba(0,0,0,.7)}
-.sa-block{text-align:center;min-width:56px}
-.sa-lbl{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#8880a8;margin-bottom:3px}
-#sa-chips{color:#60b8ff;font-size:28px;font-weight:bold}
-#sa-mult{color:#ff7050;font-size:28px;font-weight:bold}
-#sa-score{color:#f0e080;font-size:24px;font-weight:bold}
-.sa-op{font-size:20px;color:#6060a0;padding-bottom:6px}
-@keyframes bump{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}
-.sa-bump{animation:bump .18s ease-out}
 @keyframes bag-absorb{0%{transform:scale(1)rotate(0)}28%{transform:scale(1.22)rotate(-5deg);filter:brightness(1.6)}58%{transform:scale(1.1)rotate(4deg)}100%{transform:scale(1)rotate(0)}}
 #bag-btn.bag-absorb #bag-icon-wrap{animation:bag-absorb .24s ease-out}
+/* Bounties — vertical stack in right panel */
+#bounty-row{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.bounty-chip{background:#12122a;border:1px solid #5a3a6a;border-radius:8px;padding:8px 14px;font-size:13px;display:flex;align-items:center;justify-content:space-between;white-space:nowrap;width:100%}
+.bounty-chip-word{font-weight:bold;color:#f0e080;letter-spacing:2px;font-size:15px}
+.bounty-chip-reward{color:#60c060;font-size:13px}
+.bounty-card{background:#1a1228;border:1px solid #5a3a6a;border-radius:8px;padding:10px;min-width:120px;max-width:160px}
+.bounty-card-word{font-size:22px;font-weight:bold;color:#f0e080;letter-spacing:2px;margin:4px 0}
+.bounty-card-reward{font-size:12px;color:#60c060;margin-bottom:2px}
+.bounty-card-cost{font-size:11px;color:#9090b0;margin-bottom:6px}
+/* Live score panel */
+#live-score-row{display:flex;align-items:stretch;gap:6px;background:none;padding:0;margin:0;border-radius:0}
+.ls-block{flex:1;background:#12122a;border:1px solid #3a3a5a;border-radius:10px;padding:12px 6px;text-align:center;min-width:0}
+.ls-lbl{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#8880a8;margin-bottom:6px}
+.ls-sep{font-size:28px;color:#3a3a5a;flex-shrink:0;display:flex;align-items:center}
+#ls-chips{font-size:50px;font-weight:bold;color:#60b8ff;line-height:1}
+#ls-mult{font-size:50px;font-weight:bold;color:#ff7050;line-height:1}
+#ls-score{font-size:28px;font-weight:bold;color:#f0e080;line-height:1}
+#lp-score-result{text-align:center;padding:4px 0;line-height:1}
+/* Left panel overrides */
+#left-panel .hud-val{font-size:52px}
+#lp-blind-section{display:flex;flex-direction:column;gap:4px;flex:1;min-height:80px}
+#lp-blind-section .hud-val{font-size:28px}
+#lp-progress-bar-wrap{flex:1;background:#1a1a3a;border-radius:8px;overflow:hidden;position:relative;min-height:60px}
+#blind-bar{position:absolute;bottom:0;left:0;right:0;background:#2d7a2d;border-radius:8px;height:0%;transition:height .4s}
+#score-txt{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-size:13px;color:#a0e0a0;font-weight:bold;z-index:1}
+.ls-bump{animation:ls-bump .2s ease-out}
+@keyframes ls-bump{0%{transform:scale(1)}40%{transform:scale(1.45)}100%{transform:scale(1)}}
+@keyframes sq-glow{0%,100%{box-shadow:none}35%{box-shadow:inset 0 0 0 2px rgba(255,220,60,.95),0 0 12px rgba(255,220,60,.7)}}
+.sq-glowing{animation:sq-glow .55s ease-out}
+#live-score-row.scoring #ls-chips,#live-score-row.scoring #ls-mult{font-size:64px}
+/* Right panel bounty section label */
+#bounty-section-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#8880a8}
+/* Compact top-row and play-controls buttons */
+#rp-top-row .btn-icon{height:50px;font-size:22px}
+#play-controls .btn-icon{height:50px;font-size:24px}
 </style>
 </head>
 <body>
 <div id="toast"></div>
 <div id="app">
-  <div id="top-bar">
+
+  <!-- LEFT PANEL: stats sidebar (24vw) -->
+  <div id="left-panel">
     <div id="game-title">LEXICON</div>
-    <div class="hud-block"><div class="hud-label">Gold</div><div class="hud-val gold" id="hud-gold">$4</div></div>
-    <div class="hud-block"><div class="hud-label">Plays</div><div class="hud-val" id="hud-plays">4</div></div>
-    <div class="hud-block"><div class="hud-label">Discards</div><div class="hud-val" id="hud-disc">3</div></div>
-    <div id="blind-panel">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div><div id="blind-name"></div><div id="blind-sub"></div></div>
-        <div style="text-align:right"><div style="font-size:9px;color:#8880a8">TARGET</div><div class="hud-val red" id="blind-target"></div></div>
-      </div>
-      <div class="progress-row"><div class="bar-bg"><div class="bar-fill" id="blind-bar" style="width:0%"></div></div><div id="score-txt">0</div></div>
-      <div class="ante-dots" id="ante-dots"></div>
+    <!-- Live score: Letter × Mult = result -->
+    <div id="live-score-row">
+      <div class="ls-block"><div class="ls-lbl">Letter</div><div id="ls-chips">0</div></div>
+      <div class="ls-sep">×</div>
+      <div class="ls-block"><div class="ls-lbl">Mult</div><div id="ls-mult">1</div></div>
     </div>
-    <button class="top-btn" id="board-tile-toggle-btn" onclick="toggleBoardTiles()">Hide Tiles</button>
-    <div id="menu-wrap">
-      <button class="top-btn" onclick="toggleMenu()">≡ Menu</button>
-      <div id="menu-dropdown" style="display:none">
-        <div class="menu-item" onclick="openCollection()">Sticker Collection</div>
-        <div class="menu-item" id="devmode-item" onclick="toggleDevMode()">Dev Mode: Off</div>
-        <div class="menu-item dev-only" style="display:none" onclick="devTestClose()">▶ Anim: Board → Shop</div>
-        <div class="menu-item dev-only" style="display:none" onclick="devTestOpen()">▶ Anim: Shop → Board</div>
-        <div class="menu-item" id="seed-display" style="color:#8880a8;font-size:11px;cursor:default;pointer-events:none">Seed: —</div>
-        <div class="menu-item" onclick="seedRun()">New Seeded Run</div>
-        <div class="menu-item danger" onclick="giveUpRun()">Give Up Run</div>
-      </div>
+    <div id="lp-score-result"><span style="color:#5a5a90;font-size:20px;margin-right:4px">=</span><span id="ls-score">0</span></div>
+    <!-- Hands + Discards -->
+    <div style="display:flex;gap:8px">
+      <div class="hud-block" style="flex:1"><div class="hud-label">Hands</div><div class="hud-val" id="hud-plays">4</div></div>
+      <div class="hud-block" style="flex:1"><div class="hud-label">Discards</div><div class="hud-val red" id="hud-disc">3</div></div>
     </div>
-  </div>
-  <div id="board-area">
-    <div id="board-wrap"></div>
-  </div>
-  <div id="bottom-bar">
-    <div id="hand-area"></div>
-    <button id="shuffle-btn" onclick="shuffleHand()" title="Shuffle hand">⇄</button>
-    <div id="right-panel">
-      <div id="play-controls">
-        <button class="btn btn-green" onclick="playWord()" style="font-size:14px;padding:10px 16px;margin:0">Play Word</button>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-red" onclick="discardTiles()" style="flex:1;font-size:12px;padding:5px 6px;margin:0">Discard</button>
-          <button class="btn btn-gray" onclick="checkWordCost()" style="flex:1;font-size:12px;padding:5px 6px;margin:0">Check $1</button>
-        </div>
-        <div id="dev-hotbar">
-          <button class="dev-tab" id="dev-tab-tiles" onclick="devSetTab('tiles')">Tiles</button>
-          <button class="dev-tab" id="dev-tab-blanks" onclick="devSetTab('blanks')">Blanks</button>
-          <button class="dev-tab" id="dev-tab-stickers" onclick="devSetTab('stickers')">Stickers</button>
-        </div>
-        <button id="solver-btn" onclick="runSolver()" style="display:none;font-size:12px;padding:5px 6px;margin:0;background:#08181a;border:1px solid #00a0b0;color:#00d0e0;border-radius:8px;cursor:pointer;width:100%">Solve</button>
-        <div id="bag-btn" onclick="openBagModal()">
-          <div id="bag-icon-wrap">
-            <svg class="bag-closed" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 11" width="18" height="22" style="display:block">
-              <rect x="3" y="0" width="3" height="1" fill="#3a1800"/>
-              <rect x="2" y="1" width="1" height="1" fill="#3a1800"/><rect x="6" y="1" width="1" height="1" fill="#3a1800"/>
-              <rect x="1" y="2" width="7" height="1" fill="#6a3010"/>
-              <rect x="0" y="3" width="1" height="5" fill="#3a1800"/><rect x="8" y="3" width="1" height="5" fill="#3a1800"/>
-              <rect x="1" y="3" width="7" height="5" fill="#c07838"/>
-              <rect x="1" y="3" width="1" height="5" fill="#d89050"/>
-              <rect x="7" y="4" width="1" height="4" fill="#8a4820"/>
-              <rect x="1" y="8" width="1" height="1" fill="#3a1800"/><rect x="7" y="8" width="1" height="1" fill="#3a1800"/>
-              <rect x="2" y="8" width="5" height="1" fill="#c07838"/>
-              <rect x="2" y="9" width="1" height="1" fill="#3a1800"/><rect x="6" y="9" width="1" height="1" fill="#3a1800"/>
-              <rect x="3" y="9" width="3" height="1" fill="#8a4820"/>
-              <rect x="3" y="10" width="3" height="1" fill="#3a1800"/>
-            </svg>
-            <svg class="bag-open" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 11" width="18" height="22" style="display:block">
-              <rect x="3" y="0" width="3" height="1" fill="#3a1800"/>
-              <rect x="2" y="1" width="1" height="1" fill="#3a1800"/><rect x="6" y="1" width="1" height="1" fill="#3a1800"/>
-              <rect x="1" y="2" width="2" height="1" fill="#6a3010"/><rect x="6" y="2" width="2" height="1" fill="#6a3010"/>
-              <rect x="3" y="2" width="3" height="1" fill="#1a0800"/>
-              <rect x="0" y="3" width="2" height="1" fill="#3a1800"/><rect x="7" y="3" width="2" height="1" fill="#3a1800"/>
-              <rect x="2" y="3" width="5" height="1" fill="#1a0800"/>
-              <rect x="0" y="4" width="1" height="4" fill="#3a1800"/><rect x="8" y="4" width="1" height="4" fill="#3a1800"/>
-              <rect x="1" y="4" width="7" height="4" fill="#c07838"/>
-              <rect x="1" y="4" width="1" height="4" fill="#d89050"/>
-              <rect x="7" y="5" width="1" height="3" fill="#8a4820"/>
-              <rect x="1" y="8" width="1" height="1" fill="#3a1800"/><rect x="7" y="8" width="1" height="1" fill="#3a1800"/>
-              <rect x="2" y="8" width="5" height="1" fill="#c07838"/>
-              <rect x="2" y="9" width="1" height="1" fill="#3a1800"/><rect x="6" y="9" width="1" height="1" fill="#3a1800"/>
-              <rect x="3" y="9" width="3" height="1" fill="#8a4820"/>
-              <rect x="3" y="10" width="3" height="1" fill="#3a1800"/>
-            </svg>
-          </div>
-          <div id="bag-count">98</div>
-        </div>
+    <!-- Gold -->
+    <div class="hud-block" style="width:100%"><div class="hud-label">Gold</div><div class="hud-val gold" id="hud-gold">$4</div></div>
+    <!-- Ante progression -->
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#8880a8;margin-bottom:2px">Progress</div>
+    <div class="ante-dots" id="ante-dots"></div>
+    <!-- Blind: fills remaining space with progress bar -->
+    <div id="lp-blind-section">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px">
+        <div id="blind-name"></div>
+        <div class="hud-val red" id="blind-target"></div>
       </div>
-      <div id="placing-controls">
-        <button class="btn btn-green" onclick="confirmPlacement()" style="font-size:14px;padding:10px 16px">Confirm</button>
-        <button id="dev-cancel-placing-btn" class="btn btn-red" onclick="cancelDevPlacing()" style="display:none;font-size:12px;padding:5px 6px">Cancel</button>
-        <div id="placing-info" style="font-size:11px;color:#8880a8;text-align:center;padding:2px 0"></div>
+      <div id="blind-sub"></div>
+      <div id="lp-progress-bar-wrap">
+        <div id="blind-bar"></div>
+        <div id="score-txt"></div>
       </div>
     </div>
   </div>
-</div>
-<div id="score-anim-bar">
-  <div class="sa-block"><div class="sa-lbl">Letters</div><div id="sa-chips">0</div></div>
-  <div class="sa-op">×</div>
-  <div class="sa-block"><div class="sa-lbl">Mult</div><div id="sa-mult">1</div></div>
-  <div class="sa-op">=</div>
-  <div class="sa-block"><div class="sa-lbl">Score</div><div id="sa-score">0</div></div>
+
+  <!-- CENTER COLUMN: board + tiles (flex:1, ~50%) -->
+  <div id="center-col">
+    <!-- Board -->
+    <div id="board-area">
+      <div id="board-wrap"></div>
+    </div>
+    <!-- Tiles + shuffle button + zoom buttons -->
+    <div id="hand-wrap">
+      <button id="shuffle-btn" onclick="shuffleHand()" title="Shuffle hand">⇄</button>
+      <div id="hand-area"></div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        <button class="zoom-btn" id="zoom-top-btn" onclick="zoomBoard('top')" title="Zoom top half">▲</button>
+        <button class="zoom-btn" id="zoom-bot-btn" onclick="zoomBoard('bot')" title="Zoom bottom half">▼</button>
+        <button class="zoom-btn" id="zoom-out-btn" onclick="zoomOut()" title="Zoom out" style="display:none;height:68px">↕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: bounties + controls (24vw) -->
+  <div id="right-panel">
+    <!-- Top row: same scale as play/discard buttons -->
+    <div id="rp-top-row" style="display:flex;gap:6px;flex-shrink:0">
+      <button class="btn-icon btn-icon-gray" id="board-tile-toggle-btn" onclick="toggleBoardTiles()" title="Toggle tiles" style="font-size:28px">◉</button>
+      <div id="menu-wrap" style="position:relative;flex:1">
+        <button class="btn-icon btn-icon-gray" style="width:100%;font-size:28px" onclick="toggleMenu()">☰</button>
+        <div id="menu-dropdown" style="display:none">
+          <div class="menu-item" onclick="openCollection()">Sticker Collection</div>
+          <div class="menu-item" id="devmode-item" onclick="toggleDevMode()">Dev Mode: Off</div>
+          <div class="menu-item dev-only" style="display:none" onclick="devTestClose()">▶ Anim: Board → Shop</div>
+          <div class="menu-item dev-only" style="display:none" onclick="devTestOpen()">▶ Anim: Shop → Board</div>
+          <div class="menu-item" id="seed-display" style="color:#8880a8;font-size:11px;cursor:default;pointer-events:none">Seed: —</div>
+          <div class="menu-item" onclick="seedRun()">New Seeded Run</div>
+          <div class="menu-item danger" onclick="giveUpRun()">Give Up Run</div>
+        </div>
+      </div>
+    </div>
+    <!-- Bounties fill the top portion -->
+    <div id="bounty-section">
+      <div id="bounty-section-label">Bounties</div>
+      <div id="bounty-row"></div>
+    </div>
+    <!-- Play controls at the bottom -->
+    <div id="play-controls">
+      <div id="bag-btn" onclick="openBagModal()">
+        <div id="bag-icon-wrap">
+          <svg class="bag-closed" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 11" width="18" height="22" style="display:block">
+            <rect x="3" y="0" width="3" height="1" fill="#3a1800"/>
+            <rect x="2" y="1" width="1" height="1" fill="#3a1800"/><rect x="6" y="1" width="1" height="1" fill="#3a1800"/>
+            <rect x="1" y="2" width="7" height="1" fill="#6a3010"/>
+            <rect x="0" y="3" width="1" height="5" fill="#3a1800"/><rect x="8" y="3" width="1" height="5" fill="#3a1800"/>
+            <rect x="1" y="3" width="7" height="5" fill="#c07838"/>
+            <rect x="1" y="3" width="1" height="5" fill="#d89050"/>
+            <rect x="7" y="4" width="1" height="4" fill="#8a4820"/>
+            <rect x="1" y="8" width="1" height="1" fill="#3a1800"/><rect x="7" y="8" width="1" height="1" fill="#3a1800"/>
+            <rect x="2" y="8" width="5" height="1" fill="#c07838"/>
+            <rect x="2" y="9" width="1" height="1" fill="#3a1800"/><rect x="6" y="9" width="1" height="1" fill="#3a1800"/>
+            <rect x="3" y="9" width="3" height="1" fill="#8a4820"/>
+            <rect x="3" y="10" width="3" height="1" fill="#3a1800"/>
+          </svg>
+          <svg class="bag-open" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9 11" width="18" height="22" style="display:block">
+            <rect x="3" y="0" width="3" height="1" fill="#3a1800"/>
+            <rect x="2" y="1" width="1" height="1" fill="#3a1800"/><rect x="6" y="1" width="1" height="1" fill="#3a1800"/>
+            <rect x="1" y="2" width="2" height="1" fill="#6a3010"/><rect x="6" y="2" width="2" height="1" fill="#6a3010"/>
+            <rect x="3" y="2" width="3" height="1" fill="#1a0800"/>
+            <rect x="0" y="3" width="2" height="1" fill="#3a1800"/><rect x="7" y="3" width="2" height="1" fill="#3a1800"/>
+            <rect x="2" y="3" width="5" height="1" fill="#1a0800"/>
+            <rect x="0" y="4" width="1" height="4" fill="#3a1800"/><rect x="8" y="4" width="1" height="4" fill="#3a1800"/>
+            <rect x="1" y="4" width="7" height="4" fill="#c07838"/>
+            <rect x="1" y="4" width="1" height="4" fill="#d89050"/>
+            <rect x="7" y="5" width="1" height="3" fill="#8a4820"/>
+            <rect x="1" y="8" width="1" height="1" fill="#3a1800"/><rect x="7" y="8" width="1" height="1" fill="#3a1800"/>
+            <rect x="2" y="8" width="5" height="1" fill="#c07838"/>
+            <rect x="2" y="9" width="1" height="1" fill="#3a1800"/><rect x="6" y="9" width="1" height="1" fill="#3a1800"/>
+            <rect x="3" y="9" width="3" height="1" fill="#8a4820"/>
+            <rect x="3" y="10" width="3" height="1" fill="#3a1800"/>
+          </svg>
+        </div>
+        <div id="bag-count">98</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn-icon btn-icon-green" onclick="playWord()" title="Play Word">✓</button>
+        <button class="btn-icon btn-icon-red" onclick="discardTiles()" title="Discard">✕</button>
+      </div>
+      <button class="btn btn-gray" onclick="checkWordCost()" style="font-size:12px;padding:6px 6px;margin:0;width:100%">Check $1</button>
+      <div id="dev-hotbar">
+        <button class="dev-tab" id="dev-tab-tiles" onclick="devSetTab('tiles')">Tiles</button>
+        <button class="dev-tab" id="dev-tab-blanks" onclick="devSetTab('blanks')">Blanks</button>
+        <button class="dev-tab" id="dev-tab-stickers" onclick="devSetTab('stickers')">Stickers</button>
+      </div>
+      <button id="solver-btn" onclick="runSolver()" style="display:none;font-size:12px;padding:5px 6px;margin:0;background:#08181a;border:1px solid #00a0b0;color:#00d0e0;border-radius:8px;cursor:pointer;width:100%">Solve</button>
+    </div>
+    <div id="placing-controls">
+      <button class="btn btn-green" onclick="confirmPlacement()" style="font-size:14px;padding:10px 16px">Confirm</button>
+      <button id="dev-cancel-placing-btn" class="btn btn-red" onclick="cancelDevPlacing()" style="display:none;font-size:12px;padding:5px 6px">Cancel</button>
+      <div id="placing-info" style="font-size:11px;color:#8880a8;text-align:center;padding:2px 0"></div>
+    </div>
+  </div>
+
 </div>
 <!-- Modals -->
 <div id="shop-screen">
@@ -286,6 +345,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
   <div id="shop-queue-bar"></div>
   <div style="flex:1;overflow-y:auto">
     <div class="shop-sec"><div class="shop-sec-title">Stickers</div><div id="shop-cards" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
+    <div class="shop-sec"><div class="shop-sec-title">Bounties</div><div id="shop-bounties-row" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
     <div class="shop-sec"><div class="shop-sec-title">Sticker Packs</div><div id="shop-packs-row" style="display:flex;gap:10px;flex-wrap:wrap"></div></div>
     <div class="shop-sec">
       <div class="shop-sec-title">Actions</div>
@@ -392,6 +452,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Georgia',serif;height:100vh;o
 <div id="gameover-modal" class="modal-overlay" style="display:none">
   <div class="modal" style="text-align:center"><h2 style="color:#ff6060">Out of ink</h2>
     <p style="color:#a0a0c0;font-size:13px;margin-bottom:8px" id="gameover-msg"></p>
+    <div id="gameover-best-play" style="display:none;margin:12px 0;padding:14px;background:#1a0808;border-radius:10px;border:1px solid #5a1a1a"></div>
     <button class="btn btn-green" style="width:auto;padding:9px 24px;margin-top:8px" onclick="startGame()">New game</button>
   </div>
 </div>

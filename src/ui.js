@@ -2,6 +2,51 @@
 // UI — board preview, sticker collection, inspectors, dev tools
 // =====================================================================
 var _devTab = 'tiles';
+var _zoomState = null;
+
+function _zoomRestoreUI() {
+  var rp = document.getElementById('right-panel');
+  if (rp) { rp.style.position = ''; rp.style.zIndex = ''; }
+  var bsec = document.getElementById('bounty-section');
+  if (bsec) bsec.style.visibility = '';
+  var zti = document.getElementById('zoom-top-btn');
+  var zbi = document.getElementById('zoom-bot-btn');
+  var zoi = document.getElementById('zoom-out-btn');
+  if (zti) zti.style.display = '';
+  if (zbi) zbi.style.display = '';
+  if (zoi) zoi.style.display = 'none';
+}
+
+function zoomBoard(half) {
+  if (_zoomState) return;
+  // Elevate right panel above the z-index:800 clip overlay so its buttons stay clickable
+  var rp = document.getElementById('right-panel');
+  if (rp) { rp.style.position = 'relative'; rp.style.zIndex = '850'; }
+  var bsec = document.getElementById('bounty-section');
+  if (bsec) bsec.style.visibility = 'hidden';
+  var zti = document.getElementById('zoom-top-btn');
+  var zbi = document.getElementById('zoom-bot-btn');
+  var zoi = document.getElementById('zoom-out-btn');
+  if (zti) zti.style.display = 'none';
+  if (zbi) zbi.style.display = 'none';
+  if (zoi) zoi.style.display = '';
+  animBoardZoomIn(half, function(state) { _zoomState = state; });
+}
+
+function zoomOut() {
+  if (!_zoomState) return;
+  var state = _zoomState;
+  _zoomState = null;
+  _zoomRestoreUI();
+  animBoardZoomOut(state, function() {});
+}
+
+function _resetZoom() {
+  if (!_zoomState) return;
+  _zoomState.cleanup();
+  _zoomState = null;
+  _zoomRestoreUI();
+}
 
 function devSetTab(tab) {
   var p = document.getElementById('dev-palette');
@@ -70,7 +115,7 @@ function toggleBoardTiles(){
   var wrap=document.getElementById('board-wrap');
   var btn=document.getElementById('board-tile-toggle-btn');
   var hidden=wrap.classList.toggle('tiles-hidden');
-  btn.textContent=hidden?'Show Tiles':'Hide Tiles';
+  btn.textContent=hidden?'◎':'◉';
 }
 
 function togglePreviewTiles(){
@@ -127,9 +172,10 @@ function openAlchemistModal(){
   document.getElementById('alchemist-modal').style.display='flex';
 }
 
-function openCollection(){
-  document.getElementById('menu-dropdown').style.display='none';
-  var g=document.getElementById('collection-content');g.innerHTML='';
+function _refreshCollectionContent(){
+  var g=document.getElementById('collection-content');
+  var prevScroll=g.scrollTop;
+  g.innerHTML='';
   var types=[
     {key:'board',label:'Board Multipliers',test:function(d){return !!d.bm;}},
     {key:'local',label:'Local Stickers',test:function(d){return !!d.apply;}},
@@ -142,6 +188,7 @@ function openCollection(){
     var row=document.createElement('div');row.className='shop-row';
     for(var j=0;j<items.length;j++){(function(d){
       var isPlaced=false;for(var k=0;k<S.placed.length;k++)if(S.placed[k].id===d.id){isPlaced=true;break;}
+      var invCount=0;for(var k=0;k<S.pendingSquares.length;k++)if(S.pendingSquares[k].id===d.id)invCount++;
       var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
       var card=document.createElement('div');card.className='shop-card';
       if(isPlaced)card.style.cssText='border-color:#5aaa5a;background:#0a2a0a';
@@ -149,11 +196,33 @@ function openCollection(){
         +'<div class="scn"><span style="background:'+d.bg+';color:'+d.fg+';padding:1px 5px;border-radius:3px;font-size:11px">'+d.icon+'</span> '+d.name+'</div>'
         +'<div class="scd">'+d.desc+'</div>'
         +(isPlaced?'<div style="font-size:9px;color:#5aaa5a;margin-top:2px">✓ On your board</div>':'');
-      if(S.devMode){var btn=document.createElement('button');btn.className='btn btn-gold';btn.style.cssText='padding:3px;font-size:10px;margin-top:4px';btn.textContent='Give';btn.onclick=(function(dd){return function(){devGiveSquare(dd.id);document.getElementById('collection-modal').style.display='none';};})(d);card.appendChild(btn);}
+      if(S.devMode){
+        var ctrl=document.createElement('div');ctrl.style.cssText='display:flex;align-items:center;gap:5px;margin-top:5px';
+        var minusBtn=document.createElement('button');minusBtn.className='btn btn-gray';minusBtn.style.cssText='padding:1px 8px;font-size:15px;min-width:28px;line-height:1';minusBtn.textContent='−';
+        if(invCount===0)minusBtn.disabled=true;
+        minusBtn.onclick=(function(dd){return function(){
+          for(var _i=0;_i<S.pendingSquares.length;_i++){if(S.pendingSquares[_i].id===dd.id){S.pendingSquares.splice(_i,1);break;}}
+          renderHUD();_refreshCollectionContent();
+        };})(d);
+        var countEl=document.createElement('span');countEl.style.cssText='font-size:12px;color:#d0d0f0;min-width:18px;text-align:center;font-weight:bold';countEl.textContent=invCount;
+        var plusBtn=document.createElement('button');plusBtn.className='btn btn-gold';plusBtn.style.cssText='padding:1px 8px;font-size:15px;min-width:28px;line-height:1';plusBtn.textContent='+';
+        plusBtn.onclick=(function(dd){return function(){
+          S.pendingSquares.push({id:dd.id});
+          renderHUD();_refreshCollectionContent();
+        };})(d);
+        ctrl.appendChild(minusBtn);ctrl.appendChild(countEl);ctrl.appendChild(plusBtn);
+        card.appendChild(ctrl);
+      }
       row.appendChild(card);
     })(items[j]);}
     sec.appendChild(row);g.appendChild(sec);
   }
+  g.scrollTop=prevScroll;
+}
+
+function openCollection(){
+  document.getElementById('menu-dropdown').style.display='none';
+  _refreshCollectionContent();
   document.getElementById('collection-modal').style.display='flex';
 }
 

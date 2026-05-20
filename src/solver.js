@@ -156,7 +156,7 @@ function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestB
     }
   }
 
-  var res = scoreWord(wt, word, true);
+  var res = scoreWord(wt, word, true, newCount===7?50:0);
   return { score: res.total, gold: res.gold, word: word, r: r, c: c, isH: isH, wt: wt };
 }
 
@@ -257,6 +257,52 @@ function runSolver() {
   }
 
   setTimeout(processChunk, 0);
+}
+
+function findBestMoveBackground(snap, onDone) {
+  if (!DICT || _solverRunning) { onDone(null); return; }
+  _solverRunning = true;
+  var origHand = S.hand, origBt = S.bt, origBoard = S.board;
+  S.hand = snap.hand; S.bt = snap.bt; S.board = snap.board;
+  var handCounts = {}, handBestVariant = {}, handBestBlueBonus = {}, blankPool = [];
+  for (var i = 0; i < S.hand.length; i++) {
+    var t = S.hand[i]; if (!t) continue;
+    if (t.isBlank) { blankPool.push({devBlank:false,alchSc:t._alchSc||0}); }
+    else {
+      var l = t.letter; handCounts[l] = (handCounts[l]||0)+1;
+      var esc=(LS[l]||0)+(t.variant==='blue'?(t.blueBonus||0):0);
+      var prevBest=(LS[l]||0)+(handBestVariant[l]==='blue'?(handBestBlueBonus[l]||0):0);
+      if(!(l in handBestVariant)||esc>prevBest){handBestVariant[l]=t.variant||null;handBestBlueBonus[l]=t.blueBonus||0;}
+    }
+  }
+  var available = {};
+  for (var l in handCounts) available[l] = handCounts[l];
+  for (var i = 0; i < B*B; i++) { var bt=S.bt[i]; if(bt)available[bt.letter]=(available[bt.letter]||0)+1; }
+  var totalBlanks=blankPool.length, pre=_solverPrecompute(), lines=_solverActiveLines();
+  var words=[]; DICT.forEach(function(w){if(w.length>=2&&w.length<=B)words.push(w.toUpperCase());});
+  var wi=0, CHUNK=2000, best=[];
+  function restore(){ var live=document.getElementById('gameover-modal'); if(live&&live.style.display!=='none'){S.hand=origHand;S.bt=origBt;S.board=origBoard;} }
+  function processChunk() {
+    if(!_solverRunning){restore();onDone(null);return;}
+    var end=Math.min(wi+CHUNK,words.length);
+    for(var w=wi;w<end;w++){
+      var word=words[w]; if(!_solverCanSpell(word,available,totalBlanks))continue;
+      for(var li=0;li<lines.length;li++){
+        var line=lines[li],maxStart=B-word.length;
+        for(var sp=0;sp<=maxStart;sp++){
+          var r=line.isH?line.coord:sp,c=line.isH?sp:line.coord;
+          var res=_solverTryPlace(word,r,c,line.isH,handCounts,handBestVariant,handBestBlueBonus,blankPool,pre);
+          if(!res)continue;
+          var ins=false; for(var bi=0;bi<best.length;bi++){if(res.score>best[bi].score){best.splice(bi,0,res);ins=true;break;}} if(!ins)best.push(res);
+          if(best.length>5)best.pop();
+        }
+      }
+    }
+    wi=end;
+    if(wi<words.length){setTimeout(processChunk,0);}
+    else{_solverRunning=false;restore();onDone(best.length?best[0]:null);}
+  }
+  setTimeout(processChunk,0);
 }
 
 function showSolverResults(results) {

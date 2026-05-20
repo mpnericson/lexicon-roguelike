@@ -5,9 +5,9 @@
 // =====================================================================
 var HP={
   tiles:[],x:[],vx:[],held:-1,
-  TILE_W:56,GAP:0,
+  TILE_W:68,GAP:0,
   DAMP:0.55,SPRING:0.14,
-  RAF:null,aL:0,aR:0,
+  RAF:null,aL:0,aR:0,left:0,
   fromX:[],toX:[],settleAt:0,settleDur:150
 };
 
@@ -16,6 +16,7 @@ function hpBounds(){
   var n=HP.tiles.length||7;
   var boxW=(n+2.5)*HP.TILE_W;
   var cx=(r.left+r.right)/2;
+  HP.left=r.left;
   HP.aL=cx-boxW/2;
   HP.aR=cx+boxW/2;
 }
@@ -119,6 +120,6 @@ function hpDraw(){
     var isDrag=activeDrag&&activeDrag.src==='hand'&&activeDrag.vi===i;
     if(isDrag){el.style.opacity='0';continue;}
     el.style.opacity='1';
-    el.style.left=(HP.x[i]-HP.TILE_W/2)+'px';
+    el.style.left=(HP.x[i]-HP.TILE_W/2-HP.left)+'px';
   }
 }

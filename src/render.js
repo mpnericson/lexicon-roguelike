@@ -19,7 +19,7 @@ function renderHUD(){
   document.getElementById('blind-sub').textContent=b[1];
   document.getElementById('blind-target').textContent=tgt().toLocaleString();
   var pct=Math.min(100,S.score/tgt()*100);
-  document.getElementById('blind-bar').style.width=pct+'%';
+  document.getElementById('blind-bar').style.height=pct+'%';
   document.getElementById('score-txt').textContent=S.score.toLocaleString()+' / '+tgt().toLocaleString();
   var dots=document.getElementById('ante-dots');dots.innerHTML='';
   for(var a=0;a<ANTES.length;a++)for(var b2=0;b2<3;b2++){
@@ -27,6 +27,7 @@ function renderHUD(){
     d.className='ante-dot'+(g<cg?' done':g===cg?' cur':'');
     if(b2===2)d.style.marginRight='8px';dots.appendChild(d);
   }
+  var brow=document.getElementById('bounty-row');if(brow){brow.innerHTML='';var blist=S.bounties||[];for(var bi=0;bi<blist.length;bi++){var bv=blist[bi].variant;var bvfg=bv==='gold'?'#f0c060':bv==='red'?'#ff8080':bv==='blue'?'#60b8ff':'';var bc=document.createElement('div');bc.className='bounty-chip';if(bvfg)bc.style.borderColor=bvfg;bc.style.flexDirection='column';bc.style.gap='4px';bc.innerHTML=wordAsTilesHTML(blist[bi].word,18)+'<span class="bounty-chip-reward">+$'+blist[bi].reward+'</span>';brow.appendChild(bc);}}
 }
 
 function sqStyle(id){
@@ -37,7 +38,7 @@ function sqStyle(id){
 
 function renderBoard(){
   var wrap=document.getElementById('board-wrap');
-  var sz=Math.max(26,Math.min(44,Math.floor(Math.min(window.innerWidth-220,window.innerHeight-240)/B)));
+  var sz=Math.max(30,Math.min(64,Math.floor(Math.min(window.innerWidth*0.52-80,window.innerHeight-160)/B)));
   wrap.style.gridTemplateColumns='repeat('+B+','+sz+'px)';wrap.innerHTML='';
   var center=Math.floor(B/2)*B+Math.floor(B/2);
   for(var i=0;i<B*B;i++){
@@ -70,6 +71,32 @@ function renderBoard(){
     }
     wrap.appendChild(sq);
   }
+  if(S.phase==='play')updateLiveScore();
+  if(S.phase==='play'&&!viewingBoard){
+    var _hasEM=false;for(var _ei=0;_ei<S.placed.length;_ei++){if(S.placed[_ei].id==='easy_mode'){_hasEM=true;break;}}
+    if(_hasEM){
+      var _bw=document.getElementById('board-wrap');
+      _bw.addEventListener('mouseenter',_easyHintShow,{once:false});
+      _bw.addEventListener('mouseleave',_easyHintHide,{once:false});
+    }
+  }
+}
+
+function _easyHintShow(){
+  _easyHintHide();
+  if(!window._easyHint)return;
+  var hint=window._easyHint;
+  for(var i=0;i<hint.wt.length;i++){
+    var ht=hint.wt[i];
+    var el=document.querySelector('[data-sq-idx="'+ht.idx+'"]');if(!el)continue;
+    if(ht.isNew){el.classList.add('sq-easy-new');var lbl=document.createElement('div');lbl.className='sq-solver-lbl sq-easy-lbl';lbl.textContent=ht.letter;el.appendChild(lbl);}
+    else el.classList.add('sq-easy-existing');
+  }
+}
+
+function _easyHintHide(){
+  var els=document.querySelectorAll('.sq-easy-new,.sq-easy-existing');
+  for(var i=0;i<els.length;i++){els[i].classList.remove('sq-easy-new','sq-easy-existing');var lbls=els[i].querySelectorAll('.sq-easy-lbl');for(var j=0;j<lbls.length;j++)els[i].removeChild(lbls[j]);}
 }
 
 function renderHand(){
@@ -85,8 +112,8 @@ function renderHand(){
     var badge=t.variant==='gold'?'<span class="vbadge vbadge-gold">$</span>':t.variant==='blue'?'<span class="vbadge vbadge-blue">+'+(LS[t.letter]||0)+'</span>':t.variant==='red'?'<span class="vbadge vbadge-red">×2</span>':'';
     var face=document.createElement('div');
     face.className='tile hand-tile'+(t.isBlank?' blank-t':'')+(t.sel?' selected':'')+(t.variant?' var-'+t.variant:'');
-    face.style.cssText='width:56px;height:64px;left:'+(HP.x[vi]-28)+'px;top:0;';
-    face.innerHTML='<span class="tl" style="font-size:24px">'+disp+'</span><span class="ts" style="font-size:9px">'+sc+'</span>'+badge;
+    face.style.cssText='width:68px;height:68px;left:'+(HP.x[vi]-34-HP.left)+'px;top:0;';
+    face.innerHTML='<span class="tl" style="font-size:28px">'+disp+'</span><span class="ts" style="font-size:11px">'+sc+'</span>'+badge;
     var isDragging=activeDrag&&activeDrag.src==='hand'&&activeDrag.vi===vi;
     if(isDragging)face.style.opacity='0';
     area.appendChild(face);
@@ -107,7 +134,7 @@ function renderSqHand(){
     var item=vis[vi];var d=sqd(item.id);if(!d)continue;
     var face=document.createElement('div');
     face.className='hand-tile sq-hand-item';
-    face.style.cssText='left:'+(HP.x[vi]-28)+'px;top:0;border-color:'+d.fg+';color:'+d.fg+';background:#12122a;';
+    face.style.cssText='left:'+(HP.x[vi]-34-HP.left)+'px;top:0;border-color:'+d.fg+';color:'+d.fg+';background:#12122a;';
     face.innerHTML='<span style="font-size:20px">'+d.icon+'</span><span class="sqh-name">'+d.name+'</span>';
     area.appendChild(face);
     attachSqDrag(face,vi,item);

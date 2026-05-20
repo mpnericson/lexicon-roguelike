@@ -305,6 +305,193 @@ function _burstHandTiles() {
   });
 }
 
+function animBoardZoomIn(half, onDone) {
+  var boardEl = document.getElementById('board-wrap');
+  var boardAreaEl = boardEl.parentNode;
+  var r = boardEl.getBoundingClientRect();
+  var W = r.width, BH = r.height;
+
+  var sz = (BH - 42) / 15;
+  var foldLine = Math.round(half === 'top' ? (21 + 8 * sz) : (19 + 7 * sz));
+
+  // No pointer-events:none — right-panel z-index is elevated by zoomBoard() in ui.js
+  var clipEl = document.createElement('div');
+  clipEl.style.cssText = [
+    'position:fixed', 'left:' + r.left + 'px', 'top:' + r.top + 'px',
+    'width:' + (window.innerWidth - r.left) + 'px', 'height:' + BH + 'px',
+    'overflow:hidden', 'z-index:800'
+  ].join(';');
+  document.body.appendChild(clipEl);
+
+  var scaleEl = document.createElement('div');
+  scaleEl.style.cssText = 'position:absolute;left:0;top:0;width:' + W + 'px;height:' + BH + 'px;transform-origin:left top;';
+  clipEl.appendChild(scaleEl);
+
+  var perspEl = document.createElement('div');
+  perspEl.style.cssText = [
+    'position:absolute', 'left:0', 'top:0',
+    'width:' + W + 'px', 'height:' + BH + 'px',
+    'perspective:' + (BH * 1.1) + 'px',
+    'perspective-origin:50% ' + foldLine + 'px'
+  ].join(';');
+  scaleEl.appendChild(perspEl);
+
+  function makeCloneHalf(isTop) {
+    var wH = isTop ? foldLine : (BH - foldLine);
+    var wrap = document.createElement('div');
+    wrap.style.cssText = [
+      'position:absolute', 'left:0', 'top:' + (isTop ? 0 : foldLine) + 'px',
+      'width:' + W + 'px', 'height:' + wH + 'px',
+      'overflow:hidden',
+      'transform-origin:' + (isTop ? 'bottom' : 'top') + ' center',
+      'backface-visibility:hidden'
+    ].join(';');
+    var clone = boardEl.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.style.cssText = [
+      'position:absolute', 'left:0', 'top:' + (isTop ? '0' : '-' + foldLine + 'px'),
+      'width:' + W + 'px', 'display:inline-grid', 'gap:2px',
+      'background:#0a0a18', 'padding:6px', 'border-radius:8px',
+      'border:1px solid #2a2a4a',
+      'grid-template-columns:' + boardEl.style.gridTemplateColumns,
+      'box-sizing:border-box', 'margin:0'
+    ].join(';');
+    wrap.appendChild(clone);
+    return wrap;
+  }
+
+  var topWrap = makeCloneHalf(true);
+  var botWrap = makeCloneHalf(false);
+  perspEl.appendChild(topWrap);
+  perspEl.appendChild(botWrap);
+  boardEl.style.visibility = 'hidden';
+
+  var halfCenter = half === 'top' ? foldLine / 2 : (foldLine + BH) / 2;
+  var targetT = BH / 3 - halfCenter;
+
+  var dur = 700, start = performance.now();
+  function step(now) {
+    var t = Math.min(1, (now - start) / dur);
+    var e = 1 - Math.pow(1 - t, 3);
+    var otherWrap = half === 'top' ? botWrap : topWrap;
+    // backwards fold: other half rotates away from viewer
+    otherWrap.style.transform = 'rotateX(' + (half === 'top' ? -e * 90 : e * 90) + 'deg)';
+    var sc = 1 + e * 0.5;
+    scaleEl.style.transform = 'scale(' + sc + ') translateY(' + (e * targetT) + 'px)';
+    if (t < 1) { requestAnimationFrame(step); return; }
+
+    // Swap clones for the real interactive board.
+    // halfEl clips to exactly the selected half to prevent the other half bleeding through.
+    perspEl.remove();
+    var halfEl = document.createElement('div');
+    if (half === 'top') {
+      halfEl.style.cssText = 'position:absolute;left:0;top:0;width:' + W + 'px;height:' + foldLine + 'px;overflow:hidden';
+      boardEl.style.position = 'absolute';
+      boardEl.style.left = '0';
+      boardEl.style.top = '0';
+    } else {
+      halfEl.style.cssText = 'position:absolute;left:0;top:' + foldLine + 'px;width:' + W + 'px;height:' + (BH - foldLine) + 'px;overflow:hidden';
+      boardEl.style.position = 'absolute';
+      boardEl.style.left = '0';
+      boardEl.style.top = '-' + foldLine + 'px';
+    }
+    boardEl.style.visibility = '';
+    halfEl.appendChild(boardEl);
+    scaleEl.appendChild(halfEl);
+
+    onDone({
+      clipEl: clipEl, scaleEl: scaleEl, halfEl: halfEl,
+      boardEl: boardEl, boardAreaEl: boardAreaEl,
+      half: half, targetT: targetT, foldLine: foldLine, W: W, BH: BH,
+      cleanup: function() {
+        boardAreaEl.appendChild(boardEl);
+        boardEl.style.position = '';
+        boardEl.style.left = '';
+        boardEl.style.top = '';
+        boardEl.style.visibility = '';
+        clipEl.remove();
+      }
+    });
+  }
+  requestAnimationFrame(step);
+}
+
+function animBoardZoomOut(zoomState, onDone) {
+  var scaleEl = zoomState.scaleEl;
+  var clipEl = zoomState.clipEl;
+  var halfEl = zoomState.halfEl;
+  var boardEl = zoomState.boardEl;
+  var boardAreaEl = zoomState.boardAreaEl;
+  var half = zoomState.half, targetT = zoomState.targetT;
+  var foldLine = zoomState.foldLine, W = zoomState.W, BH = zoomState.BH;
+
+  // Build clone halves for the unfolding animation
+  var perspEl = document.createElement('div');
+  perspEl.style.cssText = [
+    'position:absolute', 'left:0', 'top:0',
+    'width:' + W + 'px', 'height:' + BH + 'px',
+    'perspective:' + (BH * 1.1) + 'px',
+    'perspective-origin:50% ' + foldLine + 'px'
+  ].join(';');
+
+  function makeCloneHalf(isTop) {
+    var wH = isTop ? foldLine : (BH - foldLine);
+    var wrap = document.createElement('div');
+    wrap.style.cssText = [
+      'position:absolute', 'left:0', 'top:' + (isTop ? 0 : foldLine) + 'px',
+      'width:' + W + 'px', 'height:' + wH + 'px',
+      'overflow:hidden',
+      'transform-origin:' + (isTop ? 'bottom' : 'top') + ' center',
+      'backface-visibility:hidden'
+    ].join(';');
+    var clone = boardEl.cloneNode(true);
+    clone.removeAttribute('id');
+    clone.style.cssText = [
+      'position:absolute', 'left:0', 'top:' + (isTop ? '0' : '-' + foldLine + 'px'),
+      'width:' + W + 'px', 'display:inline-grid', 'gap:2px',
+      'background:#0a0a18', 'padding:6px', 'border-radius:8px',
+      'border:1px solid #2a2a4a',
+      'grid-template-columns:' + boardEl.style.gridTemplateColumns,
+      'box-sizing:border-box', 'margin:0'
+    ].join(';');
+    wrap.appendChild(clone);
+    return wrap;
+  }
+
+  var topWrap = makeCloneHalf(true);
+  var botWrap = makeCloneHalf(false);
+  var otherWrap = half === 'top' ? botWrap : topWrap;
+  // Start fully folded (backwards: -90 for top half, +90 for bot half)
+  otherWrap.style.transform = 'rotateX(' + (half === 'top' ? -90 : 90) + 'deg)';
+  perspEl.appendChild(topWrap);
+  perspEl.appendChild(botWrap);
+
+  // Move real board back to its original parent while clones animate
+  boardAreaEl.appendChild(boardEl);
+  boardEl.style.position = '';
+  boardEl.style.left = '';
+  boardEl.style.top = '';
+  boardEl.style.visibility = 'hidden';
+  halfEl.remove(); // clean up now-empty half-clip wrapper
+
+  scaleEl.appendChild(perspEl);
+
+  var dur = 600, start = performance.now();
+  function step(now) {
+    var t = Math.min(1, (now - start) / dur);
+    var e = 1 - Math.pow(1 - t, 3);
+    var progress = 1 - e;
+    otherWrap.style.transform = 'rotateX(' + (half === 'top' ? -progress * 90 : progress * 90) + 'deg)';
+    var sc = 1 + progress * 0.5;
+    scaleEl.style.transform = 'scale(' + sc + ') translateY(' + (progress * targetT) + 'px)';
+    if (t < 1) { requestAnimationFrame(step); return; }
+    clipEl.remove();
+    boardEl.style.visibility = '';
+    onDone();
+  }
+  requestAnimationFrame(step);
+}
+
 function _closeBoard(onDone) {
   var boardEl = document.getElementById('board-wrap');
   var fold = _makeBoardFold(boardEl, false); // board starts flat
@@ -333,19 +520,15 @@ function _closeBoard(onDone) {
 
     if (t < 1) { requestAnimationFrame(step); return; }
 
-    fold.cleanup();
-    var flash = document.createElement('div');
-    flash.style.cssText = 'position:fixed;inset:0;z-index:815;background:'+bg+';pointer-events:none;';
-    document.body.appendChild(flash);
-    onDone();
+    onDone(); // shop renders behind still-visible overlay
     var fo = performance.now();
-    function fadeFlash(n) {
-      var ft = Math.min(1, (n - fo) / 200);
-      flash.style.opacity = (1 - ft)+'';
-      if (ft < 1) requestAnimationFrame(fadeFlash);
-      else flash.remove();
+    function fadeOverlay(n) {
+      var ft = Math.min(1, (n - fo) / 120);
+      perspCont.style.opacity = (1 - ft) + '';
+      if (ft < 1) { requestAnimationFrame(fadeOverlay); return; }
+      fold.cleanup();
     }
-    requestAnimationFrame(fadeFlash);
+    requestAnimationFrame(fadeOverlay);
   }
   requestAnimationFrame(step);
 }

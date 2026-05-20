@@ -3,7 +3,6 @@
 // =====================================================================
 function freeSquare(){var c=[];for(var i=0;i<B*B;i++)if(!S.board[i])c.push(i);return c.length?c[Math.floor(_rng()*c.length)]:-1;}
 
-function wrand(pool,w){var arr=[];for(var i=0;i<SQ.length;i++){var d=SQ[i];if(pool.indexOf(d.id)<0)continue;var wt=Math.round((w[d.rarity]||0)*10);for(var j=0;j<wt;j++)arr.push(d.id);}return arr.length?arr[Math.floor(_rng()*arr.length)]:null;}
 
 function wrandN(pool,w,n){
   var used={},out=[];
@@ -30,6 +29,15 @@ function refreshShop(){
   var tileLetters=shuffle(Object.keys(LS));
   shopPool.tileCards=offered.map(function(v,i){return{letter:tileLetters[i],variant:v,cost:vcosts[v],bought:false,id:uid()};});
   shopPool.tilePack={sold:false};
+  shopPool.sqPacks={dl:{sold:false},tl:{sold:false},dw:{sold:false},tw:{sold:false}};
+  var bwCopy=BOUNTY_WORDS.slice();
+  for(var i=bwCopy.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var tmp=bwCopy[i];bwCopy[i]=bwCopy[j];bwCopy[j]=tmp;}
+  var activeWords=(S.bounties||[]).map(function(b){return b.word;});
+  var BVARIANTS=['gold','red','blue'];
+  shopPool.bounties=bwCopy.filter(function(b){return activeWords.indexOf(b.word)<0;}).slice(0,3).map(function(b){
+    var variant=_rng()<0.05?BVARIANTS[Math.floor(_rng()*BVARIANTS.length)]:null;
+    return{word:b.word,cost:b.cost+(variant?1:0),reward:b.reward+(variant?2:0),accepted:false,variant:variant||null};
+  });
 }
 
 function enterShopPhase(){
@@ -140,6 +148,37 @@ function renderShop(){
   tp.innerHTML='<div class="pn">Tile Pack</div><div class="pd">5 tiles — mix of basic and enchanted.</div><div class="pc">$3</div>';
   if(!shopPool.tilePack||!shopPool.tilePack.sold)tp.onclick=function(){buyTilePack();};
   pr.appendChild(tp);
+  var bsqPacks=[
+    {id:'dl',label:'6× Double Letter',desc:'6 DL squares — letter scores ×2.'},
+    {id:'tl',label:'4× Triple Letter',desc:'4 TL squares — letter scores ×3.'},
+    {id:'dw',label:'3× Double Word',desc:'3 DW squares — word scores ×2.'},
+    {id:'tw',label:'2× Triple Word',desc:'2 TW squares — word scores ×3.'},
+  ];
+  for(var bpi=0;bpi<bsqPacks.length;bpi++){(function(bp){
+    var d=sqd(bp.id);if(!d)return;
+    var sold=shopPool.sqPacks&&shopPool.sqPacks[bp.id]&&shopPool.sqPacks[bp.id].sold;
+    var pc=document.createElement('div');pc.className='pack-card';if(sold)pc.style.opacity='0.4';
+    pc.innerHTML='<div class="pn" style="color:'+d.fg+'">'+bp.label+'</div><div class="pd">'+bp.desc+'</div><div class="pc">$3</div>';
+    if(!sold)pc.onclick=function(){buyBonusSqPack(bp.id);};
+    pr.appendChild(pc);
+  })(bsqPacks[bpi]);}
+  var br=document.getElementById('shop-bounties-row');br.innerHTML='';
+  var bpool=shopPool.bounties||[];
+  if(!bpool.length){br.innerHTML='<div style="color:#6060a0;font-size:12px;padding:6px">No bounties available this visit.</div>';}
+  for(var bi=0;bi<bpool.length;bi++){
+    var bitem=bpool[bi];
+    var bcard=document.createElement('div');bcard.className='bounty-card';if(bitem.accepted)bcard.style.opacity='0.5';
+    var _bvfg=bitem.variant==='gold'?'#f0c060':bitem.variant==='red'?'#ff8080':bitem.variant==='blue'?'#60b8ff':null;
+    var _bvLabel=bitem.variant?'<div style="font-size:9px;color:'+_bvfg+';font-weight:bold;margin-bottom:2px">'+bitem.variant.toUpperCase()+' BOUNTY — converts a tile on completion</div>':'';
+    bcard.innerHTML='<div style="font-size:10px;color:#9060b0;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Bounty</div>'
+      +_bvLabel
+      +'<div style="margin:6px 0">'+wordAsTilesHTML(bitem.word,20)+'</div>'
+      +'<div class="bounty-card-reward">Reward: +$'+bitem.reward+'</div>'
+      +'<div class="bounty-card-cost">Cost: $'+bitem.cost+' to accept</div>';
+    if(!bitem.accepted){var bbtn=document.createElement('button');bbtn.className='btn btn-gold';bbtn.style.cssText='padding:5px;font-size:11px;margin-top:0';bbtn.textContent='Accept';(function(j){bbtn.onclick=function(){acceptBounty(j);};})(bi);bcard.appendChild(bbtn);}
+    else{bcard.innerHTML+='<div style="color:#60c060;font-size:10px;margin-top:4px">✓ Accepted</div>';}
+    br.appendChild(bcard);
+  }
   var alBtn=document.getElementById('alchemist-btn');
   if(alBtn){var hasAl=false;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='alchemist'){hasAl=true;break;}alBtn.style.display=hasAl?'block':'none';if(S.alchemistUsed)alBtn.style.opacity='0.4';}
 }
@@ -175,6 +214,16 @@ function buyTilePack(){
   toast('Tile Pack: '+added.join(', ')+' added!');
 }
 
+function buyBonusSqPack(id){
+  if(!shopPool.sqPacks||shopPool.sqPacks[id].sold)return;
+  if(!S.devMode&&S.gold<3){toast('Not enough gold!');return;}
+  if(!S.devMode)S.gold-=3;shopPool.sqPacks[id].sold=true;
+  var d=sqd(id);var qty=(d&&d.qty)||1;
+  for(var k=0;k<qty;k++)S.pendingSquares.push({id:id});
+  renderShop();renderHUD();
+  toast(qty+'× '+d.name+' queued — place them after leaving shop!');
+}
+
 function openHammerModal(){renderHammerModal();document.getElementById('hammer-modal').style.display='flex';}
 
 function renderHammerModal(){
@@ -204,7 +253,7 @@ function renderForgeModal(){
     sub.textContent='Choose an enchantment for '+forgeSelectedTile.letter+' ('+(LS[forgeSelectedTile.letter]||0)+' pts)';
     backBtn.textContent='← Change tile';
     opts.innerHTML='';
-    var FORGE=[{v:'gold',label:'Gold',desc:'+$1 each time scored',cost:3,bg:'#6a4800'},{v:'blue',label:'Blue',desc:'Score grows by base pts each play',cost:4,bg:'#0a2a60'},{v:'red',label:'Red',desc:'Triggers twice (DW/TW doubles too)',cost:5,bg:'#601010'}];
+    var FORGE=[{v:'gold',label:'Gold',desc:'+$1 each time scored',cost:1,bg:'#6a4800'},{v:'blue',label:'Blue',desc:'Score grows by base pts each play',cost:1,bg:'#0a2a60'},{v:'red',label:'Red',desc:'Triggers twice (DW/TW doubles too)',cost:1,bg:'#601010'}];
     FORGE.forEach(function(f){
       var btn=document.createElement('button');btn.className='btn';
       btn.style.cssText='width:100%;padding:12px 16px;margin-bottom:6px;background:'+f.bg+';color:#e8e0d0;text-align:left;border:1px solid rgba(255,255,255,.15)';
@@ -265,20 +314,6 @@ function openPackReveal(name,contents){
 
 function skipPack(){document.getElementById('pack-modal').style.display='none';enterShopPhase();}
 
-function buyTile(i){
-  var tl=shopPool.tiles[i];if(!tl||tl.bought)return;
-  if(S.gold<3){toast('Not enough gold!');return;}
-  S.gold-=3;tl.bought=true;S.bag.push({letter:tl.letter,isBlank:false,id:uid()});
-  S.bag=shuffle(S.bag);renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
-  toast(tl.letter+' added to bag!');
-}
-
-function refreshTileOffer(){
-  if(S.gold<1){toast('Not enough gold!');return;}
-  S.gold-=1;shopPool.tiles=shuffle(Object.keys(DIST)).slice(0,5).map(function(l){return{letter:l,bought:false};});
-  renderShop();renderHUD();
-}
-
 function hammerTile(tile){
   if(!S.devMode&&S.gold<3){toast('Not enough gold!');return;}
   var idx=-1;for(var i=0;i<S.bag.length;i++)if(S.bag[i].id===tile.id){idx=i;break;}
@@ -286,6 +321,16 @@ function hammerTile(tile){
   if(!S.devMode)S.gold-=3;S.bag.splice(idx,1);
   renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
   toast((tile.isBlank?'Blank':tile.letter)+' destroyed!');
+}
+
+function acceptBounty(i){
+  var b=shopPool.bounties[i];if(!b||b.accepted)return;
+  if(!S.devMode&&S.gold<b.cost){toast('Not enough gold!');return;}
+  if(!S.devMode)S.gold-=b.cost;
+  b.accepted=true;
+  S.bounties=S.bounties||[];S.bounties.push({word:b.word,reward:b.reward,variant:b.variant||null});
+  renderShop();renderHUD();
+  toast('Bounty accepted! Play "'+b.word+'" to earn $'+b.reward+'!');
 }
 
 function closeShop(){document.getElementById('shop-screen').style.display='none';S.phase='play';}

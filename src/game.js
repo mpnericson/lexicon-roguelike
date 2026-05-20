@@ -1,12 +1,38 @@
 // =====================================================================
 // GAME STATE — global state, lifecycle, modals, utilities
 // =====================================================================
+var BOUNTY_WORDS=[
+  // 3-4 letters — cost $2, reward $5
+  {word:'CAT',cost:2,reward:5},{word:'DOG',cost:2,reward:5},{word:'BAT',cost:2,reward:5},
+  {word:'HAT',cost:2,reward:5},{word:'RUN',cost:2,reward:5},{word:'JAM',cost:2,reward:5},
+  {word:'BOX',cost:2,reward:5},{word:'GEM',cost:2,reward:5},{word:'OAK',cost:2,reward:5},
+  {word:'AXE',cost:2,reward:5},{word:'JOY',cost:2,reward:5},{word:'MUG',cost:2,reward:5},
+  {word:'WEB',cost:2,reward:5},{word:'ICE',cost:2,reward:5},{word:'PIE',cost:2,reward:5},
+  {word:'FOX',cost:2,reward:5},{word:'LOG',cost:2,reward:5},{word:'HOP',cost:2,reward:5},
+  {word:'MAP',cost:2,reward:5},{word:'CUP',cost:2,reward:5},{word:'DIM',cost:2,reward:5},
+  {word:'WAX',cost:2,reward:6},{word:'RUG',cost:2,reward:5},{word:'ZAP',cost:2,reward:6},
+  {word:'VEX',cost:2,reward:6},{word:'TAX',cost:2,reward:6},{word:'SKY',cost:2,reward:5},
+  {word:'FLY',cost:2,reward:5},{word:'BIG',cost:2,reward:5},{word:'SIT',cost:2,reward:5},
+  // 5 letters — cost $3, reward $8
+  {word:'STONE',cost:3,reward:8},{word:'BREAD',cost:3,reward:8},{word:'FLAME',cost:3,reward:8},
+  {word:'BRAVE',cost:3,reward:8},{word:'CLEAN',cost:3,reward:8},{word:'FROST',cost:3,reward:8},
+  {word:'GLASS',cost:3,reward:8},{word:'PLANT',cost:3,reward:8},{word:'DREAM',cost:3,reward:8},
+  {word:'STEAM',cost:3,reward:8},{word:'CRANE',cost:3,reward:8},{word:'BLAZE',cost:3,reward:8},
+  {word:'CHESS',cost:3,reward:9},{word:'CRISP',cost:3,reward:9},{word:'BRISK',cost:3,reward:9},
+  {word:'QUIRK',cost:3,reward:10},{word:'FJORD',cost:3,reward:11},{word:'LYMPH',cost:3,reward:11},
+  {word:'PLUMB',cost:3,reward:9},{word:'SNOWY',cost:3,reward:8},
+  // 6-7 letters — cost $4, reward $13
+  {word:'CASTLE',cost:4,reward:13},{word:'FROZEN',cost:4,reward:13},{word:'GRAVEL',cost:4,reward:13},
+  {word:'JIGSAW',cost:4,reward:14},{word:'FRENZY',cost:4,reward:13},{word:'HUMBLE',cost:4,reward:13},
+  {word:'SWORDS',cost:4,reward:13},{word:'PLAGUE',cost:4,reward:13},{word:'BREEZE',cost:4,reward:13},
+  {word:'JUNGLE',cost:4,reward:13},{word:'MUSCLE',cost:4,reward:13},{word:'GAZEBO',cost:4,reward:14},
+];
 var S={};
 var DICT=null;
 var activeDrag=null;
 var _hl=-1;
 var viewingBoard=false;
-var shopPool={sq:[],tileCards:[],tilePack:null};
+var shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};
 
 function buildBag(){
   var bag=[];var ks=Object.keys(DIST);
@@ -21,19 +47,22 @@ function startGame(seed){
   _rngSeed(s);
   S={bag:buildBag(),hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtb:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,palUnlocked:false,devMode:false,
-     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s};
-  shopPool={sq:[],tileCards:[],tilePack:null};activeDrag=null;
+     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bounties:[],bhMult:1};
+  window._easyHint=null;
+  shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};activeDrag=null;
   document.getElementById('shop-screen').style.display='none';
   document.getElementById('play-controls').style.display='flex';
   document.getElementById('placing-controls').style.display='none';
   HP.x=[];HP.vx=[];HP.tiles=[];
+  if(typeof _resetZoom==='function')_resetZoom();
   drawFull();renderAll();
 }
 
 function drawFull(){
   var n=7-S.hand.length;
   if(S.devMode){
-    for(var i=0;i<n;i++)S.hand.push({letter:'_',isBlank:true,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null,blueBonus:0,_devBlank:true});
+    var _dp='AAEEEIIOOUUTTRRSSNNLLDDGG'.split('');
+    for(var i=0;i<n;i++){var _dl=_dp[Math.floor(Math.random()*_dp.length)];S.hand.push({letter:_dl,isBlank:false,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null,blueBonus:0});}
   } else {
     for(var i=0;i<n&&S.bag.length>0;i++){var t=S.bag.pop();S.hand.push({letter:t.letter,isBlank:t.isBlank,id:t.id,blankAs:null,sel:false,onBoard:false,variant:t.variant||null,blueBonus:t.blueBonus||0});}
   }
@@ -49,6 +78,23 @@ function drawFull(){
       }
     }
   }
+  _scheduleEasyHint();
+}
+
+var _easyHintTimer=null;
+function _scheduleEasyHint(){
+  if(_easyHintTimer)clearTimeout(_easyHintTimer);_easyHintTimer=null;
+  var hasEM=false;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='easy_mode'){hasEM=true;break;}
+  if(!hasEM||!DICT)return;
+  _easyHintTimer=setTimeout(function(){
+    _easyHintTimer=null;
+    var snap={
+      hand:S.hand.map(function(t){return t?Object.assign({},t,{onBoard:false,_boardSq:undefined}):null;}),
+      bt:S.bt.map(function(bt){return(bt&&!bt.isNew)?Object.assign({},bt):null;}),
+      board:S.board.slice()
+    };
+    findBestMoveBackground(snap,function(best){window._easyHint=best;renderBoard();});
+  },600);
 }
 
 function cb(){return ANTES[S.ai][S.bi];}
@@ -58,9 +104,17 @@ function blindComplete(){
   var reward=2+S.bi*2+(S.ai*2);
   var playsBonus=S.plays>0?S.plays:0;
   S.gold+=reward+playsBonus;
+  var hasSheriff=false;for(var _si=0;_si<S.placed.length;_si++)if(S.placed[_si].id==='sheriffs_office'){hasSheriff=true;break;}
+  var sheriffWord='';
+  if(hasSheriff){
+    var _activeWords=(S.bounties||[]).map(function(b){return b.word;});
+    var _avail=BOUNTY_WORDS.filter(function(b){return _activeWords.indexOf(b.word)<0;});
+    if(_avail.length){var _pick=_avail[Math.floor(_rng()*_avail.length)];S.bounties=S.bounties||[];S.bounties.push({word:_pick.word,reward:_pick.reward});sheriffWord=_pick.word;}
+  }
   document.getElementById('round-title').textContent=(cb()[0]?cb()[0]+' cleared!':'Round complete!');
   var msg='You scored '+S.score.toLocaleString()+', beating '+tgt().toLocaleString()+'.';
   if(playsBonus>0)msg+=' +$'+playsBonus+' efficiency bonus!';
+  if(sheriffWord)msg+=' Sheriff: free bounty "'+sheriffWord+'"!';
   document.getElementById('round-msg').textContent=msg;
   document.getElementById('round-reward').textContent='+$'+(reward+playsBonus)+' gold';
   document.getElementById('round-modal').style.display='flex';
@@ -70,15 +124,20 @@ function advanceBlind(){
   document.getElementById('round-modal').style.display='none';S.bi++;
   var newAnte=S.bi>=3;
   if(newAnte){S.ai++;S.bi=0;if(S.ai>=ANTES.length){showWin();return;}}
+  if(typeof _resetZoom==='function')_resetZoom();
   animBoardToShop(function(){
     if(newAnte){clearBoardLetters();S.bag=buildBag();toast('New ante — letters cleared, stickers kept!');}
     S.score=0;S.plays=4;S.disc=3;S.wtb=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;S.palUnlocked=false;
     S.pendingSquares=[];S.sqHand=[];S.sqStaged={};
-    recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null};enterShopPhase();
+    recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};enterShopPhase();
   });
 }
 
-function showGO(msg){document.getElementById('gameover-msg').textContent=msg;document.getElementById('gameover-modal').style.display='flex';}
+function showGO(msg){
+  document.getElementById('gameover-msg').textContent=msg;
+  var gbp=document.getElementById('gameover-best-play');if(gbp)gbp.style.display='none';
+  document.getElementById('gameover-modal').style.display='flex';
+}
 function showWin(){document.getElementById('win-modal').style.display='flex';}
 
 function closeAllModals(){
