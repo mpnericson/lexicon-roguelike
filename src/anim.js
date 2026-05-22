@@ -11,7 +11,7 @@ function animBoardToShop(onDone) {
   var tiles = [];
   for (var i = 0; i < els.length; i++) {
     var r = els[i].getBoundingClientRect();
-    if (r.width > 0 && r.height > 0) tiles.push({el: els[i], r: r});
+    if (r.width > 0 && r.height > 0) tiles.push({ el: els[i], r: r });
   }
 
   var bagEl = document.getElementById('bag-btn');
@@ -24,7 +24,7 @@ function animBoardToShop(onDone) {
 
   bagEl.classList.add('bag-vacuuming');
 
-  if (N === 0) { _closeBoard(function(){ bagEl.classList.remove('bag-vacuuming'); onDone(); }); return; }
+  if (N === 0) { _closeBoard(function () { bagEl.classList.remove('bag-vacuuming'); onDone(); }); return; }
 
   // sqrt stagger: slow start accelerating to fast finish (vacuum turning up)
   var T = 1500;
@@ -32,12 +32,12 @@ function animBoardToShop(onDone) {
   var lastBounce = 0;
 
   for (var i = 0; i < N; i++) {
-    (function(tile, idx) {
+    (function (tile, idx) {
       var delay = T * Math.sqrt(idx / N);
       var flightDur = Math.max(200, 680 - 460 * (idx / N));
 
-      setTimeout(function() {
-        _liftAndFly(tile, layer, tx, ty, flightDur, function() {
+      setTimeout(function () {
+        _liftAndFly(tile, layer, tx, ty, flightDur, function () {
           var now = Date.now();
           if (now - lastBounce > 75) {
             lastBounce = now;
@@ -46,8 +46,8 @@ function animBoardToShop(onDone) {
             bagEl.classList.add('bag-absorb');
           }
           done++;
-          if (done === N) setTimeout(function() {
-            _closeBoard(function(){ bagEl.classList.remove('bag-vacuuming'); onDone(); });
+          if (done === N) setTimeout(function () {
+            _closeBoard(function () { bagEl.classList.remove('bag-vacuuming'); onDone(); });
           }, 80);
         });
       }, delay);
@@ -60,7 +60,7 @@ function _liftAndFly(tile, layer, tx, ty, flightDur, onDone) {
   var clone = document.createElement('div');
   clone.className = tile.el.className;
   clone.innerHTML = tile.el.innerHTML;
-  clone.style.cssText = 'position:fixed;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;z-index:810;pointer-events:none;transform-origin:center center;box-shadow:0 2px 0 #6b5535;border-radius:5px;';
+  clone.style.cssText = 'position:fixed;left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;height:' + r.height + 'px;z-index:810;pointer-events:none;transform-origin:center center;box-shadow:0 2px 0 #6b5535;border-radius:5px;';
   layer.appendChild(clone);
   tile.el.style.visibility = 'hidden';
 
@@ -74,7 +74,7 @@ function _liftAndFly(tile, layer, tx, ty, flightDur, onDone) {
   function liftTick(now) {
     var t = Math.min(1, (now - liftStart) / liftDur);
     var e = 1 - (1 - t) * (1 - t);
-    clone.style.transform = 'translateY('+(-e * liftAmt)+'px) rotate('+(e * liftRot)+'deg)';
+    clone.style.transform = 'translateY(' + (-e * liftAmt) + 'px) rotate(' + (e * liftRot) + 'deg)';
     if (t < 1) { requestAnimationFrame(liftTick); return; }
 
     var startY = sy - liftAmt;
@@ -86,13 +86,13 @@ function _liftAndFly(tile, layer, tx, ty, flightDur, onDone) {
       var t = Math.min(1, (now - flyStart) / flightDur);
       var e = t * t * t; // ease-in cubic — accelerates as vacuum pulls harder
       var u = 1 - e;
-      var cx = u*u*sx + 2*u*e*cpx + e*e*tx;
-      var cy = u*u*startY + 2*u*e*cpy + e*e*ty;
+      var cx = u * u * sx + 2 * u * e * cpx + e * e * tx;
+      var cy = u * u * startY + 2 * u * e * cpy + e * e * ty;
       var sc = 1 - e * 0.9;
       var rot = liftRot + e * 210 * (liftRot >= 0 ? 1 : -1);
-      clone.style.left = (cx - r.width / 2)+'px';
-      clone.style.top = (cy - r.height / 2)+'px';
-      clone.style.transform = 'scale('+sc+') rotate('+rot+'deg)';
+      clone.style.left = (cx - r.width / 2) + 'px';
+      clone.style.top = (cy - r.height / 2) + 'px';
+      clone.style.transform = 'scale(' + sc + ') rotate(' + rot + 'deg)';
       if (t < 1) { requestAnimationFrame(flyTick); return; }
       clone.remove();
       onDone();
@@ -111,10 +111,10 @@ function _makeBoardFold(boardEl, isStartFolded) {
   var h = Math.floor(BH / 2);
 
   // Scale at which the board exactly fills the viewport — computed from actual geometry
-  var cx = r.left + W/2, cy = r.top + BH/2;
+  var cx = r.left + W / 2, cy = r.top + BH / 2;
   var fillScale = Math.max(
-    Math.max(cx, window.innerWidth  - cx) / (W/2),
-    Math.max(cy, window.innerHeight - cy) / (BH/2)
+    Math.max(cx, window.innerWidth - cx) / (W / 2),
+    Math.max(cy, window.innerHeight - cy) / (BH / 2)
   ) * 1.2; // 20% overshoot ensures coverage arrives well before animation end
 
 
@@ -122,12 +122,12 @@ function _makeBoardFold(boardEl, isStartFolded) {
   // perspective-origin at fold line (50% height = center of board)
   var perspCont = document.createElement('div');
   perspCont.style.cssText = [
-    'position:fixed','left:'+r.left+'px','top:'+r.top+'px',
-    'width:'+W+'px','height:'+BH+'px','z-index:810',
-    'perspective:'+(BH*1.1)+'px',   // tight perspective = dramatic depth
+    'position:fixed', 'left:' + r.left + 'px', 'top:' + r.top + 'px',
+    'width:' + W + 'px', 'height:' + BH + 'px', 'z-index:810',
+    'perspective:' + (BH * 1.1) + 'px',   // tight perspective = dramatic depth
     'perspective-origin:50% 50%',   // vanishing point at fold line
     'transform-origin:50% 50%',
-    'transform:scale('+(isStartFolded?fillScale:1)+')'
+    'transform:scale(' + (isStartFolded ? fillScale : 1) + ')'
   ].join(';');
   document.body.appendChild(perspCont);
 
@@ -135,24 +135,24 @@ function _makeBoardFold(boardEl, isStartFolded) {
     var wrap = document.createElement('div');
     // transform-origin at the fold line edge of each half
     wrap.style.cssText = [
-      'position:absolute','left:0','top:'+(isTop?0:h)+'px',
-      'width:'+W+'px','height:'+h+'px','overflow:hidden',
-      'transform-origin:'+(isTop?'bottom':'top')+' center'
+      'position:absolute', 'left:0', 'top:' + (isTop ? 0 : h) + 'px',
+      'width:' + W + 'px', 'height:' + h + 'px', 'overflow:hidden',
+      'transform-origin:' + (isTop ? 'bottom' : 'top') + ' center'
     ].join(';');
     var clone = boardEl.cloneNode(true);
     clone.removeAttribute('id');
     clone.style.cssText = [
-      'position:absolute','left:0','top:'+(isTop?'0':'-'+h+'px'),
-      'width:'+W+'px','display:inline-grid','gap:2px',
-      'background:#0a0a18','padding:6px','border-radius:8px',
+      'position:absolute', 'left:0', 'top:' + (isTop ? '0' : '-' + h + 'px'),
+      'width:' + W + 'px', 'display:inline-grid', 'gap:2px',
+      'background:#0a0a18', 'padding:6px', 'border-radius:8px',
       'border:1px solid #2a2a4a',
-      'grid-template-columns:'+boardEl.style.gridTemplateColumns,
-      'box-sizing:border-box','margin:0'
+      'grid-template-columns:' + boardEl.style.gridTemplateColumns,
+      'box-sizing:border-box', 'margin:0'
     ].join(';');
     wrap.appendChild(clone);
     // backface hidden so overshoot past 90° shows void rather than mirrored content
     wrap.style.backfaceVisibility = 'hidden';
-    if (isStartFolded) wrap.style.transform = 'rotateX('+(isTop?-90:90)+'deg)';
+    if (isStartFolded) wrap.style.transform = 'rotateX(' + (isTop ? -90 : 90) + 'deg)';
     return wrap;
   }
 
@@ -165,7 +165,7 @@ function _makeBoardFold(boardEl, isStartFolded) {
   return {
     perspCont: perspCont, topWrap: topWrap, botWrap: botWrap,
     BH: BH, fillScale: fillScale,
-    cleanup: function() { perspCont.remove(); boardEl.style.visibility = ''; }
+    cleanup: function () { perspCont.remove(); boardEl.style.visibility = ''; }
   };
 }
 
@@ -193,9 +193,9 @@ function animShopToBoard(onBoardReady) {
     var e = 1 - Math.pow(1 - t, 3); // ease-out cubic — decelerates as board snaps flat
 
     var angle = (1 - e) * 90;
-    topWrap.style.transform = 'rotateX('+(-angle)+'deg)';
-    botWrap.style.transform = 'rotateX('+(angle)+'deg)';
-    perspCont.style.transform = 'scale('+(1 + (1 - e) * (fillScale - 1))+')';
+    topWrap.style.transform = 'rotateX(' + (-angle) + 'deg)';
+    botWrap.style.transform = 'rotateX(' + (angle) + 'deg)';
+    perspCont.style.transform = 'scale(' + (1 + (1 - e) * (fillScale - 1)) + ')';
 
     if (t < 1) { requestAnimationFrame(step); return; }
 
@@ -211,7 +211,7 @@ function _burstTilesFromBag(els, bx, by, staggerT, onDone) {
   var done = 0;
 
   for (var i = 0; i < N; i++) {
-    (function(el, idx) {
+    (function (el, idx) {
       var r = el.getBoundingClientRect();
       var tx = r.left + r.width / 2;
       var ty = r.top + r.height / 2;
@@ -222,7 +222,7 @@ function _burstTilesFromBag(els, bx, by, staggerT, onDone) {
       var clone = document.createElement('div');
       clone.className = el.className;
       clone.innerHTML = el.innerHTML;
-      clone.style.cssText = 'position:fixed;left:'+(bx-tw/2)+'px;top:'+(by-th/2)+'px;width:'+tw+'px;height:'+th+'px;z-index:810;pointer-events:none;transform-origin:center center;box-shadow:0 2px 0 #6b5535;border-radius:3px;transform:scale(0.1);';
+      clone.style.cssText = 'position:fixed;left:' + (bx - tw / 2) + 'px;top:' + (by - th / 2) + 'px;width:' + tw + 'px;height:' + th + 'px;z-index:810;pointer-events:none;transform-origin:center center;box-shadow:0 2px 0 #6b5535;border-radius:3px;transform:scale(0.1);';
       layer.appendChild(clone);
 
       var cpx = (bx + tx) / 2 + (Math.random() - 0.5) * 130;
@@ -232,17 +232,17 @@ function _burstTilesFromBag(els, bx, by, staggerT, onDone) {
       var startRot = (Math.random() - 0.5) * 320;
 
       var delay = staggerT * Math.sqrt(idx / N); // sqrt stagger — fast burst, slows as bag empties
-      setTimeout(function() {
+      setTimeout(function () {
         var flyStart = performance.now();
         function flyTick(now) {
           var t = Math.min(1, (now - flyStart) / flightDur);
           var e = 1 - Math.pow(1 - t, 3); // ease-out cubic — fast exit, soft landing
           var u = 1 - e;
-          var cx = u*u*bx + 2*u*e*cpx + e*e*tx;
-          var cy = u*u*by + 2*u*e*cpy + e*e*ty;
-          clone.style.left = (cx - tw/2)+'px';
-          clone.style.top = (cy - th/2)+'px';
-          clone.style.transform = 'scale('+(0.1 + e * 0.9)+') rotate('+(startRot * (1 - e))+'deg)';
+          var cx = u * u * bx + 2 * u * e * cpx + e * e * tx;
+          var cy = u * u * by + 2 * u * e * cpy + e * e * ty;
+          clone.style.left = (cx - tw / 2) + 'px';
+          clone.style.top = (cy - th / 2) + 'px';
+          clone.style.transform = 'scale(' + (0.1 + e * 0.9) + ') rotate(' + (startRot * (1 - e)) + 'deg)';
           if (t < 1) { requestAnimationFrame(flyTick); return; }
           clone.remove();
           el.style.opacity = '1';
@@ -278,7 +278,7 @@ function _burstBoardTiles(onDone) {
   bagEl.classList.add('bag-vacuuming');
   var shuffled = shuffle(tiles.slice());
 
-  _burstTilesFromBag(shuffled, bx, by, 900, function() {
+  _burstTilesFromBag(shuffled, bx, by, 900, function () {
     bagEl.classList.remove('bag-vacuuming');
     setTimeout(onDone, 80); // brief pause before hand tiles burst
   });
@@ -300,7 +300,7 @@ function _burstHandTiles() {
 
   bagEl.classList.add('bag-vacuuming');
 
-  _burstTilesFromBag(handEls, bx, by, 180, function() {
+  _burstTilesFromBag(handEls, bx, by, 180, function () {
     bagEl.classList.remove('bag-vacuuming');
   });
 }
@@ -403,7 +403,7 @@ function animBoardZoomIn(half, onDone) {
       clipEl: clipEl, scaleEl: scaleEl, halfEl: halfEl,
       boardEl: boardEl, boardAreaEl: boardAreaEl,
       half: half, targetT: targetT, foldLine: foldLine, W: W, BH: BH,
-      cleanup: function() {
+      cleanup: function () {
         boardAreaEl.appendChild(boardEl);
         boardEl.style.position = '';
         boardEl.style.left = '';
@@ -505,8 +505,8 @@ function _closeBoard(onDone) {
   // Three-phase snap: slow linear creep → explosive snap (with overshoot) → elastic settle
   function snapEase(t) {
     if (t < 0.60) return (t / 0.60) * 0.25;                              // linear: 0° → 22.5° — visible from frame 1
-    if (t < 0.79) { var s=(t-0.60)/0.19; return 0.25+Math.pow(s,0.35)*0.84; } // snap to ~98°
-    var s=(t-0.79)/0.21; return 1.09-(1-Math.pow(1-s,2))*0.09;           // settle to 90°
+    if (t < 0.79) { var s = (t - 0.60) / 0.19; return 0.25 + Math.pow(s, 0.35) * 0.84; } // snap to ~98°
+    var s = (t - 0.79) / 0.21; return 1.09 - (1 - Math.pow(1 - s, 2)) * 0.09;           // settle to 90°
   }
 
   function step(now) {
@@ -514,9 +514,9 @@ function _closeBoard(onDone) {
     var e = snapEase(t);
     var eScale = Math.pow(t, 0.4); // aggressively front-loaded — full coverage before snap fires
 
-    topWrap.style.transform = 'rotateX('+(-e * 90)+'deg)';
-    botWrap.style.transform = 'rotateX('+(e * 90)+'deg)';
-    perspCont.style.transform = 'scale('+(1 + eScale * (fillScale - 1))+')';
+    topWrap.style.transform = 'rotateX(' + (-e * 90) + 'deg)';
+    botWrap.style.transform = 'rotateX(' + (e * 90) + 'deg)';
+    perspCont.style.transform = 'scale(' + (1 + eScale * (fillScale - 1)) + ')';
 
     if (t < 1) { requestAnimationFrame(step); return; }
 
