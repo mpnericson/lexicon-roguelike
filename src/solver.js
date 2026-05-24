@@ -10,7 +10,7 @@ var _solverHighlightMove = null;
 function _solverPrecompute() {
   var cvAbove = new Array(B * B).fill(''); // for H placement: letters above cell, top-to-bottom
   var cvBelow = new Array(B * B).fill(''); // for H placement: letters below cell
-  var chLeft  = new Array(B * B).fill(''); // for V placement: letters left of cell, left-to-right
+  var chLeft = new Array(B * B).fill(''); // for V placement: letters left of cell, left-to-right
   var chRight = new Array(B * B).fill(''); // for V placement: letters right of cell
   for (var i = 0; i < B * B; i++) {
     if (S.bt[i]) continue; // only precompute for empty cells
@@ -44,7 +44,7 @@ function _solverActiveLines() {
   }
   if (!hasTiles) { var mid = Math.floor(B / 2); rowSet[mid] = 1; colSet[mid] = 1; }
   var lines = [];
-  for (var r in rowSet) lines.push({ isH: true,  coord: parseInt(r) });
+  for (var r in rowSet) lines.push({ isH: true, coord: parseInt(r) });
   for (var c in colSet) lines.push({ isH: false, coord: parseInt(c) });
   return lines;
 }
@@ -109,7 +109,7 @@ function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestB
     for (var i = 0; i < len && !connected; i++) {
       var ri = isH ? r : r + i, ci = isH ? c + i : c, idx = ri * B + ci;
       if (idx === centerIdx) { connected = true; break; }
-      var nbrs = [[-1,0],[1,0],[0,-1],[0,1]];
+      var nbrs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
       for (var ni = 0; ni < nbrs.length && !connected; ni++) {
         var nr = ri + nbrs[ni][0], nc = ci + nbrs[ni][1];
         if (nr >= 0 && nr < B && nc >= 0 && nc < B && S.bt[nr * B + nc]) connected = true;
@@ -124,9 +124,11 @@ function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestB
     var ri = isH ? r : r + i, ci = isH ? c + i : c;
     var idx = ri * B + ci, letter = word[i], existing = S.bt[idx];
     if (existing) {
-      wt.push({ idx: idx, letter: letter, isNew: false, isBlank: existing.isBlank,
+      wt.push({
+        idx: idx, letter: letter, isNew: false, isBlank: existing.isBlank,
         sc: existing.isBlank ? (existing.alchSc || 0) : (LS[letter] || 0),
-        sid: S.board[idx], variant: existing.variant || null, blueBonus: existing.blueBonus || 0 });
+        sid: S.board[idx], variant: existing.variant || null, blueBonus: existing.blueBonus || 0
+      });
     } else {
       var isBlankTile = false, tileSc = LS[letter] || 0, tileVariant = null, tileBlueBonus = 0;
       var hUsed = hUse[letter] || 0, hAvail = (handCounts[letter] || 0) - hUsed;
@@ -150,13 +152,15 @@ function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestB
       }
       if (cwStr !== null && !DICT.has(cwStr.toLowerCase())) return null;
 
-      wt.push({ idx: idx, letter: letter, isNew: true, isBlank: isBlankTile,
+      wt.push({
+        idx: idx, letter: letter, isNew: true, isBlank: isBlankTile,
         sc: isBlankTile ? tileSc : (LS[letter] || 0),
-        sid: S.board[idx], variant: isBlankTile ? null : tileVariant, blueBonus: isBlankTile ? 0 : tileBlueBonus });
+        sid: S.board[idx], variant: isBlankTile ? null : tileVariant, blueBonus: isBlankTile ? 0 : tileBlueBonus
+      });
     }
   }
 
-  var res = scoreWord(wt, word, true, newCount===7?50:0);
+  var res = scoreWord(wt, word, true, newCount === 7 ? 50 : 0);
   return { score: res.total, gold: res.gold, word: word, r: r, c: c, isH: isH, wt: wt };
 }
 
@@ -343,7 +347,7 @@ function runSolver() {
   var lines = _solverActiveLines();
 
   var words = [];
-  DICT.forEach(function(w) { if (w.length >= 2 && w.length <= B) words.push(w.toUpperCase()); });
+  DICT.forEach(function (w) { if (w.length >= 2 && w.length <= B) words.push(w.toUpperCase()); });
 
   var wi = 0, CHUNK = 1500, best = [];
 
@@ -397,42 +401,42 @@ function findBestMoveBackground(snap, onDone) {
   var handCounts = {}, handBestVariant = {}, handBestBlueBonus = {}, blankPool = [];
   for (var i = 0; i < S.hand.length; i++) {
     var t = S.hand[i]; if (!t) continue;
-    if (t.isBlank) { blankPool.push({devBlank:false,alchSc:t._alchSc||0}); }
+    if (t.isBlank) { blankPool.push({ devBlank: false, alchSc: t._alchSc || 0 }); }
     else {
-      var l = t.letter; handCounts[l] = (handCounts[l]||0)+1;
-      var esc=(LS[l]||0)+(t.variant==='blue'?(t.blueBonus||0):0);
-      var prevBest=(LS[l]||0)+(handBestVariant[l]==='blue'?(handBestBlueBonus[l]||0):0);
-      if(!(l in handBestVariant)||esc>prevBest){handBestVariant[l]=t.variant||null;handBestBlueBonus[l]=t.blueBonus||0;}
+      var l = t.letter; handCounts[l] = (handCounts[l] || 0) + 1;
+      var esc = (LS[l] || 0) + (t.variant === 'blue' ? (t.blueBonus || 0) : 0);
+      var prevBest = (LS[l] || 0) + (handBestVariant[l] === 'blue' ? (handBestBlueBonus[l] || 0) : 0);
+      if (!(l in handBestVariant) || esc > prevBest) { handBestVariant[l] = t.variant || null; handBestBlueBonus[l] = t.blueBonus || 0; }
     }
   }
   var available = {};
   for (var l in handCounts) available[l] = handCounts[l];
-  for (var i = 0; i < B*B; i++) { var bt=S.bt[i]; if(bt)available[bt.letter]=(available[bt.letter]||0)+1; }
-  var totalBlanks=blankPool.length, pre=_solverPrecompute(), lines=_solverActiveLines();
-  var words=[]; DICT.forEach(function(w){if(w.length>=2&&w.length<=B)words.push(w.toUpperCase());});
-  var wi=0, CHUNK=2000, best=[];
-  function restore(){ var live=document.getElementById('gameover-modal'); if(live&&live.style.display!=='none'){S.hand=origHand;S.bt=origBt;S.board=origBoard;} }
+  for (var i = 0; i < B * B; i++) { var bt = S.bt[i]; if (bt) available[bt.letter] = (available[bt.letter] || 0) + 1; }
+  var totalBlanks = blankPool.length, pre = _solverPrecompute(), lines = _solverActiveLines();
+  var words = []; DICT.forEach(function (w) { if (w.length >= 2 && w.length <= B) words.push(w.toUpperCase()); });
+  var wi = 0, CHUNK = 2000, best = [];
+  function restore() { var live = document.getElementById('gameover-modal'); if (live && live.style.display !== 'none') { S.hand = origHand; S.bt = origBt; S.board = origBoard; } }
   function processChunk() {
-    if(!_solverRunning){restore();onDone(null);return;}
-    var end=Math.min(wi+CHUNK,words.length);
-    for(var w=wi;w<end;w++){
-      var word=words[w]; if(!_solverCanSpell(word,available,totalBlanks))continue;
-      for(var li=0;li<lines.length;li++){
-        var line=lines[li],maxStart=B-word.length;
-        for(var sp=0;sp<=maxStart;sp++){
-          var r=line.isH?line.coord:sp,c=line.isH?sp:line.coord;
-          var res=_solverTryPlace(word,r,c,line.isH,handCounts,handBestVariant,handBestBlueBonus,blankPool,pre);
-          if(!res)continue;
-          var ins=false; for(var bi=0;bi<best.length;bi++){if(res.score>best[bi].score){best.splice(bi,0,res);ins=true;break;}} if(!ins)best.push(res);
-          if(best.length>5)best.pop();
+    if (!_solverRunning) { restore(); onDone(null); return; }
+    var end = Math.min(wi + CHUNK, words.length);
+    for (var w = wi; w < end; w++) {
+      var word = words[w]; if (!_solverCanSpell(word, available, totalBlanks)) continue;
+      for (var li = 0; li < lines.length; li++) {
+        var line = lines[li], maxStart = B - word.length;
+        for (var sp = 0; sp <= maxStart; sp++) {
+          var r = line.isH ? line.coord : sp, c = line.isH ? sp : line.coord;
+          var res = _solverTryPlace(word, r, c, line.isH, handCounts, handBestVariant, handBestBlueBonus, blankPool, pre);
+          if (!res) continue;
+          var ins = false; for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi, 0, res); ins = true; break; } } if (!ins) best.push(res);
+          if (best.length > 5) best.pop();
         }
       }
     }
-    wi=end;
-    if(wi<words.length){setTimeout(processChunk,0);}
-    else{_solverRunning=false;restore();onDone(best.length?best[0]:null);}
+    wi = end;
+    if (wi < words.length) { setTimeout(processChunk, 0); }
+    else { _solverRunning = false; restore(); onDone(best.length ? best[0] : null); }
   }
-  setTimeout(processChunk,0);
+  setTimeout(processChunk, 0);
 }
 
 function showSolverResults(results) {
