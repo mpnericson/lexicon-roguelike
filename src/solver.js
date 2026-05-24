@@ -160,13 +160,143 @@ function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestB
   return { score: res.total, gold: res.gold, word: word, r: r, c: c, isH: isH, wt: wt };
 }
 
+// ---- Rank solver — silent background solve, keeps top 10 for reward system ----
+
+var _rankTop10 = null;   // null = stale/computing; array = ready
+var _rankRunId = 0;      // increment to cancel any in-progress solve
+var _rankSolving = false;
+var _rankTimer = null;
+
+// Called after every drawFull(). Debounced 600ms.
+function _scheduleRankSolve() {
+  if (_rankTimer) clearTimeout(_rankTimer);
+  _rankTop10 = null;
+  _rankTimer = setTimeout(function() {
+    _rankTimer = null;
+    if (!DICT || S.phase !== 'play' || _solverRunning || _rankSolving) return;
+    var snap = {
+      hand:  S.hand.map(function(t){ return t ? Object.assign({},t,{onBoard:false,_boardSq:undefined}) : null; }),
+      bt:    S.bt.map(function(bt){ return (bt && !bt.isNew) ? Object.assign({},bt) : null; }),
+      board: S.board.slice()
+    };
+    _rankRunRankSolve(snap);
+  }, 600);
+}
+
+function _rankRunRankSolve(snap) {
+  if (!DICT || _solverRunning || _rankSolving) return;
+  _rankSolving = true;
+  var myId = ++_rankRunId;
+  var origHand = S.hand, origBt = S.bt, origBoard = S.board;
+  S.hand = snap.hand; S.bt = snap.bt; S.board = snap.board;
+
+  var handCounts = {}, handBestVariant = {}, handBestBlueBonus = {}, blankPool = [];
+  for (var i = 0; i < S.hand.length; i++) {
+    var t = S.hand[i]; if (!t) continue;
+    if (t.isBlank) { blankPool.push({devBlank:false, alchSc:t._alchSc||0}); }
+    else {
+      var l = t.letter; handCounts[l] = (handCounts[l]||0)+1;
+      var esc = (LS[l]||0)+(t.variant==='blue'?(t.blueBonus||0):0);
+      var prevBest = (LS[l]||0)+(handBestVariant[l]==='blue'?(handBestBlueBonus[l]||0):0);
+      if (!(l in handBestVariant)||esc>prevBest) { handBestVariant[l]=t.variant||null; handBestBlueBonus[l]=t.blueBonus||0; }
+    }
+  }
+  var available = {};
+  for (var l in handCounts) available[l] = handCounts[l];
+  for (var i = 0; i < B*B; i++) { var bt=S.bt[i]; if(bt) available[bt.letter]=(available[bt.letter]||0)+1; }
+  var totalBlanks = blankPool.length;
+  var pre = _solverPrecompute(), lines = _solverActiveLines();
+  var words = []; DICT.forEach(function(w){ if(w.length>=2&&w.length<=B) words.push(w.toUpperCase()); });
+
+  function restore() { S.hand=origHand; S.bt=origBt; S.board=origBoard; _rankSolving=false; }
+
+  var wi = 0, CHUNK = 1500, best = [];
+  function processChunk() {
+    if (_rankRunId !== myId) { restore(); return; }
+    var end = Math.min(wi+CHUNK, words.length);
+    for (var w = wi; w < end; w++) {
+      var word = words[w];
+      if (!_solverCanSpell(word, available, totalBlanks)) continue;
+      for (var li = 0; li < lines.length; li++) {
+        var line = lines[li], maxStart = B - word.length;
+        for (var sp = 0; sp <= maxStart; sp++) {
+          var r = line.isH ? line.coord : sp, c = line.isH ? sp : line.coord;
+          var res = _solverTryPlace(word,r,c,line.isH,handCounts,handBestVariant,handBestBlueBonus,blankPool,pre);
+          if (!res) continue;
+          var ins = false;
+          for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi,0,res); ins=true; break; } }
+          if (!ins) best.push(res);
+          if (best.length > 10) best.pop();
+        }
+      }
+    }
+    wi = end;
+    if (wi < words.length) { setTimeout(processChunk, 0); }
+    else { restore(); if (_rankRunId === myId) _rankTop10 = best; }
+  }
+  setTimeout(processChunk, 0);
+}
+
+// Compare played score to pre-play top-10. Call after score animation.
+function _checkRankReward(score, top10) {
+  if (!top10 || !top10.length) return;
+  var rank = top10.length + 1;
+  for (var i = 0; i < top10.length; i++) {
+    if (score >= top10[i].score) { rank = i + 1; break; }
+  }
+  if (rank <= 10) _showRankReward(rank);
+}
+
+function _showRankReward(rank) {
+  var text, color, size;
+  if      (rank === 1) { text = '★ BEST PLAY!';   color = '#f0e080'; size = '26px'; }
+  else if (rank === 2) { text = '2nd Best Play';   color = '#d4b84a'; size = '21px'; }
+  else if (rank === 3) { text = '3rd Best Play';   color = '#b09840'; size = '19px'; }
+  else if (rank <= 5)  { text = 'Top 5 Play';      color = '#9090b8'; size = '17px'; }
+  else                 { text = 'Top 10 Play';      color = '#6a6a90'; size = '15px'; }
+
+  var el = document.createElement('div');
+  el.style.cssText = 'position:fixed;left:50%;top:35%;transform:translate(-50%,-50%);'
+    + 'background:#12122a;border:2px solid '+color+';border-radius:10px;'
+    + 'padding:10px 26px;color:'+color+';font-size:'+size+';font-weight:normal;'
+    + "font-family:'Jersey 10',Georgia,serif;z-index:8000;pointer-events:none;text-align:center;"
+    + 'animation:rank-pop 2.6s ease-out forwards';
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 2700);
+  if (rank === 1) _confetti();
+}
+
+function _confetti() {
+  var colors = ['#f0e080','#ff8080','#80ff80','#80c0ff','#ff80c0','#c080ff','#ffa060'];
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:7999;overflow:hidden';
+  document.body.appendChild(wrap);
+  for (var i = 0; i < 90; i++) {
+    var el = document.createElement('div');
+    var color = colors[Math.floor(Math.random()*colors.length)];
+    var x     = Math.random()*100;
+    var size  = 5 + Math.random()*9;
+    var delay = Math.random()*900;
+    var dur   = 1600 + Math.random()*1200;
+    var drift = Math.round((Math.random()-0.5)*160);
+    var spin  = Math.round((Math.random()>0.5?1:-1)*(360+Math.random()*360));
+    el.style.cssText = 'position:absolute;left:'+x+'%;top:-14px;width:'+size+'px;height:'+size+'px;'
+      + 'background:'+color+';border-radius:'+(Math.random()>0.5?'50%':'3px')+';'
+      + 'animation:confetti-fall '+dur+'ms '+delay+'ms ease-in forwards;'
+      + '--d:'+drift+'px;--s:'+spin+'deg';
+    wrap.appendChild(el);
+  }
+  setTimeout(function(){ if(wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 4000);
+}
+
 function runSolver() {
   if (!DICT) { toast('Dictionary still loading...'); return; }
 
   // Toggle off
   if (_solverRunning) {
     _solverRunning = false;
-    document.getElementById('solver-panel').innerHTML = '<div style="color:#a0a0c0;font-size:12px">Cancelled.</div>';
+    document.getElementById('solver-panel').innerHTML = '<div style="color:#a0a0c0;font-size:30px">Cancelled.</div>';
     return;
   }
   if (document.getElementById('solver-panel').style.display !== 'none') {
@@ -179,7 +309,7 @@ function runSolver() {
 
   var panel = document.getElementById('solver-panel');
   panel.style.display = 'block';
-  panel.innerHTML = '<div style="color:#a0a0c0;font-size:12px">Solving... 0%</div>';
+  panel.innerHTML = '<div style="color:#a0a0c0;font-size:30px">Solving... 0%</div>';
 
   // Build hand maps
   var handCounts = {}, handBestVariant = {}, handBestBlueBonus = {}, blankPool = [];
@@ -244,7 +374,7 @@ function runSolver() {
 
     var pct = Math.round(wi / words.length * 100);
     var bestTxt = best.length ? 'Best: ' + best[0].word + ' (' + best[0].score + 'pts)' : '';
-    panel.innerHTML = '<div style="color:#a0a0c0;font-size:12px">Solving... ' + pct + '%'
+    panel.innerHTML = '<div style="color:#a0a0c0;font-size:30px">Solving... ' + pct + '%'
       + (bestTxt ? '<br><span style="color:#80ff80">' + bestTxt + '</span>' : '') + '</div>';
 
     if (wi < words.length) {
@@ -260,7 +390,7 @@ function runSolver() {
 }
 
 function findBestMoveBackground(snap, onDone) {
-  if (!DICT || _solverRunning) { onDone(null); return; }
+  if (!DICT || _solverRunning || _rankSolving) { onDone(null); return; }
   _solverRunning = true;
   var origHand = S.hand, origBt = S.bt, origBoard = S.board;
   S.hand = snap.hand; S.bt = snap.bt; S.board = snap.board;
@@ -308,22 +438,22 @@ function findBestMoveBackground(snap, onDone) {
 function showSolverResults(results) {
   var panel = document.getElementById('solver-panel');
   if (!results.length) {
-    panel.innerHTML = '<div style="color:#a0a0c0;font-size:12px">No valid moves found.</div>'
-      + '<div style="font-size:9px;color:#504860;margin-top:6px;cursor:pointer" onclick="clearSolverPanel()">Dismiss</div>';
+    panel.innerHTML = '<div style="color:#a0a0c0;font-size:30px">No valid moves found.</div>'
+      + '<div style="font-size:32px;color:#504860;margin-top:6px;cursor:pointer" onclick="clearSolverPanel()">Dismiss</div>';
     return;
   }
-  var html = '<div style="color:#00e5ff;font-size:11px;font-weight:bold;margin-bottom:2px">Top Moves</div>'
-    + '<div style="font-size:9px;color:#404860;margin-bottom:5px">Click to auto-play</div>';
+  var html = '<div style="color:#00e5ff;font-size:30px;font-weight:normal;margin-bottom:2px">Top Moves</div>'
+    + '<div style="font-size:32px;color:#404860;margin-bottom:5px">Click to auto-play</div>';
   for (var i = 0; i < results.length; i++) {
     var res = results[i];
     var pos = rcl(res.r * B + res.c) + (res.isH ? '→' : '↓');
     html += '<div class="solver-row" onmouseenter="highlightSolverMove(' + i + ')" onmouseleave="clearSolverHighlight()" onclick="applySolverMove(' + i + ')">'
-      + '<span style="font-size:11px;color:#fff;font-weight:bold">' + res.word + '</span>'
-      + '<span style="font-size:9px;color:#7070a0;margin-left:4px">' + pos + '</span>'
-      + '<span style="font-size:10px;color:#80ff80;margin-left:auto">' + res.score + 'pt' + (res.score === 1 ? '' : 's') + '</span>'
+      + '<span style="font-size:30px;color:#fff;font-weight:normal">' + res.word + '</span>'
+      + '<span style="font-size:32px;color:#7070a0;margin-left:4px">' + pos + '</span>'
+      + '<span style="font-size:28px;color:#80ff80;margin-left:auto">' + res.score + 'pt' + (res.score === 1 ? '' : 's') + '</span>'
       + '</div>';
   }
-  html += '<div style="font-size:9px;color:#504860;margin-top:6px;cursor:pointer" onclick="clearSolverPanel()">Dismiss</div>';
+  html += '<div style="font-size:32px;color:#504860;margin-top:6px;cursor:pointer" onclick="clearSolverPanel()">Dismiss</div>';
   panel.innerHTML = html;
 }
 

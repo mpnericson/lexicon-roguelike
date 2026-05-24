@@ -48,6 +48,8 @@ function enterShopPhase(){
 }
 
 function leaveShop(){
+  achvCheck('shop_exit');
+  saveGame();
   if(S.pendingSquares.length>0){
     animShopToBoard(function(){ enterPlacingPhase(); });
   } else {
@@ -120,9 +122,9 @@ function renderShop(){
     var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
     var qty=d.qty||1;
     var card=document.createElement('div');card.className='shop-card';if(item.sold)card.style.opacity='0.4';
-    var qtyBadge=qty>1?'<span style="color:#f0e080;font-weight:bold">'+qty+'×</span> ':'';
-    card.innerHTML='<div class="scr '+rc+'">'+d.rarity+'</div><div class="scn" style="color:'+d.fg+'">'+d.icon+' '+qtyBadge+d.name+'</div><div class="scd">'+d.desc+'</div><div class="scc">$'+d.cost+'</div>';
-    if(!item.sold){var btn=document.createElement('button');btn.className='btn btn-gold';btn.style.cssText='padding:5px;font-size:11px;margin-top:0';btn.textContent='Buy';(function(j){btn.onclick=function(){buySq(j);};})(i);card.appendChild(btn);}
+    var qtyBadge=qty>1?'<span style="color:#f0e080;font-weight:normal">'+qty+'×</span> ':'';
+    card.innerHTML='<div class="scr '+rc+'">'+d.rarity+'</div><div class="scn" style="color:'+d.fg+'">'+sqIconHTML(d,20)+' '+qtyBadge+d.name+'</div><div class="scd">'+d.desc+'</div><div class="scc">$'+d.cost+'</div>';
+    if(!item.sold){var btn=document.createElement('button');btn.className='btn btn-gold';btn.style.cssText='padding:5px;font-size:30px;margin-top:0';btn.textContent='Buy';(function(j){btn.onclick=function(){buySq(j);};})(i);card.appendChild(btn);}
     sc.appendChild(card);
   }
   var varNames={gold:'Gold Tile',blue:'Blue Tile',red:'Red Tile'};
@@ -137,7 +139,7 @@ function renderShop(){
       +'<div class="scd">'+varDescs[tc.variant]+'</div>'
       +'<div class="scp">Base: '+(LS[tc.letter]||0)+' pts</div>'
       +'<div class="scc">$'+tc.cost+'</div>';
-    if(!tc.bought){var btn=document.createElement('button');btn.className='btn btn-gold';btn.style.cssText='padding:5px;font-size:11px;margin-top:0';btn.textContent='Buy';(function(j){btn.onclick=function(){buyTileCard(j);};})(i);card.appendChild(btn);}
+    if(!tc.bought){var btn=document.createElement('button');btn.className='btn btn-gold';btn.style.cssText='padding:5px;font-size:30px;margin-top:0';btn.textContent='Buy';(function(j){btn.onclick=function(){buyTileCard(j);};})(i);card.appendChild(btn);}
     sc.appendChild(card);
   }
   var pr=document.getElementById('shop-packs-row');pr.innerHTML='';
@@ -164,19 +166,19 @@ function renderShop(){
   })(bsqPacks[bpi]);}
   var br=document.getElementById('shop-bounties-row');br.innerHTML='';
   var bpool=shopPool.bounties||[];
-  if(!bpool.length){br.innerHTML='<div style="color:#6060a0;font-size:12px;padding:6px">No bounties available this visit.</div>';}
+  if(!bpool.length){br.innerHTML='<div style="color:#6060a0;font-size:30px;padding:6px">No bounties available this visit.</div>';}
   for(var bi=0;bi<bpool.length;bi++){
     var bitem=bpool[bi];
     var bcard=document.createElement('div');bcard.className='bounty-card';if(bitem.accepted)bcard.style.opacity='0.5';
     var _bvfg=bitem.variant==='gold'?'#f0c060':bitem.variant==='red'?'#ff8080':bitem.variant==='blue'?'#60b8ff':null;
-    var _bvLabel=bitem.variant?'<div style="font-size:9px;color:'+_bvfg+';font-weight:bold;margin-bottom:2px">'+bitem.variant.toUpperCase()+' BOUNTY — converts a tile on completion</div>':'';
-    bcard.innerHTML='<div style="font-size:10px;color:#9060b0;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Bounty</div>'
+    var _bvLabel=bitem.variant?'<div style="font-size:32px;color:'+_bvfg+';font-weight:normal;margin-bottom:2px">'+bitem.variant.toUpperCase()+' BOUNTY — converts a tile on completion</div>':'';
+    bcard.innerHTML='<div style="font-size:28px;color:#9060b0;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Bounty</div>'
       +_bvLabel
       +'<div style="margin:6px 0">'+wordAsTilesHTML(bitem.word,20)+'</div>'
       +'<div class="bounty-card-reward">Reward: +$'+bitem.reward+'</div>'
       +'<div class="bounty-card-cost">Cost: $'+bitem.cost+' to accept</div>';
-    if(!bitem.accepted){var bbtn=document.createElement('button');bbtn.className='btn btn-gold';bbtn.style.cssText='padding:5px;font-size:11px;margin-top:0';bbtn.textContent='Accept';(function(j){bbtn.onclick=function(){acceptBounty(j);};})(bi);bcard.appendChild(bbtn);}
-    else{bcard.innerHTML+='<div style="color:#60c060;font-size:10px;margin-top:4px">✓ Accepted</div>';}
+    if(!bitem.accepted){var bbtn=document.createElement('button');bbtn.className='btn btn-gold';bbtn.style.cssText='padding:5px;font-size:30px;margin-top:0';bbtn.textContent='Accept';(function(j){bbtn.onclick=function(){acceptBounty(j);};})(bi);bcard.appendChild(bbtn);}
+    else{bcard.innerHTML+='<div style="color:#60c060;font-size:28px;margin-top:4px">✓ Accepted</div>';}
     br.appendChild(bcard);
   }
   var alBtn=document.getElementById('alchemist-btn');
@@ -229,7 +231,7 @@ function openHammerModal(){renderHammerModal();document.getElementById('hammer-m
 function renderHammerModal(){
   var grid=document.getElementById('hammer-grid');grid.innerHTML='';
   var sorted=S.bag.slice().sort(function(a,b){return(a.letter||'_').localeCompare(b.letter||'_');});
-  if(!sorted.length){grid.innerHTML='<div style="color:#8880a8;font-size:13px">Bag is empty!</div>';return;}
+  if(!sorted.length){grid.innerHTML='<div style="color:#8880a8;font-size:32px">Bag is empty!</div>';return;}
   for(var i=0;i<sorted.length;i++){
     var tl=sorted[i];var s=document.createElement('div');s.className='h-tile'+(tl.variant?' var-'+tl.variant:'');
     s.style.cursor='pointer';s.style.position='relative';
@@ -265,7 +267,7 @@ function renderForgeModal(){
     grid.style.display='flex';opts.style.display='none';
     sub.textContent='Select a plain tile to enchant.';backBtn.textContent='← Back';
     var avail=S.bag.filter(function(t){return!t.variant;}).sort(function(a,b){return(a.letter||'_').localeCompare(b.letter||'_');});
-    if(!avail.length){grid.innerHTML='<div style="color:#8880a8;font-size:13px">No plain tiles to enchant!</div>';return;}
+    if(!avail.length){grid.innerHTML='<div style="color:#8880a8;font-size:32px">No plain tiles to enchant!</div>';return;}
     avail.forEach(function(tl){
       var s=document.createElement('div');s.className='h-tile';s.style.cursor='pointer';
       s.innerHTML='<span class="tl">'+(tl.isBlank?'?':tl.letter)+'</span><span class="ts">'+(tl.isBlank?0:(LS[tl.letter]||0))+'</span>';
@@ -304,8 +306,8 @@ function openPackReveal(name,contents){
     var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
     var qty=d.qty||1;
     var card=document.createElement('div');card.className='prc';
-    var qtyLine=qty>1?'<div style="font-size:12px;color:#f0e080;font-weight:bold;margin-bottom:2px">'+qty+'× bundle</div>':'';
-    card.innerHTML='<div style="font-size:20px;font-weight:bold;color:'+d.fg+'">'+d.icon+'</div><div style="font-size:13px;font-weight:bold;color:'+d.fg+'">'+d.name+'</div>'+qtyLine+'<div style="font-size:11px;color:#9090b0;margin:4px 0">'+d.desc+'</div><div class="scr '+rc+'" style="margin-top:4px">'+d.rarity+'</div>';
+    var qtyLine=qty>1?'<div style="font-size:30px;color:#f0e080;font-weight:normal;margin-bottom:2px">'+qty+'× bundle</div>':'';
+    card.innerHTML='<div style="font-size:20px;font-weight:normal;color:'+d.fg+'">'+sqIconHTML(d,28)+'</div><div style="font-size:32px;font-weight:normal;color:'+d.fg+'">'+d.name+'</div>'+qtyLine+'<div style="font-size:30px;color:#9090b0;margin:4px 0">'+d.desc+'</div><div class="scr '+rc+'" style="margin-top:4px">'+d.rarity+'</div>';
     (function(did,c){c.onclick=function(){var dq=sqd(did);var qty=(dq&&dq.qty)||1;for(var k=0;k<qty;k++)S.pendingSquares.push({id:did});c.classList.add('chosen');c.textContent=qty>1?qty+'× Queued!':'Queued!';var cs=grid.getElementsByClassName('prc');for(var k=0;k<cs.length;k++){cs[k].style.pointerEvents='none';cs[k].style.opacity='0.4';}c.style.opacity='1';setTimeout(function(){document.getElementById('pack-modal').style.display='none';enterShopPhase();},600);};})(contents[i],card);
     grid.appendChild(card);
   }

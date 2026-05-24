@@ -11,4 +11,15 @@ document.addEventListener('click',function(e){
   var dd=document.getElementById('menu-dropdown');
   if(dd&&m&&!m.contains(e.target))dd.style.display='none';
 });
-(async function(){await loadDict();startGame();requestAnimationFrame(hpStep);})();
+(async function(){
+  await loadDict();
+  buildSQMap();
+  achvInit();
+  if(hasSave()&&loadGame()){
+    resumeGame();
+    toast('Welcome back!');
+  } else {
+    startGame();
+  }
+  requestAnimationFrame(hpStep);
+})();

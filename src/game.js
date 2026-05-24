@@ -30,6 +30,7 @@ var BOUNTY_WORDS=[
 var S={};
 var DICT=null;
 var activeDrag=null;
+var _dragEndTime=0;
 var _hl=-1;
 var viewingBoard=false;
 var shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};
@@ -42,12 +43,14 @@ function buildBag(){
 }
 
 function startGame(seed){
+  clearSave();
   closeAllModals();
   var s=(seed!==undefined&&seed!==null)?((parseInt(seed)>>>0)||1):Math.floor(Math.random()*900000)+100000;
   _rngSeed(s);
   S={bag:buildBag(),hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),
-     ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtb:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,palUnlocked:false,devMode:false,
-     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bounties:[],bhMult:1};
+     ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,palUnlocked:false,devMode:false,
+     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bounties:[],bhMult:1,
+     lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0};
   window._easyHint=null;
   shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};activeDrag=null;
   document.getElementById('shop-screen').style.display='none';
@@ -79,6 +82,7 @@ function drawFull(){
     }
   }
   _scheduleEasyHint();
+  if (S.phase === 'play') _scheduleRankSolve();
 }
 
 var _easyHintTimer=null;
@@ -97,10 +101,13 @@ function _scheduleEasyHint(){
   },600);
 }
 
-function cb(){return ANTES[S.ai][S.bi];}
+function cb(){
+  if(S.endless)return['Endless '+S.endlessRound,'How far can you go?',Math.round(10000*Math.pow(1.4,S.endlessRound-1)),null];
+  return STAGES[S.ai][S.bi];
+}
 function tgt(){return cb()[2];}
 
-function blindComplete(){
+function roundComplete(){
   var reward=2+S.bi*2+(S.ai*2);
   var playsBonus=S.plays>0?S.plays:0;
   S.gold+=reward+playsBonus;
@@ -117,17 +124,21 @@ function blindComplete(){
   if(sheriffWord)msg+=' Sheriff: free bounty "'+sheriffWord+'"!';
   document.getElementById('round-msg').textContent=msg;
   document.getElementById('round-reward').textContent='+$'+(reward+playsBonus)+' gold';
+  S.roundsCompleted=(S.roundsCompleted||0)+1;
+  try{var _pb=parseInt(localStorage.getItem('lexicon_best_rounds')||'0');if(S.roundsCompleted>_pb)localStorage.setItem('lexicon_best_rounds',S.roundsCompleted);}catch(e){}
   document.getElementById('round-modal').style.display='flex';
+  saveGame();
+  achvCheck('round_complete');
 }
 
-function advanceBlind(){
+function advanceRound(){
   document.getElementById('round-modal').style.display='none';S.bi++;
-  var newAnte=S.bi>=3;
-  if(newAnte){S.ai++;S.bi=0;if(S.ai>=ANTES.length){showWin();return;}}
+  var newStage=S.bi>=3;
+  if(newStage){S.ai++;S.bi=0;if(S.ai>=STAGES.length){S.endless=true;S.endlessRound=(S.endlessRound||0)+1;}}
   if(typeof _resetZoom==='function')_resetZoom();
   animBoardToShop(function(){
-    if(newAnte){clearBoardLetters();S.bag=buildBag();toast('New ante — letters cleared, stickers kept!');}
-    S.score=0;S.plays=4;S.disc=3;S.wtb=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;S.palUnlocked=false;
+    if(newStage){clearBoardLetters();S.bag=buildBag();toast(S.endless?'Endless mode! Targets keep rising.':'New stage — letters cleared, stickers kept!');}
+    S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;S.palUnlocked=false;S.lastWordLen=0;
     S.pendingSquares=[];S.sqHand=[];S.sqStaged={};
     recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};enterShopPhase();
   });
@@ -136,12 +147,20 @@ function advanceBlind(){
 function showGO(msg){
   document.getElementById('gameover-msg').textContent=msg;
   var gbp=document.getElementById('gameover-best-play');if(gbp)gbp.style.display='none';
+  var ghs=document.getElementById('gameover-highscore');
+  if(ghs){
+    var _rc=S.roundsCompleted||0;
+    var _pb=0;try{_pb=parseInt(localStorage.getItem('lexicon_best_rounds')||'0');}catch(e){}
+    var _hsText='This run: '+_rc+' round'+(  _rc!==1?'s':'')+ ' completed';
+    if(_pb>0)_hsText+=' · Personal best: '+_pb+' round'+(_pb!==1?'s':'');
+    ghs.textContent=_hsText;
+  }
   document.getElementById('gameover-modal').style.display='flex';
 }
-function showWin(){document.getElementById('win-modal').style.display='flex';}
+function showWin(){clearSave();achvCheck('win');document.getElementById('win-modal').style.display='flex';}
 
 function closeAllModals(){
-  ['pack-modal','sq-modal','bag-modal','blank-modal','round-modal','gameover-modal','win-modal','hammer-modal','forge-modal','board-preview-modal','alchemist-modal','collection-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
+  ['pack-modal','sq-modal','bag-modal','blank-modal','round-modal','gameover-modal','win-modal','hammer-modal','forge-modal','board-preview-modal','alchemist-modal','collection-modal','achv-modal','seed-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
   document.getElementById('shop-screen').style.display='none';
 }
 
@@ -157,17 +176,18 @@ function openBagModal(){
 
   function secLabel(text){
     var l=document.createElement('div');
-    l.style.cssText='font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#8880a8;margin-bottom:4px';
+    l.style.cssText='font-size:32px;text-transform:uppercase;letter-spacing:1px;color:#8880a8;margin-bottom:4px';
     l.textContent=text;return l;
   }
-  function tileEl(letter,isBlank,sc,variant){
+  function tileEl(letter,isBlank,variant){
     var badge=variant==='gold'?'<span class="vbadge vbadge-gold">$</span>':
               variant==='blue'?'<span class="vbadge vbadge-blue">+'+(LS[letter]||0)+'</span>':
               variant==='red'?'<span class="vbadge vbadge-red">×2</span>':'';
+    var spr=tileSpr(isBlank?null:letter,isBlank,variant||null,44);
     var el=document.createElement('div');
-    el.className='tile'+(isBlank?' blank-t':'')+(variant?' var-'+variant:'');
-    el.style.cssText='width:44px;height:52px;position:relative;flex-shrink:0;cursor:default';
-    el.innerHTML='<span class="tl" style="font-size:18px">'+letter+'</span><span class="ts" style="font-size:7px">'+sc+'</span>'+badge;
+    el.className='tile tile-spr'+(isBlank?' blank-t':'')+(variant?' var-'+variant:'');
+    el.style.cssText='width:44px;height:44px;position:relative;flex-shrink:0;cursor:default;'+spr;
+    el.innerHTML=badge;
     return el;
   }
 
@@ -177,7 +197,7 @@ function openBagModal(){
     var vrow=document.createElement('div');vrow.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
     for(var i=0;i<variants.length;i++){
       var t=variants[i];
-      vrow.appendChild(tileEl(t.isBlank?'':t.letter,t.isBlank,t.isBlank?0:(LS[t.letter]||0),t.variant));
+      vrow.appendChild(tileEl(t.isBlank?'':t.letter,t.isBlank,t.variant));
     }
     vsec.appendChild(vrow);cont.appendChild(vsec);
   }
@@ -191,10 +211,10 @@ function openBagModal(){
     var ks=Object.keys(counts).sort();
     for(var i=0;i<ks.length;i++){
       var l=ks[i],cnt=counts[l],isBlank=(l==='_');
-      var el=tileEl(isBlank?'':l,isBlank,isBlank?0:(LS[l]||0),null);
+      var el=tileEl(isBlank?'':l,isBlank,null);
       if(cnt>1){
         var ct=document.createElement('span');
-        ct.style.cssText='position:absolute;top:1px;left:3px;font-size:8px;font-weight:bold;color:#2a1f0e;line-height:1';
+        ct.style.cssText='position:absolute;top:1px;left:3px;font-size:30px;font-weight:normal;color:#2a1f0e;line-height:1';
         ct.textContent='×'+cnt;el.appendChild(ct);
       }
       prow.appendChild(el);

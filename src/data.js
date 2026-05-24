@@ -15,17 +15,24 @@ var _rngState=0;
 function _rngSeed(s){_rngState=s>>>0;}
 function _rng(){_rngState=(_rngState+0x6D2B79F5)|0;var t=Math.imul(_rngState^_rngState>>>15,1|_rngState);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}
 function shuffle(a){var b=a.slice();for(var i=b.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var t=b[i];b[i]=b[j];b[j]=t;}return b;}
-function sqd(id){for(var i=0;i<SQ.length;i++)if(SQ[i].id===id)return SQ[i];return null;}
-function wordAsTilesHTML(word,sz){sz=sz||24;var h='<span style="display:inline-flex;gap:2px;flex-wrap:wrap">';for(var i=0;i<word.length;i++){var l=word[i],sc=LS[l]||0;h+='<span style="display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:'+sz+'px;height:'+sz+'px;background:#d4c5a0;border:2px solid #8B7355;border-radius:3px;position:relative;box-sizing:border-box;flex-shrink:0"><span style="font-size:'+Math.round(sz*0.5)+'px;font-weight:bold;color:#2a1f0e;line-height:1">'+l+'</span><span style="font-size:'+Math.max(5,Math.round(sz*0.2))+'px;color:#5a4530;position:absolute;bottom:1px;right:2px;line-height:1">'+sc+'</span></span>';}return h+'</span>';}
+// SQ_MAP is built by buildSQMap() in init.js after all sticker files load.
+var SQ_MAP = {};
+function buildSQMap(){SQ_MAP={};for(var i=0;i<SQ.length;i++)SQ_MAP[SQ[i].id]=SQ[i];}
+function sqd(id){return SQ_MAP[id]||null;}
+function sqIconHTML(d,sz){sz=sz||24;if(d&&d.iconPng)return '<img src="'+d.iconPng+'" width="'+sz+'" height="'+sz+'" style="image-rendering:pixelated;vertical-align:middle">';return d?d.icon:'';}
+function blankTileSpr(letter,variant,sz){var vr=variant==='blue'?2:variant==='red'?4:variant==='gold'?6:0;var li=letter?letter.charCodeAt(0)-65:-1;var col,row;if(li<0||li>25){col=10;row=vr+1;}else{col=li<16?li:li-16;row=vr+(li>=16?1:0);}return 'background-image:url(Assets/blank-tiles.png);background-size:'+(16*sz)+'px '+(8*sz)+'px;background-position:-'+(col*sz)+'px -'+(row*sz)+'px;background-repeat:no-repeat;image-rendering:pixelated;';}
+function tileSpr(letter,isBlank,variant,sz){var vr=variant==='blue'?2:variant==='red'?4:variant==='gold'?6:0;var col,row;if(isBlank||!letter){col=10;row=vr+1;}else{var li=letter.charCodeAt(0)-65;if(li<0||li>25){col=10;row=vr+1;}else{col=li<16?li:li-16;row=vr+(li>=16?1:0);}}return 'background-image:url(Assets/tile.png);background-size:'+(16*sz)+'px '+(8*sz)+'px;background-position:-'+(col*sz)+'px -'+(row*sz)+'px;background-repeat:no-repeat;image-rendering:pixelated;';}
+function wordAsTilesHTML(word,sz,variant){sz=sz||24;var h='<span style="display:flex;gap:2px;flex-wrap:nowrap;flex-shrink:1;min-width:0;align-items:center">';for(var i=0;i<word.length;i++){var spr=tileSpr(word[i],false,variant||null,sz);h+='<span style="display:inline-block;width:'+sz+'px;height:'+sz+'px;flex-shrink:0;'+spr+'"></span>';}return h+'</span>';}
 function rcl(i){return String.fromCharCode(65+i%B)+(Math.floor(i/B)+1);}
 
 var B=15;
 var LS={A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1,S:1,T:1,U:1,V:4,W:4,X:8,Y:4,Z:10};
 var DIST={A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1};
-var ANTES=[
+var STAGES=[
   [['','',40],['','',80],['Constraint','Use 5+ tiles.',130,'boss_long']],
   [['','',200],['','',350],['Constraint','Words score 0 until a palindrome is played.',550,'boss_pal']],
   [['','',800],['','',1300],['Constraint','Every word must contain a 5+ point tile.',2000,'boss_hv']],
+  [['','',3000],['','',5500],['Constraint','Each word must be longer than your previous word this round.',9000,'boss_longer']],
 ];
 
 var SQ=[
@@ -41,8 +48,8 @@ var SQ=[
   {id:'inkwell',name:'Inkwell',desc:'+$1 every word played.',rarity:'common',cost:4,bg:'#0a1a0a',fg:'#60d060',icon:'IK',onPost:function(w,st){st.gold=(st.gold||0)+1;}},
   {id:'babel',name:'Babel',desc:'6+ letter words: +2 mult.',rarity:'uncommon',cost:5,bg:'#2a1a00',fg:'#e0a040',icon:'BA',onPost:function(w,st){if(w.length>=6)st.gm=(st.gm||0)+2;}},
   {id:'rune',name:'Rune',desc:'Blank tiles score as highest-value letter.',rarity:'uncommon',cost:5,bg:'#2a0a2a',fg:'#e060e0',icon:'RU',priority:3,onPre:function(w,st){st.rune=true;}},
-  {id:'quill',name:'Quill',desc:'First word each blind: ×2 mult.',rarity:'rare',cost:7,bg:'#1a1a0a',fg:'#e0e060',icon:'QU',onPre:function(w,st){if((st.wtb||0)===0)st.quill=true;}},
-  {id:'tome',name:'Tome',desc:'Every 3 words this blind: +1 permanent mult.',rarity:'rare',cost:8,bg:'#1a0a0a',fg:'#e08060',icon:'TO',onPost:function(w,st){if(((st.wtb||0)+1)%3===0){st.ts=(st.ts||0)+1;}}},
+  {id:'quill',name:'Quill',desc:'First word each round: ×2 mult.',rarity:'rare',cost:7,bg:'#1a1a0a',fg:'#e0e060',icon:'QU',onPre:function(w,st){if((st.wtr||0)===0)st.quill=true;}},
+  {id:'tome',name:'Tome',desc:'Every 3 words this round: +1 permanent mult.',rarity:'rare',cost:8,bg:'#1a0a0a',fg:'#e08060',icon:'TO',onPost:function(w,st){if(((st.wtr||0)+1)%3===0){st.ts=(st.ts||0)+1;}}},
   {id:'magnet',name:'Magnet',desc:'All tiles adjacent to this sticker score double letter score.',rarity:'uncommon',cost:6,bg:'#2a0a3a',fg:'#c080ff',icon:'MG',type:'local',apply:function(tc,t,w,st){return{cb:0,mb:0};}},
   {id:'palindrome_engine',name:'Palindrome Engine',desc:'If the word is a palindrome, double the final score.',rarity:'rare',cost:8,bg:'#0a2a2a',fg:'#60ffff',icon:'PE',priority:-10,onPre:function(w,st){if(isExtendedPalindrome(w))st.palindrome=true;},onFinal:function(w,st,r){if(st.palindrome)return{total:r.total*2,scoreDouble:true};}},
   {id:'vowel_shrine',name:'Vowel Shrine',desc:'Vowels placed here score ×4 letter score.',rarity:'uncommon',cost:5,qty:2,bg:'#2a2800',fg:'#f0f060',icon:'VS',type:'local',apply:function(tc,t,w,st){if('AEIOU'.indexOf(t.letter)>=0)return{cb:tc*3,mb:0};return{cb:0,mb:0};}},
@@ -58,10 +65,10 @@ var SQ=[
   {id:'scholar',name:'Scholar',desc:'Words made only of 1-point tiles gain +6 multiplier.',rarity:'uncommon',cost:5,bg:'#0a1a2a',fg:'#80c0ff',icon:'SH',onPre:function(w,st){st.scholar=true;}},
   {id:'aristocrat',name:'Aristocrat',desc:'Words with an 8+ point tile gain +5 multiplier.',rarity:'uncommon',cost:5,bg:'#2a0a1a',fg:'#f080c0',icon:'AC',onPre:function(w,st){st.aristocrat=true;}},
   {id:'the_commons',name:'The Commons',desc:'Each 1-point tile in the word scores +3 bonus letter score.',rarity:'common',cost:4,bg:'#181818',fg:'#c0c0c0',icon:'TC',priority:1,onPre:function(w,st){st.the_commons=true;}},
-  {id:'pressure_cooker',name:'Pressure Cooker',desc:'Each discard this blind adds +1 mult to the next word.',rarity:'uncommon',cost:6,bg:'#2a0a0a',fg:'#f08060',icon:'PC',onPost:function(w,st){st.gm=(st.gm||0)+(S.discPressure||0);}},
+  {id:'pressure_cooker',name:'Pressure Cooker',desc:'Each discard this round adds +1 mult to the next word.',rarity:'uncommon',cost:6,bg:'#2a0a0a',fg:'#f08060',icon:'PC',onPost:function(w,st){st.gm=(st.gm||0)+(S.discPressure||0);}},
   {id:'tectonic',name:'Tectonic',desc:'7-tile bingo earns +$3 gold in addition to the +50 letter score bonus.',rarity:'uncommon',cost:5,bg:'#1a1a0a',fg:'#d0c060',icon:'TN'},
-  {id:'censor',name:'Censor',desc:'Removes your lowest-value tile at blind start; remaining tiles each score +2 letter score.',rarity:'uncommon',cost:6,bg:'#1a0a0a',fg:'#e06060',icon:'CN',priority:1,onPre:function(w,st){st.censor=true;}},
-  {id:'alchemist',name:'Alchemist',desc:'Once per blind: convert a hand tile into a blank that retains its letter score.',rarity:'rare',cost:10,bg:'#0a1a0a',fg:'#80f080',icon:'AL'},
+  {id:'censor',name:'Censor',desc:'Removes your lowest-value tile at round start; remaining tiles each score +2 letter score.',rarity:'uncommon',cost:6,bg:'#1a0a0a',fg:'#e06060',icon:'CN',priority:1,onPre:function(w,st){st.censor=true;}},
+  {id:'alchemist',name:'Alchemist',desc:'Once per round: convert a hand tile into a blank that retains its letter score.',rarity:'rare',cost:10,bg:'#0a1a0a',fg:'#80f080',icon:'AL'},
 ];
 
 var EASTER_EGGS=[

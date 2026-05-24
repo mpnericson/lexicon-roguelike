@@ -1,6 +1,30 @@
 // =====================================================================
-// STICKERS FINAL — final sticker set for release
-// Loaded after data.js; pushes definitions into SQ.
+// STICKERS FINAL — additional sticker definitions pushed into SQ.
+// Loaded after data.js. Call buildSQMap() (in init.js) after all sticker
+// files have loaded so sqd() reflects the full set.
+//
+// ADDING A NEW STICKER
+// --------------------
+// Push a definition object into SQ (here or in data.js):
+//   id        — unique kebab-case string
+//   name      — display name shown in shop / inspect
+//   desc      — one-line effect description
+//   rarity    — 'common' | 'uncommon' | 'rare' | 'legendary'
+//   cost      — shop buy price in $
+//   bg / fg   — card background / foreground colours
+//   icon      — 2-char (or emoji) label shown on the card
+//   tags      — optional string[] for filtering: 'multiplier','economy','board','letter'
+//
+// Effect hooks (choose what applies):
+//   type:'local'  apply(tc,t,w,st) → {cb, mb}   per-tile bonus chips / mult
+//   type:'board'  apply(tc,t,w,st) → {cb, mb}   placed on a board square
+//   onPre(w,st)                                  set flags before tile loop
+//   onPost(w,st)                                 accumulate globals after word total
+//   onFinal(w,st,r) → {total,...}                transform the final score
+//   priority    — lower fires earlier in the hook chain (default 0)
+//   applyAlways — true to run apply() even on pre-existing (non-new) tiles
+//
+// After adding, re-run the game — buildSQMap() picks it up automatically.
 // =====================================================================
 
 // ---- Chess piece aura helpers ----
@@ -68,28 +92,28 @@ function _chessHoverOff() {
 
 SQ.push(
   {id:'chess_knight', name:'Knight',
-   desc:'×3 chips to any word tile on an L-shape square from here. Comes as a pair.',
-   rarity:'rare', cost:10, qty:2, bg:'#1a1a2a', fg:'#d0d0f0', icon:'♞',
+   desc:'×3 letter score to any word tile on an L-shape square from here. Comes as a pair.',
+   rarity:'rare', cost:10, qty:2, bg:'#1a1a2a', fg:'#d0d0f0', icon:'♞', iconPng:'Assets/chess/knight.png',
    apply:function(tc,t,w,st){return{cb:0,mb:0};}},
 
   {id:'chess_bishop', name:'Bishop',
-   desc:'×3 chips to any word tile on a diagonal from here. Blocked by occupied squares. Comes as a pair.',
-   rarity:'rare', cost:10, qty:2, bg:'#2a1a08', fg:'#f0d080', icon:'♝',
+   desc:'×3 letter score to any word tile on a diagonal from here. Blocked by occupied squares. Comes as a pair.',
+   rarity:'rare', cost:10, qty:2, bg:'#2a1a08', fg:'#f0d080', icon:'♝', iconPng:'Assets/chess/bishop.png',
    apply:function(tc,t,w,st){return{cb:0,mb:0};}},
 
   {id:'chess_rook', name:'Rook',
-   desc:'×3 chips to any word tile on the same row or column. Blocked by occupied squares. Comes as a pair.',
-   rarity:'rare', cost:10, qty:2, bg:'#0a2a0a', fg:'#80f080', icon:'♜',
+   desc:'×3 letter score to any word tile on the same row or column. Blocked by occupied squares. Comes as a pair.',
+   rarity:'rare', cost:10, qty:2, bg:'#0a2a0a', fg:'#80f080', icon:'♜', iconPng:'Assets/chess/rook.png',
    apply:function(tc,t,w,st){return{cb:0,mb:0};}},
 
   {id:'chess_queen', name:'Queen',
-   desc:'×3 chips to any word tile in all 8 directions. Not blocked by tiles.',
-   rarity:'rare', cost:14, qty:1, bg:'#2a0a2a', fg:'#f080f0', icon:'♛',
+   desc:'×3 letter score to any word tile in all 8 directions. Not blocked by tiles.',
+   rarity:'rare', cost:14, qty:1, bg:'#2a0a2a', fg:'#f080f0', icon:'♛', iconPng:'Assets/chess/queen.png',
    apply:function(tc,t,w,st){return{cb:0,mb:0};}},
 
   {id:'chess_king', name:'King',
    desc:'Every square in any chess piece aura becomes a Triple Word square.',
-   rarity:'legendary', cost:20, qty:1, bg:'#1a1500', fg:'#ffd700', icon:'♚',
+   rarity:'legendary', cost:20, qty:1, bg:'#1a1500', fg:'#ffd700', icon:'♚', iconPng:'Assets/chess/king.png',
    onPre:function(w,st){st.chessKingActive=true;}}
 );
 

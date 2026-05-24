@@ -2,6 +2,76 @@
 // ANIM — cinematic transitions between play and shop phases
 // =====================================================================
 
+function animBountyComplete(chipIndex, boardIdxs) {
+  return new Promise(function(resolve) {
+    // Phase 1: gold pulse on board tiles + the bounty chip in the list
+    var tileEls = [];
+    for (var i = 0; i < boardIdxs.length; i++) {
+      var sq = document.querySelector('[data-sq-idx="' + boardIdxs[i] + '"]');
+      if (!sq) continue;
+      var tileEl = sq.querySelector('.board-tile');
+      if (!tileEl) tileEl = sq;
+      tileEl.classList.add('bounty-gold-pulse');
+      tileEls.push(tileEl);
+    }
+    var brow = document.getElementById('bounty-row');
+    var chips = brow ? Array.prototype.slice.call(brow.children) : [];
+    var chip = chipIndex < chips.length ? chips[chipIndex] : null;
+    if (chip) chip.classList.add('bounty-chip-pulse');
+
+    // Phase 2: pulse (500ms) + pause (400ms) then slide
+    setTimeout(function() {
+      for (var i = 0; i < tileEls.length; i++) tileEls[i].classList.remove('bounty-gold-pulse');
+      if (chip) chip.classList.remove('bounty-chip-pulse');
+
+      if (!chip) { resolve(); return; }
+
+      var belowChips = chips.slice(chipIndex + 1);
+      var chipR = chip.getBoundingClientRect();
+      var slideUp = chipR.height + 4; // height + gap
+
+      // Fixed clone escapes any overflow clipping on the panel
+      var clone = chip.cloneNode(true);
+      clone.style.cssText = 'position:fixed;left:' + chipR.left + 'px;top:' + chipR.top + 'px;'
+        + 'width:' + chipR.width + 'px;height:' + chipR.height + 'px;'
+        + 'z-index:9998;pointer-events:none;';
+      document.body.appendChild(clone);
+      chip.style.visibility = 'hidden';
+
+      var slideOutDur = 600;
+      var slideOutDist = chipR.left + chipR.width + 20;
+      var slideStart = performance.now();
+
+      // Phase 3: slide chip off to the left (cubic ease-in)
+      function animateSlide(now) {
+        var tOut = Math.min(1, (now - slideStart) / slideOutDur);
+        var eOut = tOut * tOut * tOut;
+        clone.style.transform = 'translateX(-' + (eOut * slideOutDist) + 'px)';
+        clone.style.opacity   = Math.max(0, 1 - tOut * 1.4) + '';
+        if (tOut < 1) { requestAnimationFrame(animateSlide); return; }
+
+        clone.remove();
+
+        // Phase 4: below chips slam up only after bounty is fully off screen
+        if (!belowChips.length) { resolve(); return; }
+        var slideUpDur = 500;
+        var upStart = performance.now();
+        function animateUp(now2) {
+          var tUp = Math.min(1, (now2 - upStart) / slideUpDur);
+          var eUp = tUp * tUp * tUp; // cubic ease-in: locked at zero, then builds
+          for (var j = 0; j < belowChips.length; j++)
+            belowChips[j].style.transform = 'translateY(-' + (eUp * slideUp) + 'px)';
+          if (tUp < 1) { requestAnimationFrame(animateUp); return; }
+          for (var j = 0; j < belowChips.length; j++) belowChips[j].style.transform = '';
+          resolve();
+        }
+        requestAnimationFrame(animateUp);
+      }
+      requestAnimationFrame(animateSlide);
+    }, 900);
+  });
+}
+
 function animBoardToShop(onDone) {
   var layer = document.getElementById('anim-layer');
   layer.innerHTML = '';
@@ -60,7 +130,8 @@ function _liftAndFly(tile, layer, tx, ty, flightDur, onDone) {
   var clone = document.createElement('div');
   clone.className = tile.el.className;
   clone.innerHTML = tile.el.innerHTML;
-  clone.style.cssText = 'position:fixed;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;z-index:810;pointer-events:none;transform-origin:center center;box-shadow:0 2px 0 #6b5535;border-radius:5px;';
+  var sprCss = tile.el.dataset.spr || '';
+  clone.style.cssText = 'position:fixed;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;z-index:810;pointer-events:none;transform-origin:center center;box-shadow:0 2px 0 #6b5535;border-radius:5px;'+sprCss;
   layer.appendChild(clone);
   tile.el.style.visibility = 'hidden';
 
@@ -222,7 +293,8 @@ function _burstTilesFromBag(els, bx, by, staggerT, onDone) {
       var clone = document.createElement('div');
       clone.className = el.className;
       clone.innerHTML = el.innerHTML;
-      clone.style.cssText = 'position:fixed;left:'+(bx-tw/2)+'px;top:'+(by-th/2)+'px;width:'+tw+'px;height:'+th+'px;z-index:810;pointer-events:none;transform-origin:center center;box-shadow:0 2px 0 #6b5535;border-radius:3px;transform:scale(0.1);';
+      var sprCss2 = el.dataset.spr || '';
+      clone.style.cssText = 'position:fixed;left:'+(bx-tw/2)+'px;top:'+(by-th/2)+'px;width:'+tw+'px;height:'+th+'px;z-index:810;pointer-events:none;transform-origin:center center;box-shadow:0 2px 0 #6b5535;border-radius:3px;transform:scale(0.1);'+sprCss2;
       layer.appendChild(clone);
 
       var cpx = (bx + tx) / 2 + (Math.random() - 0.5) * 130;
@@ -314,17 +386,16 @@ function animBoardZoomIn(half, onDone) {
   var sz = (BH - 42) / 15;
   var foldLine = Math.round(half === 'top' ? (21 + 8 * sz) : (19 + 7 * sz));
 
-  // No pointer-events:none — right-panel z-index is elevated by zoomBoard() in ui.js
   var clipEl = document.createElement('div');
   clipEl.style.cssText = [
     'position:fixed', 'left:' + r.left + 'px', 'top:' + r.top + 'px',
     'width:' + (window.innerWidth - r.left) + 'px', 'height:' + BH + 'px',
-    'overflow:hidden', 'z-index:800'
+    'overflow:hidden', 'z-index:860', 'pointer-events:none'
   ].join(';');
   document.body.appendChild(clipEl);
 
   var scaleEl = document.createElement('div');
-  scaleEl.style.cssText = 'position:absolute;left:0;top:0;width:' + W + 'px;height:' + BH + 'px;transform-origin:left top;';
+  scaleEl.style.cssText = 'position:absolute;left:0;top:0;width:' + W + 'px;height:' + BH + 'px;transform-origin:left top;pointer-events:auto;';
   clipEl.appendChild(scaleEl);
 
   var perspEl = document.createElement('div');
@@ -497,10 +568,13 @@ function _closeBoard(onDone) {
   var fold = _makeBoardFold(boardEl, false); // board starts flat
   var perspCont = fold.perspCont, topWrap = fold.topWrap, botWrap = fold.botWrap, BH = fold.BH;
   var bg = getComputedStyle(document.body).backgroundColor || '#0f0f1e';
+  perspCont.style.background = bg; // fill area outside fold halves as perspCont scales past board edges
 
   var fillScale = fold.fillScale;
+  var coverScale = fillScale / 1.2; // scale at which perspCont exactly covers viewport (no overshoot margin)
   var dur = 950;
   var start = performance.now();
+  var onDoneScheduled = false;
 
   // Three-phase snap: slow linear creep → explosive snap (with overshoot) → elastic settle
   function snapEase(t) {
@@ -513,14 +587,20 @@ function _closeBoard(onDone) {
     var t = Math.min(1, (now - start) / dur);
     var e = snapEase(t);
     var eScale = Math.pow(t, 0.4); // aggressively front-loaded — full coverage before snap fires
+    var currentScale = 1 + eScale * (fillScale - 1);
 
     topWrap.style.transform = 'rotateX('+(-e * 90)+'deg)';
     botWrap.style.transform = 'rotateX('+(e * 90)+'deg)';
-    perspCont.style.transform = 'scale('+(1 + eScale * (fillScale - 1))+')';
+    perspCont.style.transform = 'scale('+currentScale+')';
+
+    // Fire onDone the first frame the overlay fully covers the viewport — shop loads behind it
+    if (!onDoneScheduled && currentScale >= coverScale) {
+      onDoneScheduled = true;
+      onDone();
+    }
 
     if (t < 1) { requestAnimationFrame(step); return; }
 
-    onDone(); // shop renders behind still-visible overlay
     var fo = performance.now();
     function fadeOverlay(n) {
       var ft = Math.min(1, (n - fo) / 120);
