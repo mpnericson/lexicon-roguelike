@@ -72,6 +72,57 @@ function animBountyComplete(chipIndex, boardIdxs) {
   });
 }
 
+function _bagSpriteShow(bagEl) {
+  var DISPLAY_SZ = 230;
+  var bagR = bagEl.getBoundingClientRect();
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;z-index:820;pointer-events:none;'
+    + 'left:' + (bagR.left + bagR.width / 2 - DISPLAY_SZ / 2) + 'px;'
+    + 'top:' + (bagR.top + bagR.height / 2 - DISPLAY_SZ / 2) + 'px;'
+    + 'width:' + DISPLAY_SZ + 'px;height:' + DISPLAY_SZ + 'px;';
+  var img = document.createElement('img');
+  img.style.cssText = 'width:100%;height:100%;image-rendering:pixelated;display:block;';
+  img.src = 'Assets/bag-frame0.png';
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+  bagEl.style.visibility = 'hidden';
+  return {overlay: overlay, img: img, shakeInterval: null};
+}
+
+function _bagSpriteIntro(state, onDone) {
+  var frames = [0,1,2,3,4,5];
+  var fi = 0;
+  function next() {
+    state.img.src = 'Assets/bag-frame' + frames[fi] + '.png';
+    fi++;
+    if (fi < frames.length) setTimeout(next, 80);
+    else onDone();
+  }
+  next();
+}
+
+function _bagSpriteShakeStart(state) {
+  var frames = [6,7,8,9];
+  var fi = 0;
+  state.shakeInterval = setInterval(function() {
+    state.img.src = 'Assets/bag-frame' + frames[fi % frames.length] + '.png';
+    fi++;
+  }, 100);
+}
+
+function _bagSpriteOutro(state, bagEl, onDone) {
+  if (state.shakeInterval) { clearInterval(state.shakeInterval); state.shakeInterval = null; }
+  var frames = [10,11,12,13];
+  var fi = 0;
+  function next() {
+    state.img.src = 'Assets/bag-frame' + frames[fi] + '.png';
+    fi++;
+    if (fi < frames.length) setTimeout(next, 80);
+    else { state.overlay.remove(); bagEl.style.visibility = ''; if(window._bagSpriteReset)window._bagSpriteReset(); onDone(); }
+  }
+  next();
+}
+
 function animBoardToShop(onDone) {
   var layer = document.getElementById('anim-layer');
   layer.innerHTML = '';
@@ -92,33 +143,27 @@ function animBoardToShop(onDone) {
   var shuffled = shuffle(tiles.slice());
   var N = shuffled.length;
 
-  bagEl.classList.add('bag-vacuuming');
+  if (N === 0) { _closeBoard(onDone); return; }
 
-  if (N === 0) { _closeBoard(function(){ bagEl.classList.remove('bag-vacuuming'); onDone(); }); return; }
+  var bagState = _bagSpriteShow(bagEl);
+  // Play intro, then start shake loop
+  _bagSpriteIntro(bagState, function() { _bagSpriteShakeStart(bagState); });
 
-  // sqrt stagger: slow start accelerating to fast finish (vacuum turning up)
   var T = 1500;
   var done = 0;
-  var lastBounce = 0;
 
   for (var i = 0; i < N; i++) {
     (function(tile, idx) {
       var delay = T * Math.sqrt(idx / N);
       var flightDur = Math.max(200, 680 - 460 * (idx / N));
-
       setTimeout(function() {
         _liftAndFly(tile, layer, tx, ty, flightDur, function() {
-          var now = Date.now();
-          if (now - lastBounce > 75) {
-            lastBounce = now;
-            bagEl.classList.remove('bag-absorb');
-            void bagEl.offsetWidth;
-            bagEl.classList.add('bag-absorb');
-          }
           done++;
-          if (done === N) setTimeout(function() {
-            _closeBoard(function(){ bagEl.classList.remove('bag-vacuuming'); onDone(); });
-          }, 80);
+          if (done === N) {
+            _bagSpriteOutro(bagState, bagEl, function() {
+              setTimeout(function() { _closeBoard(onDone); }, 80);
+            });
+          }
         });
       }, delay);
     })(shuffled[i], i);
@@ -347,12 +392,10 @@ function _burstBoardTiles(onDone) {
   var N = tiles.length;
   if (N === 0) { onDone(); return; }
 
-  bagEl.classList.add('bag-vacuuming');
   var shuffled = shuffle(tiles.slice());
 
   _burstTilesFromBag(shuffled, bx, by, 900, function() {
-    bagEl.classList.remove('bag-vacuuming');
-    setTimeout(onDone, 80); // brief pause before hand tiles burst
+    setTimeout(onDone, 80);
   });
 }
 
@@ -370,11 +413,7 @@ function _burstHandTiles() {
   var N = handEls.length;
   if (N === 0) return;
 
-  bagEl.classList.add('bag-vacuuming');
-
-  _burstTilesFromBag(handEls, bx, by, 180, function() {
-    bagEl.classList.remove('bag-vacuuming');
-  });
+  _burstTilesFromBag(handEls, bx, by, 180, null);
 }
 
 function animBoardZoomIn(half, onDone) {

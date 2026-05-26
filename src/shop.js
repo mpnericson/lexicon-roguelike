@@ -20,34 +20,51 @@ function wrandN(pool,w,n){
   return out;
 }
 
+var ALL_PACK_TYPES=[
+  {type:'sticker',label:'Sticker Pack',desc:'3 random stickers — choose one to keep.',cost:3},
+  {type:'tile',label:'Tile Pack',desc:'5 tiles — mix of basic and enchanted.',cost:3},
+  {type:'sq',sqId:'dl',label:'6× Double Letter',desc:'6 DL squares — letter scores ×2.',cost:3},
+  {type:'sq',sqId:'tl',label:'4× Triple Letter',desc:'4 TL squares — letter scores ×3.',cost:3},
+  {type:'sq',sqId:'dw',label:'3× Double Word',desc:'3 DW squares — word scores ×2.',cost:3},
+  {type:'sq',sqId:'tw',label:'2× Triple Word',desc:'2 TW squares — word scores ×3.',cost:3},
+];
+
 function refreshShop(){
   shopPool.sq=[];
   var sqIds=wrandN(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8,legendary:0.1},3);
   for(var i=0;i<sqIds.length;i++)shopPool.sq.push({id:sqIds[i],sold:false});
-  var offered=shuffle(['gold','blue','red']).slice(0,2);
-  var vcosts={gold:4,blue:5,red:6};
-  var tileLetters=shuffle(Object.keys(LS));
-  shopPool.tileCards=offered.map(function(v,i){return{letter:tileLetters[i],variant:v,cost:vcosts[v],bought:false,id:uid()};});
-  shopPool.tilePack={sold:false};
-  shopPool.sqPacks={dl:{sold:false},tl:{sold:false},dw:{sold:false},tw:{sold:false}};
+  var shuffledPacks=shuffle(ALL_PACK_TYPES.slice());
+  shopPool.packs=shuffledPacks.slice(0,2).map(function(p){return{type:p.type,sqId:p.sqId||null,label:p.label,desc:p.desc,cost:p.cost,sold:false};});
   var bwCopy=BOUNTY_WORDS.slice();
   for(var i=bwCopy.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var tmp=bwCopy[i];bwCopy[i]=bwCopy[j];bwCopy[j]=tmp;}
   var activeWords=(S.bounties||[]).map(function(b){return b.word;});
   var BVARIANTS=['gold','red','blue'];
   shopPool.bounties=bwCopy.filter(function(b){return activeWords.indexOf(b.word)<0;}).slice(0,3).map(function(b){
     var variant=_rng()<0.05?BVARIANTS[Math.floor(_rng()*BVARIANTS.length)]:null;
-    return{word:b.word,cost:b.cost+(variant?1:0),reward:b.reward+(variant?2:0),accepted:false,variant:variant||null};
+    return{word:b.word,cost:2,reward:b.reward+(variant?2:0),accepted:false,variant:variant||null};
   });
+  shopPool.slotSpinCost=4;
+  shopPool.slotSpinsThisVisit=0;
+  shopPool.slotResult=null;
+  shopPool.bagEnchantUsed=false;
+  shopPool.bagDestroyUsed=false;
+  shopPool.bagDupUsed=false;
+  shopPool.tileCards=[];
 }
 
 function enterShopPhase(){
   S.phase='shop';
   if(!shopPool.sq.length)refreshShop();
+  var rp=document.getElementById('slot-result-panel');if(rp)rp.style.display='none';
+  var bu=document.getElementById('shop-bag-ui');if(bu)bu.style.display='none';
   renderShop();
   document.getElementById('shop-screen').style.display='flex';
+  initShopUI();
 }
 
 function leaveShop(){
+  _stopSignAnim();
+  _stopReels();
   achvCheck('shop_exit');
   saveGame();
   if(S.pendingSquares.length>0){
@@ -111,78 +128,355 @@ function cancelDevPlacing(){
 function openShop(){enterShopPhase();}
 
 function renderShop(){
-  document.getElementById('shop-sub').textContent='Gold: $'+S.gold;
+  var sub=document.getElementById('shop-sub');if(sub)sub.textContent='Gold: $'+S.gold;
+  var goldEl=document.getElementById('shop-gold-display');if(goldEl)goldEl.textContent='$'+S.gold;
   var n=S.pendingSquares.length;
   var qbar=document.getElementById('shop-queue-bar');
-  qbar.style.display=n>0?'block':'none';
-  qbar.textContent=n+' sticker'+(n!==1?'s':'')+' queued — leave shop to place '+(n===1?'it':'them')+'.';
-  var sc=document.getElementById('shop-cards');sc.innerHTML='';
-  for(var i=0;i<shopPool.sq.length;i++){
-    var item=shopPool.sq[i];var d=sqd(item.id);if(!d)continue;
-    var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
-    var qty=d.qty||1;
-    var card=document.createElement('div');card.className='shop-card';if(item.sold)card.style.opacity='0.4';
-    var qtyBadge=qty>1?'<span style="color:#f0e080;font-weight:normal">'+qty+'×</span> ':'';
-    card.innerHTML='<div class="scr '+rc+'">'+d.rarity+'</div><div class="scn" style="color:'+d.fg+'">'+sqIconHTML(d,20)+' '+qtyBadge+d.name+'</div><div class="scd">'+d.desc+'</div><div class="scc">$'+d.cost+'</div>';
-    if(!item.sold){var btn=document.createElement('button');btn.className='btn btn-gold';btn.style.cssText='padding:5px;font-size:30px;margin-top:0';btn.textContent='Buy';(function(j){btn.onclick=function(){buySq(j);};})(i);card.appendChild(btn);}
-    sc.appendChild(card);
+  if(qbar){qbar.style.display=n>0?'block':'none';qbar.textContent=n+' sticker'+(n!==1?'s':'')+' queued — leave to place '+(n===1?'it':'them')+'.';}
+  var priceEl=document.getElementById('shop-slot-price');
+  if(priceEl)priceEl.textContent='$'+(shopPool.slotSpinCost||4);
+  var sqItems=shopPool.sq||[];
+  for(var pi=0;pi<2;pi++){
+    var box=document.getElementById('shop-pack-'+pi);if(!box)continue;
+    var item=sqItems[pi];
+    if(!item){box.innerHTML='';box.className='shop-pack-box';box.onclick=null;continue;}
+    var d=sqd(item.id);if(!d){box.innerHTML='';continue;}
+    var iconHtml=d.iconPng
+      ?'<img src="'+d.iconPng+'" style="max-width:80%;max-height:80%;image-rendering:pixelated;display:block">'
+      :'<span style="font-size:clamp(18px,8vw,130px);line-height:1">'+d.icon+'</span>';
+    box.innerHTML='<div class="shop-pack-icon">'+iconHtml+'</div><div class="shop-pack-cost" style="color:'+d.fg+'">'+'$'+d.cost+'</div>';
+    box.className='shop-pack-box'+(item.sold?' sold':'');
+    if(!item.sold){(function(idx){box.onclick=function(){buySq(idx);};})(pi);}else box.onclick=null;
   }
-  var varNames={gold:'Gold Tile',blue:'Blue Tile',red:'Red Tile'};
-  var varDescs={gold:'+$1 when scored',blue:'Score grows each play',red:'Triggers twice'};
-  var varFgs={gold:'#f0c060',blue:'#60b8ff',red:'#ff8080'};
-  for(var i=0;i<shopPool.tileCards.length;i++){
-    var tc=shopPool.tileCards[i];
-    var card=document.createElement('div');card.className='shop-card';if(tc.bought)card.style.opacity='0.4';
-    card.style.borderColor=tc.variant==='gold'?'#7a5800':tc.variant==='blue'?'#1a4080':'#7a1818';
-    card.innerHTML='<div class="scr" style="color:'+varFgs[tc.variant]+'">'+varNames[tc.variant]+'</div>'
-      +'<div class="scn" style="font-size:26px;color:'+varFgs[tc.variant]+'">'+tc.letter+'</div>'
-      +'<div class="scd">'+varDescs[tc.variant]+'</div>'
-      +'<div class="scp">Base: '+(LS[tc.letter]||0)+' pts</div>'
-      +'<div class="scc">$'+tc.cost+'</div>';
-    if(!tc.bought){var btn=document.createElement('button');btn.className='btn btn-gold';btn.style.cssText='padding:5px;font-size:30px;margin-top:0';btn.textContent='Buy';(function(j){btn.onclick=function(){buyTileCard(j);};})(i);card.appendChild(btn);}
-    sc.appendChild(card);
-  }
-  var pr=document.getElementById('shop-packs-row');pr.innerHTML='';
-  var ap=document.createElement('div');ap.className='pack-card';
-  ap.innerHTML='<div class="pn">Sticker Pack</div><div class="pd">3 random stickers — choose one to keep.</div><div class="pc">$3</div>';
-  ap.onclick=function(){buyArcanePack();};pr.appendChild(ap);
-  var tp=document.createElement('div');tp.className='pack-card';if(shopPool.tilePack&&shopPool.tilePack.sold)tp.style.opacity='0.4';
-  tp.innerHTML='<div class="pn">Tile Pack</div><div class="pd">5 tiles — mix of basic and enchanted.</div><div class="pc">$3</div>';
-  if(!shopPool.tilePack||!shopPool.tilePack.sold)tp.onclick=function(){buyTilePack();};
-  pr.appendChild(tp);
-  var bsqPacks=[
-    {id:'dl',label:'6× Double Letter',desc:'6 DL squares — letter scores ×2.'},
-    {id:'tl',label:'4× Triple Letter',desc:'4 TL squares — letter scores ×3.'},
-    {id:'dw',label:'3× Double Word',desc:'3 DW squares — word scores ×2.'},
-    {id:'tw',label:'2× Triple Word',desc:'2 TW squares — word scores ×3.'},
-  ];
-  for(var bpi=0;bpi<bsqPacks.length;bpi++){(function(bp){
-    var d=sqd(bp.id);if(!d)return;
-    var sold=shopPool.sqPacks&&shopPool.sqPacks[bp.id]&&shopPool.sqPacks[bp.id].sold;
-    var pc=document.createElement('div');pc.className='pack-card';if(sold)pc.style.opacity='0.4';
-    pc.innerHTML='<div class="pn" style="color:'+d.fg+'">'+bp.label+'</div><div class="pd">'+bp.desc+'</div><div class="pc">$3</div>';
-    if(!sold)pc.onclick=function(){buyBonusSqPack(bp.id);};
-    pr.appendChild(pc);
-  })(bsqPacks[bpi]);}
-  var br=document.getElementById('shop-bounties-row');br.innerHTML='';
-  var bpool=shopPool.bounties||[];
-  if(!bpool.length){br.innerHTML='<div style="color:#6060a0;font-size:30px;padding:6px">No bounties available this visit.</div>';}
-  for(var bi=0;bi<bpool.length;bi++){
-    var bitem=bpool[bi];
-    var bcard=document.createElement('div');bcard.className='bounty-card';if(bitem.accepted)bcard.style.opacity='0.5';
-    var _bvfg=bitem.variant==='gold'?'#f0c060':bitem.variant==='red'?'#ff8080':bitem.variant==='blue'?'#60b8ff':null;
-    var _bvLabel=bitem.variant?'<div style="font-size:32px;color:'+_bvfg+';font-weight:normal;margin-bottom:2px">'+bitem.variant.toUpperCase()+' BOUNTY — converts a tile on completion</div>':'';
-    bcard.innerHTML='<div style="font-size:28px;color:#9060b0;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">Bounty</div>'
-      +_bvLabel
-      +'<div style="margin:6px 0">'+wordAsTilesHTML(bitem.word,20)+'</div>'
-      +'<div class="bounty-card-reward">Reward: +$'+bitem.reward+'</div>'
-      +'<div class="bounty-card-cost">Cost: $'+bitem.cost+' to accept</div>';
-    if(!bitem.accepted){var bbtn=document.createElement('button');bbtn.className='btn btn-gold';bbtn.style.cssText='padding:5px;font-size:30px;margin-top:0';bbtn.textContent='Accept';(function(j){bbtn.onclick=function(){acceptBounty(j);};})(bi);bcard.appendChild(bbtn);}
-    else{bcard.innerHTML+='<div style="color:#60c060;font-size:28px;margin-top:4px">✓ Accepted</div>';}
-    br.appendChild(bcard);
+  var blist=document.getElementById('shop-bounty-list');
+  if(blist){
+    blist.innerHTML='';
+    var bpool=shopPool.bounties||[];
+    if(!bpool.length){var nem=document.createElement('div');nem.style.cssText='font-size:clamp(6px,0.9vw,14px);color:#6060a0';nem.textContent='No bounties';blist.appendChild(nem);}
+    var bCanvasW=Math.min(window.innerWidth,window.innerHeight*16/9);
+    var bListInnerW=bCanvasW*0.25*0.94;
+    // chip has padding:4% 3% (another 0.94×), worst case 6-letter word + reward = 7 items with 13px gaps
+    var bTileSz=Math.max(12,Math.floor((bListInnerW*0.94-21)/7));
+    for(var bi=0;bi<bpool.length;bi++){
+      var b=bpool[bi];
+      var item=document.createElement('div');item.className='shop-bounty-item';
+      var chip=document.createElement('div');chip.className='shop-bounty-chip';
+      chip.innerHTML=wordAsTilesHTML(b.word,bTileSz,b.variant||null);
+      if(!b.accepted){
+        var bbtn=document.createElement('button');bbtn.className='shop-bounty-accept-btn';
+        bbtn.textContent='$'+b.reward;
+        bbtn.style.height=bTileSz+'px';bbtn.style.fontSize=Math.round(bTileSz*0.48)+'px';
+        (function(j){bbtn.onclick=function(){acceptBounty(j);};})(bi);
+        chip.appendChild(bbtn);
+      } else {
+        var adiv=document.createElement('div');adiv.className='shop-bounty-done';adiv.textContent='✓';
+        adiv.style.height=bTileSz+'px';adiv.style.fontSize=Math.round(bTileSz*0.48)+'px';
+        chip.appendChild(adiv);
+      }
+      item.appendChild(chip);
+      blist.appendChild(item);
+    }
   }
   var alBtn=document.getElementById('alchemist-btn');
-  if(alBtn){var hasAl=false;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='alchemist'){hasAl=true;break;}alBtn.style.display=hasAl?'block':'none';if(S.alchemistUsed)alBtn.style.opacity='0.4';}
+  if(alBtn){var hasAl=false;for(var _ai=0;_ai<S.placed.length;_ai++)if(S.placed[_ai].id==='alchemist'){hasAl=true;break;}alBtn.style.display=hasAl?'':'none';alBtn.style.opacity=S.alchemistUsed?'0.4':'';}
+}
+
+function _sqBigIcon(d){
+  if(!d)return'';
+  if(d.iconPng)return'<img src="'+d.iconPng+'" style="max-width:80%;max-height:70%;image-rendering:pixelated;display:block;margin:0 auto">';
+  return'<span>'+d.icon+'</span>';
+}
+
+// ── SHOP UI INIT ──
+function initShopUI(){
+  _initSlotHandle();
+  _initSignAnim();
+  _initShopBag();
+  _initReels();
+}
+
+function _initSignAnim(){
+  _stopSignAnim();
+  var bg=document.getElementById('shop-bg');if(!bg)return;
+  var frame=0;
+  window._shopSignTimer=setInterval(function(){
+    frame=1-frame;
+    bg.src='Assets/shop-bg-frame'+frame+'.png';
+  },900);
+}
+
+function _stopSignAnim(){
+  if(window._shopSignTimer){clearInterval(window._shopSignTimer);window._shopSignTimer=null;}
+  var bg=document.getElementById('shop-bg');
+  if(bg)bg.src='Assets/shop-bg-frame0.png';
+}
+
+function _initSlotHandle(){
+  var hit=document.getElementById('shop-handle-hit');
+  var img=document.getElementById('shop-handle-img');
+  if(!hit||!img)return;
+  var fresh=hit.cloneNode(true);hit.parentNode.replaceChild(fresh,hit);hit=fresh;
+
+  var dragging=false,startY=0;
+  function canvasH(){var c=document.getElementById('shop-canvas');return c?c.getBoundingClientRect().height:400;}
+  function frameFromDy(dy){return Math.min(7,Math.max(0,Math.round(dy/(canvasH()*0.208)*7)));}
+  function setFrame(f,hl){img.src='Assets/slot-handle-'+(hl?'hl-':'')+'frame'+f+'.png';}
+
+  hit.addEventListener('pointerdown',function(e){
+    dragging=true;startY=e.clientY;setFrame(0,true);
+    hit.setPointerCapture(e.pointerId);e.preventDefault();
+  });
+  hit.addEventListener('pointermove',function(e){
+    if(!dragging)return;
+    setFrame(frameFromDy(Math.max(0,e.clientY-startY)),true);
+  });
+  function onRelease(e){
+    if(!dragging)return;dragging=false;
+    var finalFrame=frameFromDy(Math.max(0,(e.clientY||startY)-startY));
+    var didSpin=finalFrame>=5;
+    var f=finalFrame;
+    var t=setInterval(function(){f--;if(f<=0){clearInterval(t);setFrame(0,false);if(didSpin)spinSlots();}else setFrame(f,false);},55);
+  }
+  hit.addEventListener('pointerup',onRelease);
+  hit.addEventListener('pointercancel',onRelease);
+}
+
+function _initShopBag(){
+  var btn=document.getElementById('shop-bag-btn');
+  var spr=document.getElementById('shop-bag-sprite');
+  if(!btn||!spr)return;
+  var fresh=btn.cloneNode(true);btn.parentNode.replaceChild(fresh,btn);
+  btn=fresh;spr=fresh.querySelector('img');
+  var frame=0,dir=0,timer=null,MAX=4,MS=70;
+  function tick(){timer=null;frame=Math.max(0,Math.min(MAX,frame+dir));spr.src='Assets/bag-hl-frame'+frame+'.png';
+    if(dir===1&&frame<MAX)timer=setTimeout(tick,MS);
+    else if(dir===-1&&frame>0)timer=setTimeout(tick,MS);
+    else if(dir===-1&&frame===0)spr.src='Assets/bag-frame0.png';}
+  btn.addEventListener('mouseenter',function(){if(timer){clearTimeout(timer);timer=null;}dir=1;spr.src='Assets/bag-hl-frame'+frame+'.png';if(frame<MAX)timer=setTimeout(tick,MS);});
+  btn.addEventListener('mouseleave',function(){if(timer){clearTimeout(timer);timer=null;}dir=-1;if(frame>0)timer=setTimeout(tick,MS);else spr.src='Assets/bag-frame0.png';});
+}
+
+// ── REEL SYSTEM ──
+var _reels=null,_reelAF=null,_reelLastTime=0,_reelResultShown=false;
+var REEL_IDLE_SPEED=30,REEL_FAST_SPEED=3000,REEL_DECEL_DIST=250;
+
+function _initReels(){
+  _stopReels();
+  _reelResultShown=false;
+  var allIds=SQ.map(function(d){return d.id;});
+  function cosmShuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+  _reels=[];
+  for(var ri=0;ri<3;ri++){
+    var el=document.getElementById('shop-reel-'+(ri+1));
+    if(!el){_reels.push(null);continue;}
+    el.innerHTML='';
+    var rect=el.getBoundingClientRect();
+    var itemH=rect.height||40;
+    var items=cosmShuffle(allIds);
+    var N=items.length;
+    var loopLen=N*itemH;
+    var strip=document.createElement('div');
+    strip.className='reel-strip';
+    strip.style.height=(3*N*itemH)+'px';
+    for(var pass=0;pass<3;pass++){
+      for(var ii=0;ii<N;ii++){
+        var d=sqd(items[ii]);if(!d)continue;
+        var item=document.createElement('div');
+        item.className='reel-item';
+        item.style.height=itemH+'px';
+        item.dataset.sqid=items[ii];
+        var iconHtml=d.iconPng?'<img src="'+d.iconPng+'" alt="">':d.icon;
+        item.innerHTML='<div class="reel-icon">'+iconHtml+'</div>'
+          +'<div class="reel-name" style="color:'+d.fg+'">'+d.name+'</div>';
+        strip.appendChild(item);
+      }
+    }
+    el.appendChild(strip);
+    var startOff=Math.random()*loopLen;
+    strip.style.transform='translateY(-'+startOff+'px)';
+    _reels.push({el:el,strip:strip,items:items,itemH:itemH,N:N,
+      offset:startOff,speed:REEL_IDLE_SPEED,stopping:false,
+      targetOffset:0,stopped:false,resultId:null});
+  }
+  _reelLastTime=performance.now();
+  _reelAF=requestAnimationFrame(_reelLoop);
+}
+
+function _reelLoop(ts){
+  if(!_reels)return;
+  var dt=Math.min((ts-_reelLastTime)/1000,0.05);
+  _reelLastTime=ts;
+  for(var ri=0;ri<_reels.length;ri++){
+    var r=_reels[ri];
+    if(!r||r.stopped)continue;
+    if(!r.stopping){
+      r.offset+=r.speed*dt;
+      if(r.offset>=r.N*r.itemH)r.offset-=r.N*r.itemH;
+    } else {
+      var gap=r.targetOffset-r.offset;
+      if(gap<=0.5){r.offset=r.targetOffset;r.stopped=true;r.strip.style.transform='translateY(-'+r.offset+'px)';continue;}
+      var spd=(gap>REEL_DECEL_DIST)?r.speed:Math.max((gap/REEL_DECEL_DIST)*REEL_FAST_SPEED,REEL_IDLE_SPEED+5);
+      r.offset+=Math.min(spd*dt,gap);
+    }
+    r.strip.style.transform='translateY(-'+r.offset+'px)';
+  }
+  var nowAll=_reels.every(function(r){return!r||r.stopped;});
+  if(nowAll&&!_reelResultShown&&shopPool.slotResult){_reelResultShown=true;_onReelStopped();}
+  _reelAF=requestAnimationFrame(_reelLoop);
+}
+
+function _stopReelAt(ri,resultId){
+  if(!_reels||!_reels[ri])return;
+  var r=_reels[ri];
+  if(r.stopping||r.stopped)return;
+  r.resultId=resultId;
+  var resultIdx=r.items.indexOf(resultId);
+  if(resultIdx<0)resultIdx=0;
+  var loopLen=r.N*r.itemH;
+  r.offset=r.offset%loopLen; // normalize before computing target
+  // target in second copy of strip: always ahead of current offset
+  r.targetOffset=loopLen+resultIdx*r.itemH;
+  r.stopping=true;
+}
+
+function _onReelStopped(){
+  if(!_reels)return;
+  for(var ri=0;ri<_reels.length;ri++){
+    var r=_reels[ri];
+    if(!r||!r.resultId)continue;
+    var resultIdx=r.items.indexOf(r.resultId);
+    if(resultIdx<0)continue;
+    // Strip has 3 passes; stopped item is in second pass (indices N..2N-1)
+    var allItems=r.strip.querySelectorAll('.reel-item');
+    var visItem=allItems[r.N+resultIdx]||allItems[resultIdx];
+    if(visItem){
+      visItem.classList.add('reel-sel');
+      (function(id,itemEl){itemEl.onclick=function(){_pickReelResult(id);};})(r.resultId,visItem);
+    }
+  }
+}
+
+function _pickReelResult(id){
+  var d=sqd(id);if(!d)return;
+  var qty=d.qty||1;
+  for(var k=0;k<qty;k++)S.pendingSquares.push({id:id});
+  document.querySelectorAll('.reel-item.reel-sel').forEach(function(el){el.classList.remove('reel-sel');el.onclick=null;});
+  if(_reels){
+    for(var ri=0;ri<_reels.length;ri++){
+      var r=_reels[ri];if(!r)continue;
+      r.stopped=false;r.stopping=false;r.resultId=null;r.speed=REEL_IDLE_SPEED;
+      r.offset=r.offset%(r.N*r.itemH);
+    }
+    _reelResultShown=false;
+  }
+  shopPool.slotResult=null;
+  renderShop();renderHUD();
+  toast((qty>1?qty+'× ':'')+d.name+' queued!');
+}
+
+function _stopReels(){
+  if(_reelAF){cancelAnimationFrame(_reelAF);_reelAF=null;}
+  _reels=null;_reelResultShown=false;
+}
+
+// ── SLOT MACHINE ──
+function spinSlots(){
+  if(document.querySelector('.reel-item.reel-sel')){toast('Pick a sticker from the reels first!');return;}
+  var cost=shopPool.slotSpinCost||4;
+  if(!S.devMode&&S.gold<cost){toast('Not enough gold!');return;}
+  if(!S.devMode)S.gold-=cost;
+  shopPool.slotSpinsThisVisit=(shopPool.slotSpinsThisVisit||0)+1;
+  shopPool.slotSpinCost=4+shopPool.slotSpinsThisVisit;
+  renderHUD();renderShop();
+  var results=wrandN(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8,legendary:0.1},3);
+  shopPool.slotResult=results;
+  _reelResultShown=false;
+  if(_reels){for(var ri=0;ri<_reels.length;ri++){var r=_reels[ri];if(!r)continue;r.speed=REEL_FAST_SPEED;r.stopping=false;r.stopped=false;r.resultId=null;}}
+  setTimeout(function(){_stopReelAt(0,results[0]);},1200);
+  setTimeout(function(){_stopReelAt(1,results[1]);},1800);
+  setTimeout(function(){_stopReelAt(2,results[2]);},2400);
+}
+
+// ── SHOP BAG MINI-UI ──
+function openShopBagUI(){
+  var panel=document.getElementById('shop-bag-ui');if(!panel)return;
+  var bagCopy=S.bag.slice();
+  for(var i=bagCopy.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=bagCopy[i];bagCopy[i]=bagCopy[j];bagCopy[j]=tmp;}
+  var display=bagCopy.slice(0,8);
+  var tilesDiv=document.getElementById('shop-bag-tiles');
+  var actDiv=document.getElementById('shop-bag-actions');
+  if(!tilesDiv||!actDiv)return;
+  tilesDiv.innerHTML='';
+  var selected={tile:null};
+  if(!display.length){tilesDiv.innerHTML='<div style="font-size:clamp(5px,0.85vw,13px);color:#8880a8">Bag is empty!</div>';}
+  display.forEach(function(t){
+    var el=document.createElement('div');
+    el.className='shop-bag-tile'+(t.variant?' var-'+t.variant:'');
+    el.innerHTML='<span class="tl">'+(t.isBlank?'?':t.letter)+'</span><span class="ts">'+(t.isBlank?0:(LS[t.letter]||0))+'</span>';
+    el.onclick=function(){
+      document.querySelectorAll('.shop-bag-tile').forEach(function(e){e.classList.remove('sbag-sel');});
+      if(selected.tile===t){selected.tile=null;}else{selected.tile=t;el.classList.add('sbag-sel');}
+      _renderBagActions(selected,actDiv);
+    };
+    tilesDiv.appendChild(el);
+  });
+  actDiv.innerHTML='<div style="font-size:clamp(4px,0.7vw,11px);color:#8880a8">Select a tile above</div>';
+  panel.style.display='flex';
+}
+
+function _renderBagActions(sel,actDiv){
+  actDiv.innerHTML='';
+  if(!sel.tile){actDiv.innerHTML='<div style="font-size:clamp(4px,0.7vw,11px);color:#8880a8">Select a tile above</div>';return;}
+  var t=sel.tile;
+  function mkBtn(label,used,fn){
+    var b=document.createElement('button');
+    b.style.cssText='background:'+(used?'#1a1a3a':'#2a4a2a')+';border:1px solid '+(used?'#3a3a5a':'#4a8a4a')+';color:'+(used?'#5a5a8a':'#80c080')+';font-family:\'Jersey 10\',Georgia;font-size:clamp(4px,0.78vw,12px);cursor:'+(used?'default':'pointer')+';padding:2% 4%;border-radius:3px';
+    b.textContent=label+(used?' (used)':'');if(!used)b.onclick=fn;return b;
+  }
+  actDiv.appendChild(mkBtn('Enchant $2',shopPool.bagEnchantUsed,function(){_bagEnchantFlow(t,sel,actDiv);}));
+  actDiv.appendChild(mkBtn('Destroy $2',shopPool.bagDestroyUsed,function(){
+    if(!S.devMode&&S.gold<2){toast('Not enough gold!');return;}
+    var idx=-1;for(var i=0;i<S.bag.length;i++)if(S.bag[i].id===t.id){idx=i;break;}
+    if(idx<0){toast('Tile not found.');return;}
+    if(!S.devMode)S.gold-=2;S.bag.splice(idx,1);shopPool.bagDestroyUsed=true;
+    renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
+    toast((t.isBlank?'Blank':t.letter)+' destroyed!');closeShopBagUI();renderShop();
+  }));
+  actDiv.appendChild(mkBtn('Duplicate $2',shopPool.bagDupUsed,function(){
+    if(!S.devMode&&S.gold<2){toast('Not enough gold!');return;}
+    if(!S.devMode)S.gold-=2;
+    S.bag.push(Object.assign({},t,{id:uid()}));S.bag=shuffle(S.bag);shopPool.bagDupUsed=true;
+    renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
+    toast((t.isBlank?'Blank':t.letter)+' duplicated!');closeShopBagUI();renderShop();
+  }));
+}
+
+function _bagEnchantFlow(t,sel,actDiv){
+  if(!S.devMode&&S.gold<2){toast('Not enough gold!');return;}
+  actDiv.innerHTML='';
+  var variants=[{v:'gold',label:'Gold',desc:'+$1 when scored',col:'#f0c060'},{v:'blue',label:'Blue',desc:'Score grows each play',col:'#60b8ff'},{v:'red',label:'Red',desc:'Triggers twice',col:'#ff8080'}];
+  variants.forEach(function(vt){
+    if(t.variant===vt.v)return;
+    var b=document.createElement('button');
+    b.style.cssText='background:#1a1a3a;border:1px solid '+vt.col+';color:'+vt.col+';font-family:\'Jersey 10\',Georgia;font-size:clamp(4px,0.75vw,12px);cursor:pointer;padding:2% 4%;border-radius:3px';
+    b.textContent=vt.label+' $2';
+    b.onclick=function(){
+      if(!S.devMode&&S.gold<2){toast('Not enough gold!');return;}
+      var found=false;for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===t.id){S.bag[i].variant=vt.v;if(vt.v==='blue')S.bag[i].blueBonus=0;found=true;break;}}
+      if(!found){toast('Tile not found.');return;}
+      if(!S.devMode)S.gold-=2;shopPool.bagEnchantUsed=true;
+      renderHUD();toast(vt.label+' '+t.letter+' enchanted!');closeShopBagUI();renderShop();
+    };
+    actDiv.appendChild(b);
+  });
+  var cancel=document.createElement('button');
+  cancel.style.cssText='background:#2a2a4a;border:1px solid #5a5a8a;color:#a0a0c0;font-family:\'Jersey 10\',Georgia;font-size:clamp(4px,0.75vw,12px);cursor:pointer;padding:2% 4%;border-radius:3px';
+  cancel.textContent='Cancel';cancel.onclick=function(){_renderBagActions(sel,actDiv);};
+  actDiv.appendChild(cancel);
+}
+
+function closeShopBagUI(){
+  var p=document.getElementById('shop-bag-ui');if(p)p.style.display='none';
 }
 
 function buyTileCard(i){
@@ -194,36 +488,31 @@ function buyTileCard(i){
   toast(tc.variant.charAt(0).toUpperCase()+tc.variant.slice(1)+' '+tc.letter+' added to bag!');
 }
 
-function buyArcanePack(){
-  if(!S.devMode&&S.gold<3){toast('Not enough gold!');return;}
-  if(!S.devMode)S.gold-=3;renderHUD();
-  var contents=wrandN(SQ.map(function(d){return d.id;}),{common:4,uncommon:2,rare:1},3);
-  openPackReveal('Sticker Pack',contents);
-}
-
-function buyTilePack(){
-  if(!shopPool.tilePack||shopPool.tilePack.sold)return;
-  if(!S.devMode&&S.gold<3){toast('Not enough gold!');return;}
-  if(!S.devMode)S.gold-=3;shopPool.tilePack.sold=true;
-  var packLetters=Object.keys(DIST);var varTypes=['gold','blue','red'];var added=[];
-  for(var i=0;i<5;i++){
-    var l=packLetters[Math.floor(_rng()*packLetters.length)];
-    var v=_rng()<0.25?varTypes[Math.floor(_rng()*varTypes.length)]:null;
-    S.bag.push({letter:l,isBlank:false,id:uid(),variant:v,blueBonus:0});
-    added.push((v?v[0].toUpperCase()+v.slice(1)+' ':'')+l);
+function buyPack(i){
+  var pack=(shopPool.packs||[])[i];if(!pack||pack.sold)return;
+  if(!S.devMode&&S.gold<pack.cost){toast('Not enough gold!');return;}
+  if(!S.devMode)S.gold-=pack.cost;
+  pack.sold=true;
+  if(pack.type==='sticker'){
+    renderHUD();
+    var contents=wrandN(SQ.map(function(d){return d.id;}),{common:4,uncommon:2,rare:1},3);
+    openPackReveal('Sticker Pack',contents);
+  } else if(pack.type==='tile'){
+    var packLetters=Object.keys(DIST);var varTypes=['gold','blue','red'];var added=[];
+    for(var ti=0;ti<5;ti++){
+      var l=packLetters[Math.floor(_rng()*packLetters.length)];
+      var v=_rng()<0.25?varTypes[Math.floor(_rng()*varTypes.length)]:null;
+      S.bag.push({letter:l,isBlank:false,id:uid(),variant:v,blueBonus:0});
+      added.push((v?v[0].toUpperCase()+v.slice(1)+' ':'')+l);
+    }
+    S.bag=shuffle(S.bag);renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
+    toast('Tile Pack: '+added.join(', ')+' added!');
+  } else if(pack.type==='sq'){
+    var d=sqd(pack.sqId);var qty=(d&&d.qty)||1;
+    for(var k=0;k<qty;k++)S.pendingSquares.push({id:pack.sqId});
+    renderShop();renderHUD();
+    toast(qty+'× '+d.name+' queued — place them after leaving shop!');
   }
-  S.bag=shuffle(S.bag);renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
-  toast('Tile Pack: '+added.join(', ')+' added!');
-}
-
-function buyBonusSqPack(id){
-  if(!shopPool.sqPacks||shopPool.sqPacks[id].sold)return;
-  if(!S.devMode&&S.gold<3){toast('Not enough gold!');return;}
-  if(!S.devMode)S.gold-=3;shopPool.sqPacks[id].sold=true;
-  var d=sqd(id);var qty=(d&&d.qty)||1;
-  for(var k=0;k<qty;k++)S.pendingSquares.push({id:id});
-  renderShop();renderHUD();
-  toast(qty+'× '+d.name+' queued — place them after leaving shop!');
 }
 
 function openHammerModal(){renderHammerModal();document.getElementById('hammer-modal').style.display='flex';}

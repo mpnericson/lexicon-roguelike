@@ -95,7 +95,7 @@ function clearSave() {
 // Restore UI state after loadGame() has set up S.
 function resumeGame() {
   window._easyHint = null;
-  shopPool = {sq:[], tileCards:[], tilePack:null, bounties:[]};
+  shopPool = {sq:[], tileCards:[], packs:[], bounties:[]};
   activeDrag = null;
   document.getElementById('shop-screen').style.display = 'none';
   document.getElementById('play-controls').style.display = 'flex';

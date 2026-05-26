@@ -33,7 +33,7 @@ var activeDrag=null;
 var _dragEndTime=0;
 var _hl=-1;
 var viewingBoard=false;
-var shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};
+var shopPool={sq:[],tileCards:[],packs:[],bounties:[]};
 
 function buildBag(){
   var bag=[];var ks=Object.keys(DIST);

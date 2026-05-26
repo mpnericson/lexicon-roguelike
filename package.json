@@ -4,7 +4,8 @@
   "description": "",
   "main": "main.js",
   "scripts": {
-    "start": "electron-forge start",
+    "start": "electron .",
+    "forge": "electron-forge start",
     "dev:web": "npx serve .",
     "update-dictionary": "bash scripts/update-dictionary.sh",
     "package": "electron-forge package",
