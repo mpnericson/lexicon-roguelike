@@ -36,7 +36,8 @@ function saveGame() {
       lastWordLen: S.lastWordLen || 0,
       endless: !!S.endless,
       endlessRound: S.endlessRound || 0,
-      roundsCompleted: S.roundsCompleted || 0
+      roundsCompleted: S.roundsCompleted || 0,
+      localCooldowns: Array.from(S.localCooldowns||[])
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch(e) {}
@@ -82,6 +83,7 @@ function loadGame() {
       endless: !!d.endless,
       endlessRound: d.endlessRound || 0,
       roundsCompleted: d.roundsCompleted || 0,
+      localCooldowns: new Set(d.localCooldowns||[]),
       devMode: false
     };
     return true;

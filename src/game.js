@@ -49,7 +49,7 @@ function startGame(seed){
   _rngSeed(s);
   S={bag:buildBag(),hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,palUnlocked:false,devMode:false,
-     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bounties:[],bhMult:1,
+     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bounties:[],bhMult:1,localCooldowns:new Set(),
      lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0};
   window._easyHint=null;
   shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};activeDrag=null;

@@ -220,6 +220,7 @@ function recallAll(){
 function clearBoardLetters(){
   S.bt=Array(B*B).fill(null);
   for(var i=0;i<S.hand.length;i++){if(S.hand[i]&&S.hand[i].onBoard){S.hand[i].onBoard=false;S.hand[i]._boardSq=undefined;}}
+  if(S.localCooldowns)S.localCooldowns.clear();
 }
 
 function toggleSel(idx){if(Date.now()-_dragEndTime<300)return;if(S.hand[idx]&&!S.hand[idx].onBoard){S.hand[idx].sel=!S.hand[idx].sel;renderHand();}}

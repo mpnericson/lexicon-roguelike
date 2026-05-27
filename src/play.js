@@ -2,6 +2,7 @@
 // PLAY — word validation, playing, discarding, shuffling
 // =====================================================================
 async function playWord(){
+  if(window._scoring){return;}
   if(S.plays<=0){toast('No plays remaining!');return;}
   _rankRunId++;
   var _capturedRankTop10=_rankTop10; _rankTop10=null;
@@ -31,9 +32,12 @@ async function playWord(){
   var justUnlocked=false;
   if(palLocked&&isExtendedPalindrome(main.word)){S.palUnlocked=true;palLocked=false;justUnlocked=true;}
   S._slotMachineRoll=null;
-  var res=calcAll(nt,dir);
+  window._scoring=true;
+  var _playBtn=document.querySelector('#play-controls .btn-icon-green');
+  if(_playBtn)_playBtn.disabled=true;
+  var _words=getAllWords(nt,dir);
   var _eggWords={};for(var i=0;i<EASTER_EGGS.length;i++)_eggWords[EASTER_EGGS[i].word]=true;
-  for(var i=0;i<res.words.length;i++){if(_eggWords[res.words[i].word])continue;var v=await validWord(res.words[i].word);if(!v){flashTiles(nt);if(!S.devMode){S.gold=Math.max(0,S.gold-2);renderHUD();toast('"'+res.words[i].word+'" is not a word — fined $2!');}else{toast('"'+res.words[i].word+'" is not a word.');}return;}}
+  for(var i=0;i<_words.length;i++){if(_eggWords[_words[i]])continue;var v=await validWord(_words[i]);if(!v){flashTiles(nt);window._scoring=false;if(_playBtn)_playBtn.disabled=false;if(!S.devMode){S.gold=Math.max(0,S.gold-2);renderHUD();toast('"'+_words[i]+'" is not a word — fined $2!');}else{toast('"'+_words[i]+'" is not a word.');}return;}}
   // Easter egg effects (before scoring — can mutate tile variants)
   var _eggApplied=applyEasterEgg(main.word,nt);if(_eggApplied)await new Promise(function(r){setTimeout(r,420);});
   // Bounty check (before scoring) — animate out before splicing
@@ -57,17 +61,12 @@ async function playWord(){
   }
   if(!palLocked){
     if(justUnlocked)toast('Palindrome! Scoring is now live.');
-    // Recalculate after any pre-scoring mutations (easter eggs, bounty tile upgrades)
-    res=calcAll(nt,dir);
-    var detailed=scoreWordDetailed(main.tiles,main.word,true,res.bingo?50:0);
-    var _cxDir=dir==='h'?'v':'h';var _cxSeen={};var _allEvs=detailed.events.slice();var _cxAnimTotal=0;
-    for(var _cxi=0;_cxi<nt.length;_cxi++){var _cxk=nt[_cxi].row+','+nt[_cxi].col;if(_cxSeen[_cxk])continue;_cxSeen[_cxk]=1;var _cxw=extractAt(nt[_cxi].row,nt[_cxi].col,_cxDir);if(!_cxw||_cxw.tiles.length<2)continue;var _cxd=scoreWordDetailed(_cxw.tiles,_cxw.word,false);_allEvs=_allEvs.concat(_cxd.events);_cxAnimTotal+=_cxd.total;}
-    var crossLetters=Math.max(0,res.grand-detailed.total-_cxAnimTotal);
-    await runScoreAnim(_allEvs,crossLetters,res.grand);
-    S.score+=res.grand;S.gold+=res.tgold;
-    _checkRankReward(res.grand,_capturedRankTop10);
+    var res=scorePlay(nt,dir,false);
+    await runScoreAnim(res.events,res.total);
+    S.score+=res.total;S.gold+=res.tgold;
+    _checkRankReward(res.total,_capturedRankTop10);
+    achvCheck('word_played',{bingo:res.bingo,isPalin:isExtendedPalindrome(main.word)});
   }else{toast('Scoring locked — play a palindrome first!');}
-  achvCheck('word_played',{bingo:res.bingo,isPalin:isExtendedPalindrome(main.word)});
   S.wtr=(S.wtr||0)+1;S.discPressure=0;S.lastWordLen=main.word.length;
   if(S.wtr%3===0)for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='tome'){S.ts=(S.ts||0)+1;break;}
   var blueTiles=[];
@@ -93,6 +92,8 @@ async function playWord(){
     if(pwNewEls.length){var pwBag=document.getElementById('bag-btn');var pwBagR=pwBag.getBoundingClientRect();pwBag.classList.add('bag-vacuuming');_burstTilesFromBag(pwNewEls,pwBagR.left+pwBagR.width/2,pwBagR.top+pwBagR.height/2,180,function(){pwBag.classList.remove('bag-vacuuming');});}
     r();
   },280);});
+  window._scoring=false;
+  if(_playBtn)_playBtn.disabled=false;
   saveGame();
   if(S.score>=tgt())setTimeout(roundComplete,700);
   else if(S.plays===0)setTimeout(function(){

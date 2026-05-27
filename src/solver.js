@@ -118,15 +118,15 @@ function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestB
     if (!connected) return null;
   }
 
-  // Pass 2: build wt array, verify cross-words
-  var hUse = {}, blankUsed = 0, wt = [];
+  // Pass 2: build wt array, verify cross-words, collect cross-word tile arrays for scoring
+  var hUse = {}, blankUsed = 0, wt = [], cwWts = [];
   for (var i = 0; i < len; i++) {
     var ri = isH ? r : r + i, ci = isH ? c + i : c;
     var idx = ri * B + ci, letter = word[i], existing = S.bt[idx];
     if (existing) {
       wt.push({
         idx: idx, letter: letter, isNew: false, isBlank: existing.isBlank,
-        sc: existing.isBlank ? (existing.alchSc || 0) : (LS[letter] || 0),
+        sc: existing.isBlank ? (existing._alchSc || 0) : (LS[letter] || 0),
         sid: S.board[idx], variant: existing.variant || null, blueBonus: existing.blueBonus || 0
       });
     } else {
@@ -141,16 +141,28 @@ function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestB
         tileSc = bp.devBlank ? (LS[letter] || 0) : (bp.alchSc || 0);
       }
 
-      // Cross-word validation
-      var cwStr = null;
-      if (isH) {
-        var ab = pre.cvAbove[idx], be = pre.cvBelow[idx];
-        if (ab || be) cwStr = ab + letter + be;
-      } else {
-        var lf = pre.chLeft[idx], rt = pre.chRight[idx];
-        if (lf || rt) cwStr = lf + letter + rt;
+      // Cross-word validation + build tile array for scoring
+      var ab='',be='',lf='',rt='';
+      if(isH){ab=pre.cvAbove[idx];be=pre.cvBelow[idx];}
+      else{lf=pre.chLeft[idx];rt=pre.chRight[idx];}
+      var cwStr=(isH?(ab||be):(lf||rt))?(isH?ab+letter+be:lf+letter+rt):null;
+      if(cwStr!==null){
+        if(!DICT.has(cwStr.toLowerCase()))return null;
+        var cwWt=[];
+        var newTileEntry={idx:idx,letter:letter,isNew:true,isBlank:isBlankTile,
+          sc:isBlankTile?tileSc:(LS[letter]||0),sid:S.board[idx],
+          variant:isBlankTile?null:tileVariant,blueBonus:isBlankTile?0:tileBlueBonus};
+        if(isH){
+          for(var k=0;k<ab.length;k++){var sqk=(ri-ab.length+k)*B+ci,btk=S.bt[sqk];cwWt.push({idx:sqk,letter:ab[k],isNew:false,isBlank:btk.isBlank,sc:btk.isBlank?(btk._alchSc||0):(LS[ab[k]]||0),sid:S.board[sqk],variant:btk.variant||null,blueBonus:btk.blueBonus||0});}
+          cwWt.push(newTileEntry);
+          for(var k=0;k<be.length;k++){var sqk=(ri+1+k)*B+ci,btk=S.bt[sqk];cwWt.push({idx:sqk,letter:be[k],isNew:false,isBlank:btk.isBlank,sc:btk.isBlank?(btk._alchSc||0):(LS[be[k]]||0),sid:S.board[sqk],variant:btk.variant||null,blueBonus:btk.blueBonus||0});}
+        }else{
+          for(var k=0;k<lf.length;k++){var sqk=ri*B+(ci-lf.length+k),btk=S.bt[sqk];cwWt.push({idx:sqk,letter:lf[k],isNew:false,isBlank:btk.isBlank,sc:btk.isBlank?(btk._alchSc||0):(LS[lf[k]]||0),sid:S.board[sqk],variant:btk.variant||null,blueBonus:btk.blueBonus||0});}
+          cwWt.push(newTileEntry);
+          for(var k=0;k<rt.length;k++){var sqk=ri*B+(ci+1+k),btk=S.bt[sqk];cwWt.push({idx:sqk,letter:rt[k],isNew:false,isBlank:btk.isBlank,sc:btk.isBlank?(btk._alchSc||0):(LS[rt[k]]||0),sid:S.board[sqk],variant:btk.variant||null,blueBonus:btk.blueBonus||0});}
+        }
+        cwWts.push(cwWt);
       }
-      if (cwStr !== null && !DICT.has(cwStr.toLowerCase())) return null;
 
       wt.push({
         idx: idx, letter: letter, isNew: true, isBlank: isBlankTile,
@@ -160,7 +172,7 @@ function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestB
     }
   }
 
-  var res = scoreWord(wt, word, true, newCount === 7 ? 50 : 0);
+  var res = scoreWord(wt, word, true, newCount === 7 ? 50 : 0, cwWts);
   return { score: res.total, gold: res.gold, word: word, r: r, c: c, isH: isH, wt: wt };
 }
 
