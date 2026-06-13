@@ -248,7 +248,7 @@ function _rankRunRankSolve(snap) {
     }
     wi = end;
     if (wi < words.length) { setTimeout(processChunk, 0); }
-    else { restore(); if (_rankRunId === myId) _rankTop10 = best; }
+    else { restore(); if (_rankRunId === myId) { _rankTop10 = best; window._easyHint = best.length ? best[0] : null; } }
   }
   setTimeout(processChunk, 0);
 }

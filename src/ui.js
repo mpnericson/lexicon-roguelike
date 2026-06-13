@@ -179,7 +179,7 @@ function _refreshCollectionContent(){
   var types=[
     {key:'board',label:'Board Multipliers',test:function(d){return !!d.bm;}},
     {key:'local',label:'Local Stickers',test:function(d){return !!d.apply;}},
-    {key:'global',label:'Global Stickers',test:function(d){return !!d.onPre||!!d.onPost||!!d.onFinal;}}
+    {key:'global',label:'Global Stickers',test:function(d){return !d.bm&&!d.apply;}}
   ];
   for(var ti=0;ti<types.length;ti++){
     var tf=types[ti].test;var items=SQ.filter(function(d){return tf(d);});if(!items.length)continue;
@@ -191,22 +191,27 @@ function _refreshCollectionContent(){
       var invCount=0;for(var k=0;k<S.pendingSquares.length;k++)if(S.pendingSquares[k].id===d.id)invCount++;
       var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
       var card=document.createElement('div');card.className='shop-card';
-      if(isPlaced)card.style.cssText='border-color:#5aaa5a;background:#0a2a0a';
+      card.style.cursor='pointer';
+      if(isPlaced)card.style.cssText='border-color:#5aaa5a;background:#0a2a0a;cursor:pointer';
       card.innerHTML='<div class="scr '+rc+'">'+d.rarity+'</div>'
         +'<div class="scn"><span style="background:'+d.bg+';color:'+d.fg+';padding:1px 5px;border-radius:3px;font-size:30px">'+sqIconHTML(d,16)+'</span> '+d.name+'</div>'
-        +'<div class="scd">'+d.desc+'</div>'
         +(isPlaced?'<div style="font-size:32px;color:#5aaa5a;margin-top:2px">✓ On your board</div>':'');
+      var descEl=document.createElement('div');descEl.className='scd';descEl.innerHTML=d.desc;descEl.style.display='none';
+      card.appendChild(descEl);
+      card.onclick=function(){descEl.style.display=descEl.style.display==='none'?'':'none';};
       if(S.devMode){
         var ctrl=document.createElement('div');ctrl.style.cssText='display:flex;align-items:center;gap:5px;margin-top:5px';
         var minusBtn=document.createElement('button');minusBtn.className='btn btn-gray';minusBtn.style.cssText='padding:1px 8px;font-size:30px;min-width:28px;line-height:1';minusBtn.textContent='−';
         if(invCount===0)minusBtn.disabled=true;
-        minusBtn.onclick=(function(dd){return function(){
+        minusBtn.onclick=(function(dd){return function(e){
+          e.stopPropagation();
           for(var _i=0;_i<S.pendingSquares.length;_i++){if(S.pendingSquares[_i].id===dd.id){S.pendingSquares.splice(_i,1);break;}}
           renderHUD();_refreshCollectionContent();
         };})(d);
         var countEl=document.createElement('span');countEl.style.cssText='font-size:30px;color:#d0d0f0;min-width:18px;text-align:center;font-weight:normal';countEl.textContent=invCount;
         var plusBtn=document.createElement('button');plusBtn.className='btn btn-gold';plusBtn.style.cssText='padding:1px 8px;font-size:30px;min-width:28px;line-height:1';plusBtn.textContent='+';
-        plusBtn.onclick=(function(dd){return function(){
+        plusBtn.onclick=(function(dd){return function(e){
+          e.stopPropagation();
           S.pendingSquares.push({id:dd.id});
           renderHUD();_refreshCollectionContent();
         };})(d);

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lexicon</title>
 <style>
-@font-face{font-family:'Jersey 10';src:url('Assets/Jersey10-Regular.ttf') format('truetype');font-weight:normal;font-style:normal}
+@font-face{font-family:'Jersey 10';src:url('Assets/fonts/Jersey10-Regular.ttf') format('truetype');font-weight:normal;font-style:normal}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;height:100vh;overflow:hidden;user-select:none;touch-action:none}
 #app{display:flex;flex-direction:row;height:100vh;padding:8px;gap:8px}
@@ -14,7 +14,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 /* CENTER COLUMN — fills remaining space */
 #center-col{display:flex;flex-direction:column;flex:1;gap:6px;min-width:0}
 /* RIGHT PANEL — 24% width */
-#right-panel{display:flex;flex-direction:column;gap:8px;width:24vw;flex-shrink:0;justify-content:space-between;background-image:url(Assets/mainui.png);background-size:266.667% 100%;background-position:100% 0;background-repeat:no-repeat;image-rendering:pixelated;padding:8px}
+#right-panel{display:flex;flex-direction:column;gap:8px;width:24vw;flex-shrink:0;justify-content:space-between;background-image:url(Assets/sprites/mainui.png);background-size:266.667% 100%;background-position:100% 0;background-repeat:no-repeat;image-rendering:pixelated;padding:8px}
 #bounty-section{flex:1;min-height:0;max-height:80vh;overflow-y:auto}
 #board-area{flex:1;display:flex;justify-content:center;align-items:center;overflow:hidden;min-height:0;position:relative}
 #hand-wrap{display:flex;align-items:center;gap:10px;height:80px;flex-shrink:0}
@@ -27,6 +27,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .reel-item{width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3%;background:#0c0618;border-bottom:1px solid #1e0830}
 .reel-item.reel-sel{background:#1a0d3a;outline:2px solid rgba(240,224,128,0.7);outline-offset:-2px;cursor:pointer}
 .reel-item.reel-sel:hover{background:#261550}
+@keyframes reel-pop{0%{transform:scale(1);filter:brightness(1)}30%{transform:scale(1.22);filter:brightness(1.5)}65%{transform:scale(0.91);filter:brightness(1.1)}85%{transform:scale(1.06);filter:brightness(1)}100%{transform:scale(1);filter:brightness(1)}}
+.reel-pop-anim{animation:reel-pop 0.42s ease-out;position:relative;z-index:5}
 .reel-icon{flex:1;display:flex;align-items:center;justify-content:center;width:100%;font-size:clamp(18px,8vw,110px);line-height:1}
 .reel-icon img{max-width:68%;max-height:62%;image-rendering:pixelated;display:block}
 .reel-name{flex-shrink:0;text-align:center;width:100%;line-height:1.2;padding:0 3%;font-size:clamp(5px,0.82vw,12px)}
@@ -44,11 +46,11 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 /* Bag: sprite is 32×32, content bbox is x6-28 y10-31 (23×22px)
    Rendered sprite height H=34vh → content: 23.375vh tall, 24.44vh wide
    Div sized to content area; sprite offset so content aligns with div */
-#shop-bag-btn{position:absolute;left:51.76%;bottom:0.5%;transform:translateX(-50%);width:24.44vh;height:23.38vh;cursor:pointer;overflow:visible;background:none;border:none;padding:0}
+#shop-bag-btn{position:absolute;left:76%;bottom:0.5%;transform:translateX(-50%);width:24.44vh;height:23.38vh;cursor:pointer;overflow:visible;background:none;border:none;padding:0}
 #shop-bag-sprite{position:absolute;height:34vh;width:auto;top:-10.625vh;left:-6.375vh;image-rendering:pixelated;display:block;pointer-events:none}
 #shop-bounty-list{position:absolute;left:72%;top:20%;width:25%;height:50%;overflow:hidden;display:flex;flex-direction:column;gap:4%;padding:2% 3%}
 .shop-bounty-item{flex-shrink:0}
-.shop-bounty-chip{width:100%;background-image:url(Assets/bounty-background.png);background-size:100% 100%;background-repeat:no-repeat;image-rendering:pixelated;box-sizing:border-box;overflow:hidden;display:flex;align-items:center;padding:4% 3%;gap:3px}
+.shop-bounty-chip{width:100%;background-image:url(Assets/sprites/bounty-background.png);background-size:100% 100%;background-repeat:no-repeat;image-rendering:pixelated;box-sizing:border-box;overflow:hidden;display:flex;align-items:center;padding:4% 3%;gap:3px}
 .shop-bounty-accept-btn{flex-shrink:0;aspect-ratio:1;align-self:center;background:#f0c060;border:2px solid #a89000;border-radius:4px;box-shadow:0 2px 0 #7a6800;color:#2a1f0e;font-family:'Jersey 10',Georgia;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
 .shop-bounty-accept-btn:hover{background:#f8e88a;border-color:#c8a000}
 .shop-bounty-done{flex-shrink:0;aspect-ratio:1;align-self:center;background:#d4c5a0;border:2px solid #8B7355;border-radius:4px;box-shadow:0 2px 0 #6b5535;color:#2a1f0e;font-family:'Jersey 10',Georgia;display:flex;align-items:center;justify-content:center;line-height:1}
@@ -103,7 +105,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 #board-preview-wrap.tiles-hidden .tile{visibility:hidden}
 .sq{border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:normal;position:relative;border:1px solid rgba(255,255,255,0.06)}
 .sq.drop-target{outline:2px solid #f0e080;outline-offset:-2px}
-.sq-chess-hover::before{content:'';position:absolute;inset:0;border-radius:3px;background:white;pointer-events:none;animation:chess-aura-pulse 1.8s ease-in-out infinite}
+.sq-chess-hover::before,.sq-easy-hover::before{content:'';position:absolute;inset:0;border-radius:3px;background:white;pointer-events:none;animation:chess-aura-pulse 1.8s ease-in-out infinite}
 @keyframes chess-aura-pulse{0%,100%{opacity:0.03}50%{opacity:0.13}}
 .sq-lbl{font-size:30px;line-height:1;text-align:center;pointer-events:none}
 .tile{border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#d4c5a0;border:2px solid #8B7355;position:relative;touch-action:none}
@@ -119,7 +121,9 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 @keyframes bounty-gold-pulse{0%{filter:drop-shadow(0 0 0px rgba(240,192,0,0))}20%{filter:drop-shadow(0 0 18px #f0c060) drop-shadow(0 0 36px rgba(240,192,0,0.85))}55%{filter:drop-shadow(0 0 18px #f0c060) drop-shadow(0 0 36px rgba(240,192,0,0.85))}100%{filter:drop-shadow(0 0 0px rgba(240,192,0,0))}}
 .bounty-chip-pulse{animation:bounty-chip-pulse 0.45s ease-in-out forwards}
 @keyframes bounty-chip-pulse{0%{box-shadow:none}20%{box-shadow:inset 0 0 18px 7px rgba(240,192,0,0.55),0 0 14px 5px rgba(240,192,0,0.4)}55%{box-shadow:inset 0 0 18px 7px rgba(240,192,0,0.55),0 0 14px 5px rgba(240,192,0,0.4)}100%{box-shadow:none}}
-.hand-tile{width:68px;height:68px;box-shadow:0 4px 0 #6b5535;cursor:grab;position:absolute;top:0}
+.hand-tile{width:68px;height:68px;box-shadow:0 4px 0 #6b5535;cursor:grab;position:absolute;top:0;transition:transform 0.12s ease,filter 0.12s ease}
+.hand-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(240,224,128,0.45));z-index:10;cursor:grab}
+.hand-tile.selected{transform:translateY(-5px);z-index:5;filter:brightness(1.15) drop-shadow(0 0 6px rgba(240,224,128,0.35))}
 .btn-icon{height:80px;border-radius:10px;border:none;cursor:pointer;font-size:34px;display:flex;align-items:center;justify-content:center;flex:1;font-family:'Jersey 10',Georgia}
 .btn-icon:active{transform:scale(.95)}
 .btn-icon-green{background:#2d7a2d;color:#d0f0d0;box-shadow:0 3px 0 #1a4a1a}.btn-icon-green:hover{background:#3a8a3a}
@@ -202,8 +206,25 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .ui-icon{display:inline-block;vertical-align:middle;image-rendering:pixelated}
 .tile.tile-spr.selected{background-color:transparent!important;border:none!important;box-shadow:none!important;filter:brightness(1.15) drop-shadow(0 0 4px #c8b000);}
 .board-tile.tile-spr.is-new{cursor:grab;}
+.board-tile.jenga-stacked{transform:translateY(-6px)!important;box-shadow:0 9px 0 rgba(90,60,0,0.85)!important;z-index:2;}
+.board-tile.jenga-stacked-2{transform:translateY(-12px)!important;box-shadow:0 15px 0 rgba(90,60,0,0.85)!important;z-index:3;}
 .vbadge{position:absolute;top:1px;left:2px;font-size:28px;font-weight:normal;line-height:1;border-radius:2px;padding:0 2px;pointer-events:none}
 .vbadge-gold{background:#5a3800;color:#f0d060}.vbadge-blue{background:#0a2a5a;color:#80c8ff}.vbadge-red{background:#5a0a0a;color:#ff9090}
+@keyframes bfloat0{0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-5px)rotate(1.2deg)}}
+@keyframes bfloat1{0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-7px)rotate(-1.5deg)}}
+@keyframes bfloat2{0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-4px)rotate(.8deg)}}
+@keyframes bfloat3{0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-6px)rotate(-1deg)}}
+@keyframes bfloat4{0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-8px)rotate(1.8deg)}}
+@keyframes bfloat5{0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-5px)rotate(-.7deg)}}
+@keyframes bagTunnelZoom{0%{transform:scale(0.01);opacity:0}20%{opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes bagHeaderFade{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.bag-float-item,.sbag-float-item{display:flex;flex-direction:column;align-items:center;user-select:none}
+.sbag-float-item{cursor:pointer}
+.sbag-float-item.sbag-sel .tile.tile-spr{filter:brightness(1.3) drop-shadow(0 0 8px #f0e080)}
+.bag-float-item:hover>div{animation-play-state:paused}
+.bag-float-item .tile.tile-spr,.bag-float-item .tile:not(.tile-spr){transition:filter 0.15s ease,transform 0.15s ease}
+.bag-float-item:hover .tile.tile-spr,.bag-float-item:hover .tile:not(.tile-spr){filter:brightness(1.22) drop-shadow(0 0 10px rgba(240,224,128,0.5));transform:translateY(-7px)}
+#bag-ui-overlay,#shop-bag-overlay{position:fixed;inset:0;background:#0f2018;z-index:9000;flex-direction:column;align-items:center;justify-content:center;gap:20px}
 .top-btn{background:#12122a;border:1px solid #3a3a5a;border-radius:6px;color:#a0a0c0;padding:4px 10px;cursor:pointer;font-family:'Jersey 10',Georgia;font-size:30px;flex-shrink:0}
 .top-btn:hover{border-color:#f0e080;color:#f0e080}
 #menu-wrap{position:relative;flex-shrink:0}
@@ -214,11 +235,13 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 #seed-display:hover{background:transparent!important;color:#8880a8!important}
 #hammer-grid,#forge-grid-inner{display:flex;flex-wrap:wrap;gap:6px;max-height:340px;overflow-y:auto;padding:2px}
 #board-preview-wrap{display:inline-grid;gap:2px}
-@keyframes bink{0%{transform:scale(1)}35%{transform:scale(1.28);background:#fffde7!important;box-shadow:0 0 20px rgba(255,220,60,.9),0 2px 0 #7a6800!important}100%{transform:scale(1)}}
-.binking{animation:bink .38s ease-out!important}
+@keyframes bink{0%{transform:scale(1) translateY(0)}40%{transform:scale(1.28) translateY(-6px);background:#fffde7!important;box-shadow:0 0 22px rgba(255,220,60,.95),0 2px 0 #7a6800!important}72%{transform:scale(1.04) translateY(0px)}100%{transform:scale(1) translateY(0)}}
+.binking{animation:bink .42s cubic-bezier(.36,.07,.19,.97)!important}
+@keyframes sq-bink{0%{transform:scale(1)}30%{transform:scale(1.22)}65%{transform:scale(0.96)}100%{transform:scale(1)}}
+.sq-binking{animation:sq-bink .35s cubic-bezier(.36,.07,.19,.97)!important}
 .score-pop{position:fixed;pointer-events:none;z-index:810;font-weight:normal;border-radius:5px;padding:2px 9px;white-space:nowrap;font-family:'Jersey 10',Georgia,serif;animation:pop-up .65s ease-out forwards}
 @keyframes pop-up{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-46px)}}
-.bounty-chip{padding:3% 4%;display:flex;align-items:center;gap:4px;width:20vw;aspect-ratio:40/7;background-image:url(Assets/bounty-background.png);background-size:100% 100%;background-repeat:no-repeat;image-rendering:pixelated;box-sizing:border-box;overflow:hidden}
+.bounty-chip{padding:3% 4%;display:flex;align-items:center;gap:4px;width:20vw;aspect-ratio:40/7;background-image:url(Assets/sprites/bounty-background.png);background-size:100% 100%;background-repeat:no-repeat;image-rendering:pixelated;box-sizing:border-box;overflow:hidden}
 .bounty-chip-word{font-weight:normal;color:#f0e080;letter-spacing:1px}
 .bounty-chip-reward{color:#f0c060;font-weight:normal;font-size:clamp(16px,2.2vw,40px);flex-shrink:0;margin-left:4px;line-height:1}
 .bounty-card{background:#1a1228;border:1px solid #5a3a6a;border-radius:8px;padding:10px;min-width:120px;max-width:160px}
@@ -226,7 +249,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .bounty-card-reward{font-size:30px;color:#60c060;margin-bottom:2px}
 .bounty-card-cost{font-size:30px;color:#9090b0;margin-bottom:6px}
 /* ── STAT PANEL (left 48px of mainui.png) ── */
-#stat-panel{position:relative;flex:1;background-image:url(Assets/mainui.png);background-size:266.667% 100%;background-position:0 0;background-repeat:no-repeat;image-rendering:pixelated}
+#stat-panel{position:relative;flex:1;background-image:url(Assets/sprites/mainui.png);background-size:266.667% 100%;background-position:0 0;background-repeat:no-repeat;image-rendering:pixelated}
 /* Split box left (y=18-30, x=3-17): letter score */
 #stat-word-score-box{position:absolute;top:14.0625%;left:6.25%;width:31.25%;height:10.1562%;display:flex;align-items:center;justify-content:center;overflow:hidden}
 #ls-letters{font-size:clamp(16px,2.8vw,48px);font-weight:normal;color:#1a3a80;line-height:1}
@@ -263,6 +286,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 @keyframes ls-bump{0%{transform:scale(1)}40%{transform:scale(1.45)}100%{transform:scale(1)}}
 @keyframes sq-glow{0%,100%{box-shadow:none}35%{box-shadow:inset 0 0 0 2px rgba(255,220,60,.95),0 0 12px rgba(255,220,60,.7)}}
 .sq-glowing{animation:sq-glow .55s ease-out}
+@keyframes sq-scale-wobble{0%,100%{transform:translateY(0) scale(1)}35%{transform:translateY(-2.5px) scale(1.07)}70%{transform:translateY(1px) scale(0.97)}}
+.sq-scale-wobble{display:inline-block;animation:sq-scale-wobble 2.4s ease-in-out infinite}
 @keyframes confetti-fall{0%{transform:translateY(0) translateX(0) rotate(0deg);opacity:1}100%{transform:translateY(105vh) translateX(var(--d)) rotate(var(--s));opacity:0.1}}
 @keyframes rank-pop{0%{transform:translate(-50%,-50%) scale(0.4);opacity:0}15%{transform:translate(-50%,-50%) scale(1.12);opacity:1}25%{transform:translate(-50%,-50%) scale(1);opacity:1}75%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(-50%,-50%) scale(0.9);opacity:0}}
 #live-score-row.scoring #ls-score{font-size:clamp(14px,2.5vw,44px)}
@@ -340,10 +365,21 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
         </div>
       </div>
     </div>
+    <!-- Constraint banner (boss blinds only) -->
+    <div id="constraint-banner" style="display:none;background:#1e1608;border:1px solid #7a6020;border-radius:8px;padding:8px 10px;font-size:34px;color:#f0c060;line-height:1.35;text-align:center"></div>
+    <!-- Sticker hover tooltip — overlays constraint-banner while hovering a board sticker -->
+    <div id="sq-hover-tooltip" style="display:none;opacity:0;transition:opacity 150ms ease-in;background:#1e1608;border:1px solid #7a6020;border-radius:8px;padding:8px 10px;line-height:1.35">
+      <div id="sqht-name" style="font-size:clamp(10px,1.8vw,26px);font-weight:bold;margin-bottom:4px"></div>
+      <div id="sqht-desc" style="font-size:clamp(8px,1.35vw,19px);color:#c8c8d8;line-height:1.4"></div>
+      <div id="sqht-actions" style="display:none;gap:6px;margin-top:8px">
+        <button id="sqht-sell-btn" class="btn btn-red" style="width:auto;padding:5px 12px;font-size:clamp(8px,1.2vw,18px)">Sell</button>
+        <button class="btn btn-gray" style="width:auto;padding:5px 12px;font-size:clamp(8px,1.2vw,18px)" onclick="_sqTooltipUnfreeze()">Cancel</button>
+      </div>
+    </div>
     <!-- Play controls -->
     <div id="play-controls">
       <div id="bag-btn" onclick="openBagModal()">
-        <img id="bag-sprite" src="Assets/bag-frame0.png">
+        <img id="bag-sprite" src="Assets/animations/bag/bag-frame0.png">
         <div id="bag-count">98</div>
       </div>
       <div style="display:flex;gap:6px">
@@ -376,7 +412,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
       <div id="shop-reel-3" class="shop-reel" style="left:45.31%;top:26.39%;width:14.06%;height:29.86%"></div>
     </div>
     <!-- Layer 2: shop background PNG (transparent slot windows show reels through) -->
-    <img id="shop-bg" src="Assets/shop-bg-frame0.png">
+    <img id="shop-bg" src="Assets/animations/shop-bg/shop-bg-frame0.png">
     <!-- Layer 3+: all interactive UI on top -->
     <div id="shop-gold-display">$0</div>
     <div id="shop-top-bar">
@@ -385,11 +421,11 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
       <button class="shop-top-btn green" onclick="leaveShop()">Leave →</button>
     </div>
     <div id="shop-slot-price">$4</div>
-    <img id="shop-handle-img" src="Assets/slot-handle-frame0.png">
+    <img id="shop-handle-img" src="Assets/animations/slot-handle/slot-handle-frame0.png">
     <div id="shop-handle-hit"></div>
     <div id="shop-pack-0" class="shop-pack-box" style="left:3.52%;top:72.22%;width:10.94%;height:23.61%"></div>
     <div id="shop-pack-1" class="shop-pack-box" style="left:19.92%;top:72.22%;width:10.94%;height:23.61%"></div>
-    <div id="shop-bag-btn" onclick="openShopBagUI()"><img id="shop-bag-sprite" src="Assets/bag-frame0.png"></div>
+    <div id="shop-bag-btn" onclick="openShopBagUI()"><img id="shop-bag-sprite" src="Assets/animations/bag/bag-frame0.png"></div>
     <div id="shop-bounty-list"></div>
     <div id="shop-queue-bar"></div>
     <div id="shop-bag-ui">
@@ -503,10 +539,18 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
     </div>
   </div>
 </div>
-<div id="bag-modal" class="modal-overlay" style="display:none">
-  <div class="modal" style="max-width:560px"><h2>Tile Bag</h2><p style="color:#a0a0c0;font-size:32px;margin-bottom:14px" id="bag-mc"></p><div id="bag-counts"></div>
-    <div style="margin-top:14px;text-align:right"><button class="btn btn-gray" style="width:auto;padding:9px 24px" onclick="document.getElementById('bag-modal').style.display='none'">Close</button></div>
+<div id="bag-ui-overlay" style="display:none">
+  <span id="bag-ui-count" style="position:absolute;top:16px;left:20px;color:#7ac07a;font-family:'Jersey 10',Georgia;font-size:38px"></span>
+  <button class="btn btn-gray" style="position:absolute;top:12px;right:16px;width:auto;padding:6px 18px" onclick="closeBagUI()">Close</button>
+  <div id="bag-ui-tiles" style="display:grid;grid-template-columns:repeat(9,73px);gap:22px;"></div>
+</div>
+<div id="shop-bag-overlay" style="display:none">
+  <div style="display:flex;align-items:center;justify-content:space-between;width:100%;max-width:700px;padding:16px 20px;flex-shrink:0">
+    <span id="sbovr-count" style="color:#7ac07a;font-family:'Jersey 10',Georgia;font-size:26px"></span>
+    <button class="btn btn-gray" style="width:auto;padding:5px 14px" onclick="closeShopBagUI()">Close</button>
   </div>
+  <div id="sbovr-tiles" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;align-content:flex-start;padding:16px;width:100%;max-width:700px;flex-shrink:0"></div>
+  <div id="sbovr-actions" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;padding:0 16px 16px;width:100%;max-width:700px"></div>
 </div>
 <div id="blank-modal" class="modal-overlay" style="display:none">
   <div class="modal"><h2>Choose a letter</h2><p style="color:#a0a0c0;font-size:32px;margin-bottom:14px">Your blank tile will act as this letter.</p><div class="blank-grid" id="blank-grid"></div></div>
@@ -534,7 +578,6 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
   </div>
 </div>
 <script src="src/data.js"></script>
-<script src="src/stickers_final.js"></script>
 <script src="src/solver.js"></script>
 <script src="src/physics.js"></script>
 <script src="src/game.js"></script>

@@ -47,10 +47,10 @@ function startGame(seed){
   closeAllModals();
   var s=(seed!==undefined&&seed!==null)?((parseInt(seed)>>>0)||1):Math.floor(Math.random()*900000)+100000;
   _rngSeed(s);
-  S={bag:buildBag(),hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),
+  S={bag:buildBag(),hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),btTop:Array(B*B).fill(null),
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,censorApplied:false,alchemistUsed:false,palUnlocked:false,devMode:false,
-     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bounties:[],bhMult:1,localCooldowns:new Set(),
-     lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0};
+     phase:'play',pendingSquares:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bounties:[],bhMult:1,palMult:1,palWords:[],localCooldowns:new Set(),
+     lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0};
   window._easyHint=null;
   shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};activeDrag=null;
   document.getElementById('shop-screen').style.display='none';
@@ -69,36 +69,7 @@ function drawFull(){
   } else {
     for(var i=0;i<n&&S.bag.length>0;i++){var t=S.bag.pop();S.hand.push({letter:t.letter,isBlank:t.isBlank,id:t.id,blankAs:null,sel:false,onBoard:false,variant:t.variant||null,blueBonus:t.blueBonus||0});}
   }
-  if(!S.censorApplied){
-    var hasCensor=false;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='censor'){hasCensor=true;break;}
-    if(hasCensor&&S.hand.length>1){
-      S.censorApplied=true;
-      var freeHand=S.hand.filter(function(t){return!t.onBoard;});
-      if(freeHand.length>0){
-        var minSc=Infinity,minTile=null;
-        for(var i=0;i<freeHand.length;i++){var sc=freeHand[i].isBlank?0:(LS[freeHand[i].letter]||0);if(sc<minSc){minSc=sc;minTile=freeHand[i];}}
-        if(minTile){S.hand=S.hand.filter(function(t){return t!==minTile;});toast('Censor discards your lowest tile!');}
-      }
-    }
-  }
-  _scheduleEasyHint();
   if (S.phase === 'play') _scheduleRankSolve();
-}
-
-var _easyHintTimer=null;
-function _scheduleEasyHint(){
-  if(_easyHintTimer)clearTimeout(_easyHintTimer);_easyHintTimer=null;
-  var hasEM=false;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='easy_mode'){hasEM=true;break;}
-  if(!hasEM||!DICT)return;
-  _easyHintTimer=setTimeout(function(){
-    _easyHintTimer=null;
-    var snap={
-      hand:S.hand.map(function(t){return t?Object.assign({},t,{onBoard:false,_boardSq:undefined}):null;}),
-      bt:S.bt.map(function(bt){return(bt&&!bt.isNew)?Object.assign({},bt):null;}),
-      board:S.board.slice()
-    };
-    findBestMoveBackground(snap,function(best){window._easyHint=best;renderBoard();});
-  },600);
 }
 
 function cb(){
@@ -135,7 +106,19 @@ function advanceRound(){
   document.getElementById('round-modal').style.display='none';S.bi++;
   var newStage=S.bi>=3;
   if(newStage){S.ai++;S.bi=0;if(S.ai>=STAGES.length){S.endless=true;S.endlessRound=(S.endlessRound||0)+1;}}
+  // End-of-stage sticker effects (e.g. Bourgeois collects gold)
+  if(newStage){
+    var _esSnap=S.placed.slice();
+    for(var _esi=0;_esi<_esSnap.length;_esi++){
+      var _esd=sqd(_esSnap[_esi].id);
+      if(_esd&&_esd.onEndStage)_esd.onEndStage(_esSnap[_esi]);
+    }
+  }
   if(typeof _resetZoom==='function')_resetZoom();
+  // Force-close bag modal if open — prevents its tile elements from showing during animBoardToShop
+  var _bgo=document.getElementById('bag-ui-overlay');
+  if(_bgo&&_bgo.style.display!=='none'){_bgo.style.display='none';delete _bgo.dataset.opening;delete _bgo.dataset.closing;}
+  var _bgs=document.getElementById('bag-sprite');if(_bgs)_bgs.style.visibility='';
   animBoardToShop(function(){
     if(newStage){clearBoardLetters();S.bag=buildBag();toast(S.endless?'Endless mode! Targets keep rising.':'New stage — letters cleared, stickers kept!');}
     S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.censorApplied=false;S.alchemistUsed=false;S.palUnlocked=false;S.lastWordLen=0;
@@ -160,69 +143,262 @@ function showGO(msg){
 function showWin(){clearSave();achvCheck('win');document.getElementById('win-modal').style.display='flex';}
 
 function closeAllModals(){
-  ['pack-modal','sq-modal','bag-modal','blank-modal','round-modal','gameover-modal','win-modal','hammer-modal','forge-modal','board-preview-modal','alchemist-modal','collection-modal','achv-modal','seed-modal'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none';});
+  ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','gameover-modal','win-modal','hammer-modal','forge-modal','board-preview-modal','alchemist-modal','collection-modal','achv-modal','seed-modal'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
   document.getElementById('shop-screen').style.display='none';
 }
 
 function toast(msg){var el=document.getElementById('toast');el.textContent=msg;el.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(function(){el.style.display='none';},2500);}
 
+function _animBagFrames(imgEl,fromFrame,toFrame,ms,onDone,prefix){
+  var pre=prefix||'Assets/animations/bag/bag-frame';
+  imgEl.src=pre+fromFrame+'.png';
+  var step=fromFrame<toFrame?1:-1,cur=fromFrame;
+  var timer=setInterval(function(){
+    cur+=step;imgEl.src=pre+cur+'.png';
+    if(cur===toFrame){clearInterval(timer);if(onDone)onDone();}
+  },ms);
+}
+
+function _renderBagFloatTiles(cont,tiles,sz){
+  cont.innerHTML='';
+  var fc=[
+    {a:'bfloat0',d:'2.5s',dl:'0s'},{a:'bfloat1',d:'2.8s',dl:'0.5s'},
+    {a:'bfloat2',d:'3.1s',dl:'1.0s'},{a:'bfloat3',d:'2.6s',dl:'0.3s'},
+    {a:'bfloat4',d:'3.0s',dl:'0.8s'},{a:'bfloat5',d:'2.7s',dl:'1.4s'}
+  ];
+  var groups={},order=[];
+  for(var i=0;i<tiles.length;i++){
+    var t=tiles[i],key=(t.isBlank?'_':t.letter)+'|'+(t.variant||'');
+    if(!groups[key]){groups[key]={letter:t.isBlank?'':t.letter,isBlank:!!t.isBlank,variant:t.variant||null,count:0};order.push(key);}
+    groups[key].count++;
+  }
+  var vord={'':0,'red':1,'blue':2,'gold':3};
+  order.sort(function(a,b){
+    var ga=groups[a],gb=groups[b];
+    if(ga.isBlank!==gb.isBlank)return ga.isBlank?1:-1;
+    if(ga.letter!==gb.letter)return ga.letter<gb.letter?-1:1;
+    return (vord[ga.variant||'']||0)-(vord[gb.variant||'']||0);
+  });
+  for(var oi=0;oi<order.length;oi++){
+    var g=groups[order[oi]],f=fc[oi%fc.length];
+    var item=document.createElement('div');
+    item.className='bag-float-item';
+    var inner=document.createElement('div');
+    inner.style.cssText='display:flex;flex-direction:column;align-items:center;animation:'+f.a+' '+f.d+' ease-in-out '+f.dl+' infinite';
+    var spr=tileSpr(g.isBlank?null:g.letter,g.isBlank,g.variant,sz);
+    var te=document.createElement('div');
+    te.className='tile tile-spr'+(g.isBlank?' blank-t':'')+(g.variant?' var-'+g.variant:'');
+    te.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+spr;
+    if(g.variant){
+      var bdg=document.createElement('span');
+      bdg.className='vbadge vbadge-'+g.variant;
+      bdg.textContent=g.variant==='gold'?'$':g.variant==='blue'?'+'+(LS[g.letter]||0):'×2';
+      te.appendChild(bdg);
+    }
+    inner.appendChild(te);
+    var ct=document.createElement('div');
+    ct.style.cssText='color:#7ac07a;font-family:\'Jersey 10\',Georgia;font-size:'+Math.round(sz*0.38)+'px;margin-top:4px;line-height:1;text-align:center';
+    ct.textContent='×'+g.count;inner.appendChild(ct);
+    item.appendChild(inner);
+    cont.appendChild(item);
+  }
+}
+
+// Frame 5 measurements: bag is 30px tall, center at (238.5, 96.5) within 288×160 frame.
+// Scale is set so the bag in frame 5 matches the rendered bag sprite size on screen.
+var _BAG_FW=288,_BAG_FFH=160,_BAG_F5X=238.5,_BAG_F5Y=96.5,_BAG_F5H=30;
+
+function _bagMakeEl(srcSprId){
+  var spr=srcSprId?document.getElementById(srcSprId):null;
+  var r=spr?spr.getBoundingClientRect():null;
+  var bagCX=r?r.left+r.width/2:window.innerWidth/2;
+  var bagCY=r?r.top+r.height/2:window.innerHeight/2;
+  var scale=r?r.height/_BAG_F5H:1;
+  var w=Math.round(_BAG_FW*scale),h=Math.round(_BAG_FFH*scale);
+  var el=document.createElement('img');
+  el.style.cssText='position:fixed;z-index:9999;image-rendering:pixelated;pointer-events:none;'
+    +'width:'+w+'px;height:'+h+'px;'
+    +'left:'+Math.round(bagCX-_BAG_F5X*scale)+'px;'
+    +'top:'+Math.round(bagCY-_BAG_F5Y*scale)+'px;';
+  if(spr)spr.style.visibility='hidden';
+  document.body.appendChild(el);
+  return {el:el,spr:spr};
+}
+
+function _bagTransitionOpen(srcSprId,onDone,onNearDone){
+  var s=_bagMakeEl(srcSprId);
+  var hf=srcSprId==='bag-sprite'?(window._bagHoverFrame||0):0;
+  var cur=hf+1;
+  var nearFired=false;
+  s.el.src='Assets/animations/transition/transition-frame'+cur+'.png';
+  var timer=setInterval(function(){
+    cur++;
+    s.el.src='Assets/animations/transition/transition-frame'+cur+'.png';
+    if(!nearFired&&cur>=17&&onNearDone){nearFired=true;onNearDone();}
+    if(cur===19){
+      clearInterval(timer);
+      var bridge=document.createElement('div');
+      bridge.style.cssText='position:fixed;inset:0;background:#323c39;z-index:9990;pointer-events:none;transition:opacity 0.5s ease;';
+      document.body.appendChild(bridge);
+      if(s.el.parentNode)s.el.parentNode.removeChild(s.el);
+      if(s.spr)s.spr.style.visibility='';
+      if(onDone)onDone();
+      requestAnimationFrame(function(){requestAnimationFrame(function(){
+        bridge.style.opacity='0';
+        setTimeout(function(){if(bridge.parentNode)bridge.parentNode.removeChild(bridge);},500);
+      });});
+    }
+  },64);
+}
+
+function _bagTransitionClose(srcSprId,onDone){
+  var s=_bagMakeEl(srcSprId);
+  var cur=19;
+  s.el.src='Assets/animations/transition/transition-frame19.png';
+  var timer=setInterval(function(){
+    cur--;
+    s.el.src='Assets/animations/transition/transition-frame'+cur+'.png';
+    if(cur===1){
+      clearInterval(timer);
+      if(s.el.parentNode)s.el.parentNode.removeChild(s.el);
+      if(s.spr)s.spr.style.visibility='';
+      if(onDone)onDone();
+    }
+  },64);
+}
+
 function openBagModal(){
-  document.getElementById('bag-mc').textContent=S.bag.length+' tiles remaining.';
-  var cont=document.getElementById('bag-counts');cont.innerHTML='';
-  cont.style.cssText='display:flex;flex-direction:column;gap:12px';
+  if(window._scoring)return;
+  var ovr=document.getElementById('bag-ui-overlay');if(!ovr||ovr.dataset.opening||ovr.dataset.closing)return;
+  ovr.dataset.opening='1';
+  _bagTransitionOpen('bag-sprite',function(){
+    // animation done — reveal the overlay (tiles are already mid-zoom)
+    delete ovr.dataset.opening;
+    ovr.style.visibility='';ovr.style.pointerEvents='';
+  },function(){
+    // 2 frames before animation ends — start zoom early while bag is still animating
+    ovr.style.display='flex';ovr.style.visibility='hidden';ovr.style.pointerEvents='none';
+    document.getElementById('bag-ui-count').textContent=S.bag.length+' tiles remaining';
+    var tilesDiv=document.getElementById('bag-ui-tiles');
+    _renderBagFloatTiles(tilesDiv,S.bag,73);
+    tilesDiv.style.animation='none';void tilesDiv.offsetHeight;
+    tilesDiv.style.animation='bagTunnelZoom 0.52s ease-out both';
+  });
+}
 
-  var variants=S.bag.filter(function(t){return t.variant;});
-  var plains=S.bag.filter(function(t){return !t.variant;});
+function closeBagUI(){
+  var ovr=document.getElementById('bag-ui-overlay');if(!ovr||ovr.dataset.closing)return;
+  delete ovr.dataset.opening;ovr.dataset.closing='1';
+  ovr.style.visibility='';ovr.style.pointerEvents='';
+  var bridge=document.createElement('div');
+  bridge.style.cssText='position:fixed;inset:0;background:#0f2018;z-index:9990;pointer-events:none;transition:opacity 0.35s ease;';
+  document.body.appendChild(bridge);
+  ovr.style.display='none';
+  _bagTransitionClose('bag-sprite',function(){delete ovr.dataset.closing;});
+  requestAnimationFrame(function(){requestAnimationFrame(function(){
+    bridge.style.opacity='0';
+    setTimeout(function(){if(bridge.parentNode)bridge.parentNode.removeChild(bridge);},350);
+  });});
+}
 
-  function secLabel(text){
-    var l=document.createElement('div');
-    l.style.cssText='font-size:32px;text-transform:uppercase;letter-spacing:1px;color:#8880a8;margin-bottom:4px';
-    l.textContent=text;return l;
-  }
-  function tileEl(letter,isBlank,variant){
-    var badge=variant==='gold'?'<span class="vbadge vbadge-gold">$</span>':
-              variant==='blue'?'<span class="vbadge vbadge-blue">+'+(LS[letter]||0)+'</span>':
-              variant==='red'?'<span class="vbadge vbadge-red">×2</span>':'';
-    var spr=tileSpr(isBlank?null:letter,isBlank,variant||null,44);
-    var el=document.createElement('div');
-    el.className='tile tile-spr'+(isBlank?' blank-t':'')+(variant?' var-'+variant:'');
-    el.style.cssText='width:44px;height:44px;position:relative;flex-shrink:0;cursor:default;'+spr;
-    el.innerHTML=badge;
-    return el;
-  }
-
-  if(variants.length>0){
-    var vsec=document.createElement('div');
-    vsec.appendChild(secLabel('Special Tiles'));
-    var vrow=document.createElement('div');vrow.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
-    for(var i=0;i<variants.length;i++){
-      var t=variants[i];
-      vrow.appendChild(tileEl(t.isBlank?'':t.letter,t.isBlank,t.variant));
+// ─── Tile Audio ───────────────────────────────────────────────────────────────
+var _audioCtx=null,_scoreDingN=0;
+function _getAudioCtx(){
+  if(!_audioCtx)_audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  if(_audioCtx.state==='suspended')_audioCtx.resume();
+  return _audioCtx;
+}
+function _playScoreDing(){
+  try{
+    var ctx=_getAudioCtx();
+    var now=ctx.currentTime+0.016;
+    var n=_scoreDingN++;
+    // Shepard tone stab: 6 octave-spaced sine waves (A1=110Hz through A6=3520Hz).
+    // A tight Gaussian bell (sigma=0.8) keeps only ~3 waves audible at once —
+    // exactly the "two ascending, one wrapping in at the bottom" mechanism.
+    // Within each stab the oscillators sweep UP by one semitone, so the rise
+    // is audible inside the note, not just between notes.
+    // Bell center advances 7 semitones per event (coprime with 12 = every chord different).
+    var NUM_OCTS=4, BASE=220, SIGMA=0.7, MAX_AMP=0.2;
+    var SWEEP=Math.pow(2,1/12); // one semitone of pitch rise during the note
+    var DUR=0.19;
+    var center=((n*5/12)+1.5)%NUM_OCTS;
+    var comp=ctx.createDynamicsCompressor();
+    comp.threshold.value=-14;comp.knee.value=8;comp.ratio.value=4;
+    comp.attack.value=0.002;comp.release.value=0.1;
+    comp.connect(ctx.destination);
+    var lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3400;lp.Q.value=0.6;
+    lp.connect(comp);
+    for(var o=0;o<NUM_OCTS;o++){
+      var freq=BASE*Math.pow(2,o);
+      var dist=o-center;
+      if(dist>NUM_OCTS/2)dist-=NUM_OCTS;
+      if(dist<-NUM_OCTS/2)dist+=NUM_OCTS;
+      var amp=Math.exp(-(dist*dist)/(2*SIGMA*SIGMA))*MAX_AMP;
+      if(amp<0.012)continue;
+      var osc=ctx.createOscillator();osc.type='sine';
+      // Sweep: glide upward one semitone over the note duration
+      osc.frequency.setValueAtTime(freq,now);
+      osc.frequency.exponentialRampToValueAtTime(freq*SWEEP,now+DUR);
+      var g=ctx.createGain();
+      g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(amp,now+0.007);
+      g.gain.exponentialRampToValueAtTime(0.001,now+DUR);
+      osc.connect(g);g.connect(lp);osc.start(now);osc.stop(now+DUR+0.01);
+      // Detuned twin for warmth
+      var osc2=ctx.createOscillator();osc2.type='sine';
+      osc2.frequency.setValueAtTime(freq*1.003,now);
+      osc2.frequency.exponentialRampToValueAtTime(freq*SWEEP*1.003,now+DUR);
+      var g2=ctx.createGain();
+      g2.gain.setValueAtTime(0,now);g2.gain.linearRampToValueAtTime(amp*0.45,now+0.007);
+      g2.gain.exponentialRampToValueAtTime(0.001,now+DUR);
+      osc2.connect(g2);g2.connect(lp);osc2.start(now);osc2.stop(now+DUR+0.01);
     }
-    vsec.appendChild(vrow);cont.appendChild(vsec);
-  }
-
-  if(plains.length>0){
-    var psec=document.createElement('div');
-    psec.appendChild(secLabel('Tiles'));
-    var counts={};
-    for(var i=0;i<plains.length;i++){var l=plains[i].isBlank?'_':plains[i].letter;counts[l]=(counts[l]||0)+1;}
-    var prow=document.createElement('div');prow.style.cssText='display:flex;flex-wrap:wrap;gap:5px';
-    var ks=Object.keys(counts).sort();
-    for(var i=0;i<ks.length;i++){
-      var l=ks[i],cnt=counts[l],isBlank=(l==='_');
-      var el=tileEl(isBlank?'':l,isBlank,null);
-      if(cnt>1){
-        var ct=document.createElement('span');
-        ct.style.cssText='position:absolute;top:1px;left:3px;font-size:30px;font-weight:normal;color:#2a1f0e;line-height:1';
-        ct.textContent='×'+cnt;el.appendChild(ct);
-      }
-      prow.appendChild(el);
+  }catch(e){}
+}
+function _playReelTick(){
+  try{
+    var ctx=_getAudioCtx(),now=ctx.currentTime;
+    var len=Math.ceil(ctx.sampleRate*0.025);
+    var buf=ctx.createBuffer(1,len,ctx.sampleRate);
+    var d=buf.getChannelData(0);
+    for(var i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
+    var src=ctx.createBufferSource();src.buffer=buf;
+    var filt=ctx.createBiquadFilter();filt.type='bandpass';filt.frequency.value=2800;filt.Q.value=6;
+    var g=ctx.createGain();g.gain.setValueAtTime(0.07,now);g.gain.exponentialRampToValueAtTime(0.001,now+0.018);
+    src.connect(filt);filt.connect(g);g.connect(ctx.destination);src.start(now);
+  }catch(e){}
+}
+function _playTileClick(type){
+  try{
+    var ctx=_getAudioCtx(),now=ctx.currentTime;
+    var len=Math.ceil(ctx.sampleRate*0.06);
+    var buf=ctx.createBuffer(1,len,ctx.sampleRate);
+    var d=buf.getChannelData(0);
+    for(var i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
+    var src=ctx.createBufferSource();src.buffer=buf;
+    var filt=ctx.createBiquadFilter();filt.type='bandpass';
+    var gain=ctx.createGain();
+    var pv=1+(Math.random()-0.5)*0.25;
+    if(type==='place'){
+      filt.frequency.value=700*pv;filt.Q.value=1.8;
+      gain.gain.setValueAtTime(0.32,now);
+      gain.gain.exponentialRampToValueAtTime(0.001,now+0.05);
+    }else if(type==='select'){
+      filt.frequency.value=2000*pv;filt.Q.value=4;
+      gain.gain.setValueAtTime(0.1,now);
+      gain.gain.exponentialRampToValueAtTime(0.001,now+0.022);
+    }else if(type==='land'){
+      filt.frequency.value=3000*pv;filt.Q.value=5;
+      gain.gain.setValueAtTime(0.14,now);
+      gain.gain.exponentialRampToValueAtTime(0.001,now+0.022);
+    }else{
+      filt.frequency.value=1200*pv;filt.Q.value=2.5;
+      gain.gain.setValueAtTime(0.2,now);
+      gain.gain.exponentialRampToValueAtTime(0.001,now+0.035);
     }
-    psec.appendChild(prow);cont.appendChild(psec);
-  }
-
-  document.getElementById('bag-modal').style.display='flex';
+    src.connect(filt);filt.connect(gain);gain.connect(ctx.destination);
+    src.start(now);
+  }catch(e){}
 }
 
 function openBlankChooser(hi,cb2){

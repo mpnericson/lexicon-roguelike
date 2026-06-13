@@ -8,7 +8,8 @@ var HP = {
   TILE_W: 68, GAP: 0,
   DAMP: 0.55, SPRING: 0.14,
   RAF: null, aL: 0, aR: 0, left: 0,
-  fromX: [], toX: [], settleAt: 0, settleDur: 150
+  fromX: [], toX: [], settleAt: 0, settleDur: 150,
+  settleCallback: null
 };
 
 function hpBounds() {
@@ -44,7 +45,7 @@ function hpStep() {
     for (var i = 0; i < HP.tiles.length; i++)
       if (HP.fromX[i] !== undefined && HP.toX[i] !== undefined)
         HP.x[i] = HP.fromX[i] + (HP.toX[i] - HP.fromX[i]) * ease;
-    if (t >= 1) HP.settleAt = 0;
+    if (t >= 1) { HP.settleAt = 0; var _scb = HP.settleCallback; HP.settleCallback = null; if (_scb) _scb(); }
     hpDraw(); HP.RAF = requestAnimationFrame(hpStep); return;
   }
   var n = HP.tiles.length;

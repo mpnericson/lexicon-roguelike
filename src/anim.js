@@ -82,7 +82,7 @@ function _bagSpriteShow(bagEl) {
     + 'width:' + DISPLAY_SZ + 'px;height:' + DISPLAY_SZ + 'px;';
   var img = document.createElement('img');
   img.style.cssText = 'width:100%;height:100%;image-rendering:pixelated;display:block;';
-  img.src = 'Assets/bag-frame0.png';
+  img.src = 'Assets/animations/bag/bag-frame0.png';
   overlay.appendChild(img);
   document.body.appendChild(overlay);
   bagEl.style.visibility = 'hidden';
@@ -93,7 +93,7 @@ function _bagSpriteIntro(state, onDone) {
   var frames = [0,1,2,3,4,5];
   var fi = 0;
   function next() {
-    state.img.src = 'Assets/bag-frame' + frames[fi] + '.png';
+    state.img.src = 'Assets/animations/bag/bag-frame' + frames[fi] + '.png';
     fi++;
     if (fi < frames.length) setTimeout(next, 80);
     else onDone();
@@ -105,7 +105,7 @@ function _bagSpriteShakeStart(state) {
   var frames = [6,7,8,9];
   var fi = 0;
   state.shakeInterval = setInterval(function() {
-    state.img.src = 'Assets/bag-frame' + frames[fi % frames.length] + '.png';
+    state.img.src = 'Assets/animations/bag/bag-frame' + frames[fi % frames.length] + '.png';
     fi++;
   }, 100);
 }
@@ -115,7 +115,7 @@ function _bagSpriteOutro(state, bagEl, onDone) {
   var frames = [10,11,12,13];
   var fi = 0;
   function next() {
-    state.img.src = 'Assets/bag-frame' + frames[fi] + '.png';
+    state.img.src = 'Assets/animations/bag/bag-frame' + frames[fi] + '.png';
     fi++;
     if (fi < frames.length) setTimeout(next, 80);
     else { state.overlay.remove(); bagEl.style.visibility = ''; if(window._bagSpriteReset)window._bagSpriteReset(); onDone(); }
@@ -334,19 +334,18 @@ function _burstTilesFromBag(els, bx, by, staggerT, onDone) {
       var tw = r.width || 56;
       var th = r.height || 64;
 
+      var sprCss2 = el.dataset.spr || '';
       el.style.opacity = '0';
       var clone = document.createElement('div');
       clone.className = el.className;
       clone.innerHTML = el.innerHTML;
-      var sprCss2 = el.dataset.spr || '';
-      clone.style.cssText = 'position:fixed;left:'+(bx-tw/2)+'px;top:'+(by-th/2)+'px;width:'+tw+'px;height:'+th+'px;z-index:810;pointer-events:none;transform-origin:center center;box-shadow:0 2px 0 #6b5535;border-radius:3px;transform:scale(0.1);'+sprCss2;
+      clone.style.cssText = 'position:fixed;left:'+(bx-tw/2)+'px;top:'+(by-th/2)+'px;width:'+tw+'px;height:'+th+'px;z-index:810;pointer-events:none;'+sprCss2;
       layer.appendChild(clone);
 
       var cpx = (bx + tx) / 2 + (Math.random() - 0.5) * 130;
       var cpy = Math.min(by, ty) - 65 - Math.random() * 80;
       var dist = Math.sqrt((tx - bx) * (tx - bx) + (ty - by) * (ty - by));
       var flightDur = 300 + dist * 0.32;
-      var startRot = (Math.random() - 0.5) * 320;
 
       var delay = staggerT * Math.sqrt(idx / N); // sqrt stagger — fast burst, slows as bag empties
       setTimeout(function() {
@@ -359,7 +358,6 @@ function _burstTilesFromBag(els, bx, by, staggerT, onDone) {
           var cy = u*u*by + 2*u*e*cpy + e*e*ty;
           clone.style.left = (cx - tw/2)+'px';
           clone.style.top = (cy - th/2)+'px';
-          clone.style.transform = 'scale('+(0.1 + e * 0.9)+') rotate('+(startRot * (1 - e))+'deg)';
           if (t < 1) { requestAnimationFrame(flyTick); return; }
           clone.remove();
           el.style.opacity = '1';

@@ -33,11 +33,14 @@ function saveGame() {
       phase: (S.phase === 'shop' || S.phase === 'placing') ? 'play' : S.phase,
       bounties: S.bounties || [],
       bhMult: S.bhMult || 1,
+      palMult: S.palMult || 1,
+      palWords: S.palWords || [],
       lastWordLen: S.lastWordLen || 0,
       endless: !!S.endless,
       endlessRound: S.endlessRound || 0,
       roundsCompleted: S.roundsCompleted || 0,
-      localCooldowns: Array.from(S.localCooldowns||[])
+      localCooldowns: Array.from(S.localCooldowns||[]),
+      drunkStreak: S.drunkStreak || 0
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch(e) {}
@@ -62,6 +65,7 @@ function loadGame() {
       }),
       board: d.board || Array(B * B).fill(null),
       bt:    d.bt    || Array(B * B).fill(null),
+      btTop: Array(B * B).fill(null),
       ai: d.ai || 0, bi: d.bi || 0,
       score: d.score || 0, gold: d.gold || 0,
       plays: d.plays || 4,  disc: d.disc || 3,
@@ -79,11 +83,14 @@ function loadGame() {
       seed: d.seed, _slotMachineRoll: null,
       bounties: d.bounties || [],
       bhMult: d.bhMult || 1,
+      palMult: d.palMult || 1,
+      palWords: d.palWords || [],
       lastWordLen: d.lastWordLen || 0,
       endless: !!d.endless,
       endlessRound: d.endlessRound || 0,
       roundsCompleted: d.roundsCompleted || 0,
       localCooldowns: new Set(d.localCooldowns||[]),
+      drunkStreak: d.drunkStreak || 0,
       devMode: false
     };
     return true;

@@ -19,6 +19,8 @@ async function playWord(){
   if(comm.length>0){
     var conn=false;
     outer:for(var ni=0;ni<nt.length;ni++){
+      // Jenga: tile stacked directly on a committed tile is automatically connected
+      if(S.bt[nt[ni].idx]&&!S.bt[nt[ni].idx].isNew){conn=true;break outer;}
       var r=nt[ni].row,c=nt[ni].col;var nb=[[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
       for(var nb2=0;nb2<nb.length;nb2++){var nr=nb[nb2][0],nc=nb[nb2][1];if(nr<0||nr>=B||nc<0||nc>=B)continue;var nbt=S.bt[nr*B+nc];if(nbt&&!nbt.isNew){conn=true;break outer;}}
     }
@@ -35,9 +37,12 @@ async function playWord(){
   window._scoring=true;
   var _playBtn=document.querySelector('#play-controls .btn-icon-green');
   if(_playBtn)_playBtn.disabled=true;
+  var _hasDT=false;for(var _dti=0;_dti<S.placed.length;_dti++)if(S.placed[_dti].id==='drunk_text'){_hasDT=true;break;}
   var _words=getAllWords(nt,dir);
   var _eggWords={};for(var i=0;i<EASTER_EGGS.length;i++)_eggWords[EASTER_EGGS[i].word]=true;
-  for(var i=0;i<_words.length;i++){if(_eggWords[_words[i]])continue;var v=await validWord(_words[i]);if(!v){flashTiles(nt);window._scoring=false;if(_playBtn)_playBtn.disabled=false;if(!S.devMode){S.gold=Math.max(0,S.gold-2);renderHUD();toast('"'+_words[i]+'" is not a word — fined $2!');}else{toast('"'+_words[i]+'" is not a word.');}return;}}
+  var _dtInvalid=false;
+  for(var i=0;i<_words.length;i++){if(_eggWords[_words[i]])continue;var v=await validWord(_words[i]);if(!v){if(_hasDT){_dtInvalid=true;}else{flashTiles(nt);window._scoring=false;if(_playBtn)_playBtn.disabled=false;if(!S.devMode){S.gold=Math.max(0,S.gold-2);renderHUD();toast('"'+_words[i]+'" is not a word — fined $2!');}else{toast('"'+_words[i]+'" is not a word.');}return;}}}
+  if(_hasDT){S._drunkValid=!_dtInvalid;if(_dtInvalid)flashTiles(nt);}
   // Easter egg effects (before scoring — can mutate tile variants)
   var _eggApplied=applyEasterEgg(main.word,nt);if(_eggApplied)await new Promise(function(r){setTimeout(r,420);});
   // Bounty check (before scoring) — animate out before splicing
@@ -62,15 +67,26 @@ async function playWord(){
   if(!palLocked){
     if(justUnlocked)toast('Palindrome! Scoring is now live.');
     var res=scorePlay(nt,dir,false);
+    if(_hasDT)delete S._drunkValid;
     await runScoreAnim(res.events,res.total);
     S.score+=res.total;S.gold+=res.tgold;
+    _proletariatSpread();
     _checkRankReward(res.total,_capturedRankTop10);
     achvCheck('word_played',{bingo:res.bingo,isPalin:isExtendedPalindrome(main.word)});
+    var _hasPE=false;for(var _pei=0;_pei<S.placed.length;_pei++)if(S.placed[_pei].id==='palindrome_engine'){_hasPE=true;break;}
+    if(_hasPE&&isExtendedPalindrome(main.word)){
+      if(!S.palWords)S.palWords=[];
+      if(S.palWords.indexOf(main.word)<0){S.palWords.push(main.word);S.palMult=(S.palMult||1)+0.25;toast('Palindrome Engine: ×'+fmtMult(S.palMult)+'!');}
+    }
   }else{toast('Scoring locked — play a palindrome first!');}
   S.wtr=(S.wtr||0)+1;S.discPressure=0;S.lastWordLen=main.word.length;
   if(S.wtr%3===0)for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='tome'){S.ts=(S.ts||0)+1;break;}
   var blueTiles=[];
-  for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){S.bt[i].isNew=false;S.bt[i].flying=false;var t=S.hand[S.bt[i].handIdx];if(t){if(t.variant==='blue'){var nb=(t.blueBonus||0)+(t.isBlank?0:(LS[t.letter]||0));blueTiles.push({letter:t.letter,isBlank:t.isBlank,id:t.id,variant:'blue',blueBonus:nb});}t._done=true;}}}
+  for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){S.bt[i].isNew=false;S.bt[i].flying=false;var t=S.hand[S.bt[i].handIdx];if(!t&&S.bt[i].tileId){for(var _fi=0;_fi<S.hand.length;_fi++){if(S.hand[_fi]&&S.hand[_fi].id===S.bt[i].tileId){t=S.hand[_fi];break;}}}if(t){if(t.variant==='blue'){var nb=(t.blueBonus||0)+(t.isBlank?0:(LS[t.letter]||0));blueTiles.push({letter:t.letter,isBlank:t.isBlank,id:t.id,variant:'blue',blueBonus:nb});}t._done=true;}}}
+  // Commit Jenga stacked tiles: btTop replaces bt at that square
+  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var tTop=S.hand[S.btTop[i].handIdx];if(!tTop&&S.btTop[i].tileId){for(var _fi2=0;_fi2<S.hand.length;_fi2++){if(S.hand[_fi2]&&S.hand[_fi2].id===S.btTop[i].tileId){tTop=S.hand[_fi2];break;}}}S.btTop[i].isNew=false;S.btTop[i].flying=false;S.btTop[i]._stackLevel=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;S.bt[i]=S.btTop[i];S.btTop[i]=null;if(tTop){if(tTop.variant==='blue'){var nb2=(tTop.blueBonus||0)+(tTop.isBlank?0:(LS[tTop.letter]||0));blueTiles.push({letter:tTop.letter,isBlank:tTop.isBlank,id:tTop.id,variant:'blue',blueBonus:nb2});}tTop._done=true;}}}}
+  // Safety: after all commit loops any hand tile still onBoard is a ghost (lookup failed) — mark done
+  for(var _gi=0;_gi<S.hand.length;_gi++){if(S.hand[_gi]&&S.hand[_gi].onBoard&&!S.hand[_gi]._done)S.hand[_gi]._done=true;}
   // Save positions of kept (un-played) tiles before filtering
   var pwKept={};var _pwvi=0;for(var _pwki=0;_pwki<S.hand.length;_pwki++){var _pwt=S.hand[_pwki];if(_pwt&&!_pwt.onBoard){if(!_pwt._done&&HP.x[_pwvi]!==undefined)pwKept[_pwt.id]=HP.x[_pwvi];_pwvi++;}}
   S.hand=S.hand.filter(function(t){return!t._done;});
@@ -79,19 +95,22 @@ async function playWord(){
   HP.x=[];HP.vx=[];window._easyHint=null;
   S.plays--;
   var pwKeptN=S.hand.filter(function(t){return t&&!t.onBoard;}).length;
-  // Phase 1: render kept tiles only, restore old positions so they slide to new rest
+  // Predict final hand size so Phase 1 slides tiles to their true final positions.
+  var _pwDrawN=S.devMode?(7-S.hand.length):Math.min(7-S.hand.length,S.bag.length);
+  var _pwTotalN=pwKeptN+Math.max(0,_pwDrawN);
+  // Phase 1: render kept tiles, restore old positions, then slide left to make room.
   renderAll();
   var _pwvi2=0;for(var _pwki2=0;_pwki2<S.hand.length;_pwki2++){var _pwt2=S.hand[_pwki2];if(_pwt2&&!_pwt2.onBoard){if(pwKept[_pwt2.id]!==undefined){HP.x[_pwvi2]=pwKept[_pwt2.id];HP.vx[_pwvi2]=0;}_pwvi2++;}}
-  // Phase 2: after slide, draw and burst new tiles
-  await new Promise(function(r){setTimeout(function(){
-    var pwKept2={};var _pwvi3=0;for(var _pwki3=0;_pwki3<S.hand.length;_pwki3++){var _pwt3=S.hand[_pwki3];if(_pwt3&&!_pwt3.onBoard){pwKept2[_pwt3.id]=HP.x[_pwvi3];_pwvi3++;}}
-    drawFull();renderAll();
-    var _pwvi4=0;for(var _pwki4=0;_pwki4<S.hand.length;_pwki4++){var _pwt4=S.hand[_pwki4];if(_pwt4&&!_pwt4.onBoard){if(_pwvi4<pwKeptN&&pwKept2[_pwt4.id]!==undefined){HP.x[_pwvi4]=pwKept2[_pwt4.id];HP.vx[_pwvi4]=0;}_pwvi4++;}}
-    var pwAllEls=Array.prototype.slice.call(document.getElementById('hand-area').querySelectorAll('.hand-tile'));
-    var pwNewEls=pwAllEls.slice(pwKeptN);
-    if(pwNewEls.length){var pwBag=document.getElementById('bag-btn');var pwBagR=pwBag.getBoundingClientRect();pwBag.classList.add('bag-vacuuming');_burstTilesFromBag(pwNewEls,pwBagR.left+pwBagR.width/2,pwBagR.top+pwBagR.height/2,180,function(){pwBag.classList.remove('bag-vacuuming');});}
-    r();
-  },280);});
+  hpBounds();HP.fromX=HP.x.slice();HP.toX=hpRest(_pwTotalN).slice(0,pwKeptN);
+  HP.settleDur=200;HP.settleAt=performance.now();
+  // Phase 2: fires the instant the slide animation ends — no spring physics overlap.
+  await new Promise(function(r){
+    HP.settleCallback=function(){
+      HP.settleDur=150;
+      drawFull();renderHUD();renderBoard();document.getElementById('bag-count').textContent=S.bag.length;
+      _burstNewTilesFromBag(pwKeptN,_pwTotalN,document.getElementById('bag-btn'),r);
+    };
+  });
   window._scoring=false;
   if(_playBtn)_playBtn.disabled=false;
   saveGame();
@@ -119,6 +138,7 @@ function flashTiles(nt){
 
 function shuffleHand(){
   if(S.phase!=='play')return;
+  _playTileClick('pick');
   var freeIdxs=[],freeTiles=[];
   for(var i=0;i<S.hand.length;i++){if(S.hand[i]&&!S.hand[i].onBoard){freeIdxs.push(i);freeTiles.push(S.hand[i]);}}
   if(freeTiles.length<2)return;
@@ -140,26 +160,25 @@ function discardTiles(){
     for(var _ki=0;_ki<S.hand.length;_ki++){var _t=S.hand[_ki];if(_t&&!_t.onBoard){if(!_t.sel&&HP.x[_vi]!==undefined)keptOldPos[_t.id]=HP.x[_vi];_vi++;}}
     S.hand=S.hand.filter(function(t){return!t||!t.sel||t.onBoard;});HP.x=[];HP.vx=[];window._easyHint=null;S.disc--;
     for(var bi=0;bi<B*B;bi++){if(S.bt[bi]&&S.bt[bi].isNew){for(var k=0;k<S.hand.length;k++){if(S.hand[k]&&S.hand[k].onBoard&&S.hand[k]._boardSq===bi){S.bt[bi].handIdx=k;break;}}}}
+    if(S.btTop){for(var bi=0;bi<B*B;bi++){if(S.btTop[bi]&&S.btTop[bi].isNew){for(var k=0;k<S.hand.length;k++){if(S.hand[k]&&S.hand[k].onBoard&&S.hand[k]._boardSq===bi){S.btTop[bi].handIdx=k;break;}}}}}
     var hasCooker=false;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='pressure_cooker'){hasCooker=true;break;}
     if(hasCooker)S.discPressure=(S.discPressure||0)+1;
+    if(!S.censorApplied){var _hasCen=false;for(var _ci=0;_ci<S.placed.length;_ci++)if(S.placed[_ci].id==='censor'){_hasCen=true;break;}if(_hasCen&&sel.length===1){S.gold+=3;S.censorApplied=true;renderHUD();toast('Censor: tile destroyed! +$3');}}
     saveGame();
     var keptCount=S.hand.filter(function(t){return t&&!t.onBoard;}).length;
-    // Phase 1: render kept tiles only, restore old positions so they slide to new rest
+    var _dcDrawN=S.devMode?(7-S.hand.length):Math.min(7-S.hand.length,S.bag.length);
+    var _dcTotalN=keptCount+Math.max(0,_dcDrawN);
+    // Phase 1: render kept tiles, restore old positions, then slide left to make room.
     renderAll();
     var _vi2=0;for(var _ki2=0;_ki2<S.hand.length;_ki2++){var _t2=S.hand[_ki2];if(_t2&&!_t2.onBoard){if(keptOldPos[_t2.id]!==undefined){HP.x[_vi2]=keptOldPos[_t2.id];HP.vx[_vi2]=0;}_vi2++;}}
-    // Phase 2: after slide, draw and burst new tiles
-    setTimeout(function(){
-      var keptPos2={};var _vi3=0;for(var _ki3=0;_ki3<S.hand.length;_ki3++){var _t3=S.hand[_ki3];if(_t3&&!_t3.onBoard){keptPos2[_t3.id]=HP.x[_vi3];_vi3++;}}
-      drawFull();renderAll();
-      var _vi4=0;for(var _ki4=0;_ki4<S.hand.length;_ki4++){var _t4=S.hand[_ki4];if(_t4&&!_t4.onBoard){if(_vi4<keptCount&&keptPos2[_t4.id]!==undefined){HP.x[_vi4]=keptPos2[_t4.id];HP.vx[_vi4]=0;}_vi4++;}}
-      var allEls=Array.prototype.slice.call(document.getElementById('hand-area').querySelectorAll('.hand-tile'));
-      var newEls=allEls.slice(keptCount);
-      if(newEls.length){
-        var bagEl=document.getElementById('bag-btn');var bagR=bagEl.getBoundingClientRect();
-        bagEl.classList.add('bag-vacuuming');
-        _burstTilesFromBag(newEls,bagR.left+bagR.width/2,bagR.top+bagR.height/2,180,function(){bagEl.classList.remove('bag-vacuuming');});
-      }
-    },280);
+    hpBounds();HP.fromX=HP.x.slice();HP.toX=hpRest(_dcTotalN).slice(0,keptCount);
+    HP.settleDur=200;HP.settleAt=performance.now();
+    // Phase 2: fires the instant the slide animation ends — no spring physics overlap.
+    HP.settleCallback=function(){
+      HP.settleDur=150;
+      drawFull();renderHUD();renderBoard();document.getElementById('bag-count').textContent=S.bag.length;
+      _burstNewTilesFromBag(keptCount,_dcTotalN,document.getElementById('bag-btn'),null);
+    };
   }
   if(!N){afterSnap();return;}
   for(var si=0;si<N;si++){
