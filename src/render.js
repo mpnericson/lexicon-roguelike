@@ -1,14 +1,18 @@
 // =====================================================================
 // RENDER — board, HUD, hand, sticker hand
 // =====================================================================
-function renderAll(){renderHUD();renderBoard();renderHand();document.getElementById('bag-count').textContent=S.bag.length;}
+function renderAll(){renderHUD();renderBoard();renderHand();renderTileStickerBar();document.getElementById('bag-count').textContent=S.bag.length;_tooltipRefreshIfOpen();}
 
 function renderHUD(){
   var dhb=document.getElementById('dev-hotbar');if(dhb)dhb.style.display=S.devMode?'flex':'none';
   var dp=document.getElementById('dev-palette');
   if(!S.devMode&&dp)dp.style.display='none';
   var stickerTab=document.getElementById('dev-tab-stickers');
-  if(stickerTab){var n=(S.pendingSquares||[]).length;stickerTab.textContent='Stickers'+(n>0?' ('+n+')':'');}
+  var _invN=(S.stickerInventory||[]).length;
+  if(stickerTab){stickerTab.textContent='Stickers'+(_invN>0?' ('+_invN+')':'');}
+  var psb=document.getElementById('place-stickers-btn');
+  if(psb){psb.style.display=(S.phase==='play'&&_invN>0)?'block':'none';if(_invN>0)psb.textContent='Place Stickers ('+_invN+')';}
+
   if(S.devMode&&typeof _devTab!=='undefined'&&_devTab==='stickers'&&dp&&dp.style.display!=='none')devRenderPalette();
   var solb=document.getElementById('solver-btn');if(solb)solb.style.display=S.devMode?'':'none';
   document.getElementById('hud-gold').textContent=S.devMode?'∞ DEV':'$'+S.gold;
@@ -28,12 +32,12 @@ function renderHUD(){
     d.className='stage-dot'+(g<cg?' done':g===cg?' cur':'');
     if(b2===2)d.style.marginRight='8px';dots.appendChild(d);
   }}}
-  var brow=document.getElementById('bounty-row');if(brow){brow.innerHTML='';var blist=S.bounties||[];for(var bi=0;bi<blist.length;bi++){var bv=blist[bi].variant;var bvfg=bv==='gold'?'#f0c060':bv==='red'?'#ff8080':bv==='blue'?'#60b8ff':'';var bc=document.createElement('div');bc.className='bounty-chip';bc.innerHTML=wordAsTilesHTML(blist[bi].word,24,blist[bi].variant)+'<span class="bounty-chip-reward">+$'+blist[bi].reward+'</span>';brow.appendChild(bc);}}
+  var brow=document.getElementById('bounty-row');if(brow){brow.innerHTML='';var blist=S.bounties||[];for(var bi=0;bi<blist.length;bi++){var bc=document.createElement('div');bc.className='bounty-chip';bc.innerHTML=wordAsTilesHTML(blist[bi].word,24,null)+'<span class="bounty-chip-reward">+$'+(blist[bi].reward||'?')+'</span>';brow.appendChild(bc);}}
   var _sp=document.getElementById('hud-stage-prog'),_bl=document.getElementById('hud-boards-left');
   if(_sp){if(S.endless){_sp.textContent='∞';}else{_sp.textContent=(S.bi+1)+'/3'+(S.bi===2?' ★':'');}}
   if(_bl){if(S.endless){_bl.textContent='∞';}else{_bl.textContent=STAGES.length-S.ai;}}
   var _cb=document.getElementById('constraint-banner');
-  if(_cb){var boss=cb()[3];if(boss){_cb.textContent='Constraint: '+cb()[1];_cb.style.display='';}else{_cb.style.display='none';}}
+  if(_cb){var _cdef=constraintDef();if(_cdef){var _isPal=(currentConstraint()==='c_pal');var _cbTxt=_isPal?(S.palUnlocked?'Unlocked! '+_cdef.desc:'🔒 '+_cdef.desc):_cdef.desc;_cb.textContent='Constraint: '+_cbTxt;_cb.style.display='';}else{_cb.style.display='none';}}
 }
 
 function sqStyle(id){
@@ -45,9 +49,12 @@ function sqStyle(id){
 function renderBoard(){
   if(typeof _clearStickerFloats==='function')_clearStickerFloats();
   var wrap=document.getElementById('board-wrap');
-  var sz=Math.max(30,Math.min(64,Math.floor(Math.min(window.innerWidth*0.52-80,window.innerHeight-160)/B)));
+  var sz=Math.max(30,Math.min(64,Math.floor(Math.min(window.innerWidth*0.52-80,window.innerHeight-250)/B)));
   wrap.style.gridTemplateColumns='repeat('+B+','+sz+'px)';wrap.innerHTML='';
   var center=Math.floor(B/2)*B+Math.floor(B/2);
+  var _bcon=currentConstraint();
+  var _stickerLocked=_bcon==='c_stickers'&&!(S.stickersSoldThisStage>0);
+  var _lettersUsed=_bcon==='c_letters'&&S.usedLetters&&S.usedLetters.size>0;
   for(var i=0;i<B*B;i++){
     var sq=document.createElement('div');sq.className='sq';sq.dataset.sqIdx=i;
     sq.style.width=sz+'px';sq.style.height=sz+'px';
@@ -86,6 +93,7 @@ function renderBoard(){
         });})(i);
       }
       sq.appendChild(face);
+      if(_lettersUsed&&!bt.isBlank&&bt.letter&&S.usedLetters.has(bt.letter)){var _lov=document.createElement('div');_lov.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;background:rgba(180,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:'+Math.round(sz*0.65)+'px;font-weight:bold;color:#ff3333;pointer-events:none;z-index:5;font-family:monospace;';_lov.textContent='×';sq.appendChild(_lov);}
     } else {
       var _sqd=sqd(sid);
       var lbl=ss.lbl;if(i===center&&!sid)lbl='*';
@@ -93,6 +101,7 @@ function renderBoard(){
         sq.style.border='none';sq.style.borderRadius='0';
         var img=document.createElement('img');img.src=_sqd.iconPng;img.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;image-rendering:pixelated;pointer-events:none';sq.appendChild(img);
       } else if(lbl){var s=document.createElement('div');s.className='sq-lbl';s.textContent=lbl;sq.appendChild(s);}
+      if(_stickerLocked&&sid&&!bt){var _sov=document.createElement('div');_sov.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;background:rgba(180,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:'+Math.round(sz*0.65)+'px;font-weight:bold;color:#ff3333;pointer-events:none;z-index:5;font-family:monospace;';_sov.textContent='×';sq.appendChild(_sov);}
       if(bt&&viewingBoard)sq.style.opacity='0.4';
       if(S.phase==='play'&&!bt){
         (function(sqI){
@@ -175,11 +184,14 @@ var _sqTooltipTimer=null;
 var _sqTooltipFrozen=false;
 var _sqTooltipFrozenIdx=-1;
 var _sqTooltipFrozenId=null;
+// Tracks whatever tooltip is currently visible (hover or frozen) so it can be live-refreshed
+// when game state changes (e.g. a scaling sticker's counter ticks up) without re-triggering the fade-in.
+var _sqTooltipOpenSqIdx=-1;
+var _sqTooltipOpenId=null;
+var _tsTooltipOpenTs=null;
 
-function _sqTooltipRender(sqIdx,id){
+function _sqTooltipFillContent(id,p){
   var d=sqd(id);if(!d)return;
-  var el=document.getElementById('sq-hover-tooltip');if(!el)return;
-  var p=null;for(var i=0;i<S.placed.length;i++)if(S.placed[i].sqIdx===sqIdx){p=S.placed[i];break;}
   document.getElementById('sqht-name').textContent=d.name;
   document.getElementById('sqht-name').style.color=d.fg;
   var _descEl=document.getElementById('sqht-desc');
@@ -191,11 +203,34 @@ function _sqTooltipRender(sqIdx,id){
       _spans[_wi].style.animationDelay=(_wi*0.35)+'s';
     }
   }
+}
+
+function _sqTooltipRender(sqIdx,id){
+  var d=sqd(id);if(!d)return;
+  var el=document.getElementById('sq-hover-tooltip');if(!el)return;
+  var p=null;for(var i=0;i<S.placed.length;i++)if(S.placed[i].sqIdx===sqIdx){p=S.placed[i];break;}
+  _sqTooltipFillContent(id,p);
+  _sqTooltipOpenSqIdx=sqIdx;_sqTooltipOpenId=id;_tsTooltipOpenTs=null;
   var cb=document.getElementById('constraint-banner');
   if(cb){el._cbWas=cb.style.display;cb.style.display='none';}
   el.style.display='block';
   el.style.opacity='0';
   requestAnimationFrame(function(){el.style.opacity='1';});
+}
+
+// Re-fills the currently-open tooltip's content in place (no fade/animation restart) so
+// scaling sticker descriptions (crossroads, bounty_hunter, etc.) update live while hovered.
+function _tooltipRefreshIfOpen(){
+  var el=document.getElementById('sq-hover-tooltip');if(!el||el.style.display==='none')return;
+  if(_tsTooltipOpenTs){
+    var ts=_tsTooltipOpenTs;
+    if(S.tileStickers.indexOf(ts)<0){_tsTooltipHide();return;}
+    _sqTooltipFillContent(ts.id,ts);
+  }else if(_sqTooltipOpenSqIdx>=0&&_sqTooltipOpenId){
+    var p=null;for(var i=0;i<S.placed.length;i++)if(S.placed[i].sqIdx===_sqTooltipOpenSqIdx){p=S.placed[i];break;}
+    if(!p){if(_sqTooltipFrozen)_sqTooltipUnfreeze();else _sqTooltipHide();return;}
+    _sqTooltipFillContent(_sqTooltipOpenId,p);
+  }
 }
 
 function _sqTooltipShow(sqIdx,id){
@@ -221,6 +256,7 @@ function _sqTooltipFreeze(sqIdx,id){
     sellBtn.textContent='Sell $'+sell;
     sellBtn.onclick=(function(si,di,sv,dn){return function(){
       S.gold+=sv;S.board[si]=null;S.placed=S.placed.filter(function(p){return p.sqIdx!==si;});
+      if(currentConstraint()==='c_stickers')S.stickersSoldThisStage=(S.stickersSoldThisStage||0)+1;
       _sqTooltipUnfreeze();renderBoard();renderHUD();toast(dn+' sold for $'+sv);
     };})(sqIdx,id,sell,d.name);
   }
@@ -229,6 +265,7 @@ function _sqTooltipFreeze(sqIdx,id){
 
 function _sqTooltipUnfreeze(){
   _sqTooltipFrozen=false;_sqTooltipFrozenIdx=-1;_sqTooltipFrozenId=null;
+  _sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;
   clearTimeout(_sqTooltipTimer);_sqTooltipTimer=null;
   var el=document.getElementById('sq-hover-tooltip');if(!el)return;
   el.style.opacity='0';el.style.display='none';
@@ -240,6 +277,39 @@ function _sqTooltipUnfreeze(){
 function _sqTooltipHide(){
   if(_sqTooltipFrozen)return;
   clearTimeout(_sqTooltipTimer);_sqTooltipTimer=null;
+  _sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;
+  var el=document.getElementById('sq-hover-tooltip');if(!el||el.style.display==='none')return;
+  el.style.opacity='0';
+  el.style.display='none';
+  var cb=document.getElementById('constraint-banner');
+  if(cb&&el._cbWas!==undefined){cb.style.display=el._cbWas;el._cbWas=undefined;}
+}
+
+// ---- Tile sticker hotbar hover tooltip (mirrors board sticker tooltip, no freeze/sell) ----
+
+function _tsTooltipRender(ts){
+  var d=sqd(ts.id);if(!d)return;
+  var el=document.getElementById('sq-hover-tooltip');if(!el)return;
+  _sqTooltipFillContent(ts.id,ts);
+  _tsTooltipOpenTs=ts;_sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;
+  var act=document.getElementById('sqht-actions');if(act)act.style.display='none';
+  var cb=document.getElementById('constraint-banner');
+  if(cb&&el._cbWas===undefined){el._cbWas=cb.style.display;cb.style.display='none';}
+  el.style.display='block';
+  el.style.opacity='0';
+  requestAnimationFrame(function(){el.style.opacity='1';});
+}
+
+function _tsTooltipShow(ts){
+  var d=sqd(ts.id);if(!d)return;
+  clearTimeout(_sqTooltipTimer);
+  _sqTooltipFrozen=false;_sqTooltipFrozenIdx=-1;_sqTooltipFrozenId=null;
+  _sqTooltipTimer=setTimeout(function(){_tsTooltipRender(ts);},250);
+}
+
+function _tsTooltipHide(){
+  clearTimeout(_sqTooltipTimer);_sqTooltipTimer=null;
+  _tsTooltipOpenTs=null;
   var el=document.getElementById('sq-hover-tooltip');if(!el||el.style.display==='none')return;
   el.style.opacity='0';
   el.style.display='none';
@@ -312,4 +382,112 @@ function renderSqHand(){
   }
   var unplaced=vis.length;
   document.getElementById('placing-info').textContent=unplaced>0?'Drag stickers onto the board':'All placed — confirm!';
+}
+
+function _renderStickerBarInto(bar,ph,src){
+  bar.innerHTML='';
+  var stickers=S.tileStickers||[];
+  ph.rebuild(stickers);
+  for(var vi=0;vi<stickers.length;vi++){
+    var ts=stickers[vi];var d=sqd(ts.id);if(!d)continue;
+    var face=document.createElement('div');
+    face.className='sticker-tile';
+    face.setAttribute('data-ts-id',ts.id);
+    var baseCss='position:absolute;width:68px;height:68px;left:'+(ph.x[vi]-34-ph.left)+'px;';
+    if(d.iconPng){
+      face.style.cssText=baseCss+'border-radius:8px;overflow:hidden;';
+      face.innerHTML='<img src="'+d.iconPng+'" style="width:68px;height:68px;image-rendering:pixelated;display:block;pointer-events:none">';
+    } else {
+      face.style.cssText=baseCss+'background:#12122a;border:2px solid '+d.fg+';border-radius:8px;color:'+d.fg+';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;';
+      face.innerHTML=sqIconHTML(d,28)+'<span style="font-size:10px;text-align:center;pointer-events:none;overflow:hidden;width:64px;white-space:nowrap;text-overflow:ellipsis">'+d.name+'</span>';
+    }
+    var isDragging=activeDrag&&activeDrag.src===src&&activeDrag.vi===vi;
+    if(isDragging)face.style.opacity='0';
+    if(ts.id==='easy_mode'){face.addEventListener('mouseenter',_easyHintShow);face.addEventListener('mouseleave',_easyHintHide);}
+    face.addEventListener('mouseenter',function(tsRef){return function(){_tsTooltipShow(tsRef);};}(ts));
+    face.addEventListener('mouseleave',_tsTooltipHide);
+    bar.appendChild(face);
+    attachStickerDrag(face,vi,ts,ph,src);
+  }
+}
+
+function renderTileStickerBar(){
+  SP.bounds();
+  var bar=document.getElementById('tile-sticker-bar');if(!bar)return;
+  _renderStickerBarInto(bar,SP,'sticker');
+  // n/5 counter on right side of box
+  var stickers=S.tileStickers||[];
+  var ctr=document.createElement('div');
+  ctr.style.cssText='position:absolute;right:8px;bottom:6px;font-size:28px;color:#8880a8;pointer-events:none;line-height:1';
+  ctr.textContent=stickers.length+'/5';
+  bar.appendChild(ctr);
+  // Update shop sticker bar
+  var shopBar=document.getElementById('shop-sticker-bar');
+  if(shopBar){SSP.bounds();_renderShopPhysicsStickerBar(shopBar);}
+  // Update board preview sticker bar if visible
+  var previewBar=document.getElementById('preview-sticker-bar');
+  if(previewBar&&document.getElementById('board-preview-modal').style.display!=='none'){
+    _renderPreviewStickerBar(previewBar);
+  }
+}
+
+function _renderShopPhysicsStickerBar(bar){
+  _renderStickerBarInto(bar,SSP,'shop-sticker');
+  // n/5 counter to the right of the last tile (only when there are stickers)
+  var stickers=S.tileStickers||[];
+  if(stickers.length>0){
+    var ctr=document.createElement('div');
+    ctr.style.cssText='position:absolute;font-size:clamp(7px,1.2vw,17px);color:#8880a8;pointer-events:none;line-height:1;top:50%;transform:translateY(-50%)';
+    // position it just right of the last tile
+    SSP.bounds();
+    var lastX=SSP.x.length>0?SSP.x[stickers.length-1]+34-SSP.left:0;
+    ctr.style.left=(lastX+6)+'px';
+    ctr.textContent=stickers.length+'/5';
+    bar.appendChild(ctr);
+  }
+}
+
+function _renderPreviewStickerBar(container){
+  container.innerHTML='';
+  var stickers=S.tileStickers||[];
+  if(!stickers.length)return;
+  var label=document.createElement('div');label.style.cssText='color:#8880a8;font-size:28px;align-self:center;flex-shrink:0';label.textContent='Stickers:';
+  container.appendChild(label);
+  for(var i=0;i<stickers.length;i++){
+    var d=sqd(stickers[i].id);if(!d)continue;
+    var slot=document.createElement('div');
+    slot.style.cssText='width:40px;height:40px;border:1px solid #5a5a9a;border-radius:6px;background:#0d0d1e;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;position:relative';
+    slot.title=d.name+' — '+d.desc;
+    if(d.iconPng){
+      var img=document.createElement('img');img.src=d.iconPng;img.style.cssText='width:36px;height:36px;image-rendering:pixelated;display:block;pointer-events:none';
+      slot.appendChild(img);
+    } else {
+      slot.innerHTML=sqIconHTML(d,22);
+    }
+    container.appendChild(slot);
+  }
+}
+
+function _openTileStickerModal(idx,id){
+  var d=sqd(id);if(!d)return;
+  var iconEl=document.getElementById('sq-icon');
+  if(iconEl)iconEl.innerHTML=d.iconPng?'<img src="'+d.iconPng+'" style="max-width:80px;max-height:80px;image-rendering:pixelated">':sqIconHTML(d,40);
+  var nameEl=document.getElementById('sq-name');if(nameEl)nameEl.textContent=d.name;
+  var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
+  var rarEl=document.getElementById('sq-rarity');if(rarEl)rarEl.innerHTML='<span class="scr '+rc+'">'+d.rarity+'</span>';
+  var descEl=document.getElementById('sq-desc');if(descEl)descEl.innerHTML=_sqDescHTML(id,null);
+  var posEl=document.getElementById('sq-pos');if(posEl)posEl.textContent='Hotbar slot '+(idx+1);
+  var sell=Math.floor(d.cost/2);
+  var sellBtn=document.getElementById('sq-sell-btn');
+  if(sellBtn){
+    sellBtn.textContent='Sell $'+sell;
+    sellBtn.onclick=(function(i,sv,dn){return function(){
+      S.tileStickers.splice(i,1);
+      S.gold+=sv;
+      document.getElementById('sq-modal').style.display='none';
+      renderTileStickerBar();renderHUD();
+      toast(dn+' sold for $'+sv+'!');
+    };})(idx,sell,d.name);
+  }
+  document.getElementById('sq-modal').style.display='flex';
 }

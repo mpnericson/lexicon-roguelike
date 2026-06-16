@@ -25,23 +25,20 @@ var ALL_PACK_TYPES=[
   {type:'tile',label:'Tile Pack',desc:'5 tiles — mix of basic and enchanted.',cost:3},
   {type:'sq',sqId:'dl',label:'6× Double Letter',desc:'6 DL squares — letter scores ×2.',cost:3},
   {type:'sq',sqId:'tl',label:'4× Triple Letter',desc:'4 TL squares — letter scores ×3.',cost:3},
-  {type:'sq',sqId:'dw',label:'3× Double Word',desc:'3 DW squares — word scores ×2.',cost:3},
-  {type:'sq',sqId:'tw',label:'2× Triple Word',desc:'2 TW squares — word scores ×3.',cost:3},
+  {type:'sq',sqId:'dw',label:'2× Double Word',desc:'2 DW squares — word scores ×2.',cost:3},
+  {type:'sq',sqId:'tw',label:'1× Triple Word',desc:'1 TW square — word scores ×3.',cost:3},
 ];
 
 function refreshShop(){
   shopPool.sq=[];
-  var sqIds=wrandN(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8,legendary:0.1},3);
+  var _boardSqIds=SQ.map(function(d){return d.id;});
+  var sqIds=wrandN(_boardSqIds,{common:5,uncommon:2,rare:0.8,legendary:0.1},3);
   for(var i=0;i<sqIds.length;i++)shopPool.sq.push({id:sqIds[i],sold:false});
   var shuffledPacks=shuffle(ALL_PACK_TYPES.slice());
   shopPool.packs=shuffledPacks.slice(0,2).map(function(p){return{type:p.type,sqId:p.sqId||null,label:p.label,desc:p.desc,cost:p.cost,sold:false};});
-  var bwCopy=BOUNTY_WORDS.slice();
-  for(var i=bwCopy.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var tmp=bwCopy[i];bwCopy[i]=bwCopy[j];bwCopy[j]=tmp;}
-  var activeWords=(S.bounties||[]).map(function(b){return b.word;});
-  var BVARIANTS=['gold','red','blue'];
-  shopPool.bounties=bwCopy.filter(function(b){return activeWords.indexOf(b.word)<0;}).slice(0,3).map(function(b){
-    var variant=_rng()<0.05?BVARIANTS[Math.floor(_rng()*BVARIANTS.length)]:null;
-    return{word:b.word,cost:2,reward:b.reward+(variant?2:0),accepted:false,variant:variant||null};
+  var _bActiveWords=(S.bounties||[]).map(function(b){return b.word;});
+  shopPool.bounties=_generateBounties(3,_bActiveWords).map(function(b){
+    return{word:b.word,cost:2,reward:b.reward,accepted:false};
   });
   shopPool.slotSpinCost=5;
   shopPool.slotSpinsThisVisit=0;
@@ -58,6 +55,7 @@ function enterShopPhase(){
   var rp=document.getElementById('slot-result-panel');if(rp)rp.style.display='none';
   var bu=document.getElementById('shop-bag-overlay');if(bu){bu.style.display='none';delete bu.dataset.closing;}
   renderShop();
+  renderTileStickerBar();
   document.getElementById('shop-screen').style.display='flex';
   initShopUI();
 }
@@ -67,18 +65,14 @@ function leaveShop(){
   _stopReels();
   achvCheck('shop_exit');
   saveGame();
-  if(S.pendingSquares.length>0){
-    animShopToBoard(function(){ enterPlacingPhase(); });
-  } else {
-    S.phase='play';
-    animShopToBoard(function(){ _burstHandTiles(); });
-  }
+  S.phase='play';
+  animShopToBoard(function(){ _burstHandTiles(); });
 }
 
 function enterPlacingPhase(){
   S.phase='placing';
-  S.sqHand=S.pendingSquares.map(function(p){return{id:p.id,placed:false};});
-  S.pendingSquares=[];S.sqStaged={};
+  S.sqHand=(S.stickerInventory||[]).map(function(p){return{id:p.id,placed:false};});
+  S.stickerInventory=[];S.sqStaged={};
   HP.x=[];HP.vx=[];HP.tiles=[];
   document.getElementById('play-controls').style.display='none';
   document.getElementById('placing-controls').style.display='flex';
@@ -91,7 +85,9 @@ function confirmPlacement(){
     var si=S.sqStaged[idx];var sq=S.sqHand[si];
     S.board[parseInt(idx)]=sq.id;S.placed.push({id:sq.id,sqIdx:parseInt(idx)});
   }
-  var unplaced=S.sqHand.filter(function(sq){return !sq.placed;}).length;
+  var unplacedSqs=S.sqHand.filter(function(sq){return !sq.placed;});
+  if(!S.stickerInventory)S.stickerInventory=[];
+  for(var _ui=0;_ui<unplacedSqs.length;_ui++)S.stickerInventory.push({id:unplacedSqs[_ui].id});
   var fromPlay=!!S._devPlacingFromPlay;
   S.sqHand=[];S.sqStaged={};S.phase='play';S._devPlacingFromPlay=false;
   document.getElementById('play-controls').style.display='flex';
@@ -99,13 +95,13 @@ function confirmPlacement(){
   document.getElementById('dev-cancel-placing-btn').style.display='none';
   document.getElementById('shuffle-btn').style.display='';
   HP.x=[];HP.vx=[];HP.tiles=[];
-  renderHand();renderBoard();renderHUD();
-  if(unplaced>0)toast(unplaced+' unplaced sticker'+(unplaced>1?'s':'')+' forfeited.');
+  renderHand();renderBoard();renderHUD();renderTileStickerBar();
+  if(unplacedSqs.length>0)toast(unplacedSqs.length+' unplaced sticker'+(unplacedSqs.length>1?'s':'')+' returned to inventory.');
   if(!fromPlay)_burstHandTiles();
 }
 
 function enterPlacingFromDev(){
-  if(!S.devMode||!S.pendingSquares.length){toast('No stickers in inventory.');return;}
+  if(!S.devMode||!S.stickerInventory.length){toast('No stickers in inventory.');return;}
   S._devPlacingFromPlay=true;
   var dp=document.getElementById('dev-palette');if(dp)dp.style.display='none';
   if(typeof _updateDevTabs==='function')_updateDevTabs();
@@ -115,7 +111,8 @@ function enterPlacingFromDev(){
 
 function cancelDevPlacing(){
   var unplaced=S.sqHand.filter(function(sq){return!sq.placed;});
-  S.pendingSquares=unplaced.map(function(sq){return{id:sq.id};});
+  if(!S.stickerInventory)S.stickerInventory=[];
+  for(var _ci=0;_ci<unplaced.length;_ci++)S.stickerInventory.push({id:unplaced[_ci].id});
   S.sqHand=[];S.sqStaged={};S.phase='play';S._devPlacingFromPlay=false;
   document.getElementById('play-controls').style.display='flex';
   document.getElementById('placing-controls').style.display='none';
@@ -130,9 +127,9 @@ function openShop(){enterShopPhase();}
 function renderShop(){
   var sub=document.getElementById('shop-sub');if(sub)sub.textContent='Gold: $'+S.gold;
   var goldEl=document.getElementById('shop-gold-display');if(goldEl)goldEl.textContent='$'+S.gold;
-  var n=S.pendingSquares.length;
+  var n=(S.stickerInventory||[]).length;
   var qbar=document.getElementById('shop-queue-bar');
-  if(qbar){qbar.style.display=n>0?'block':'none';qbar.textContent=n+' sticker'+(n!==1?'s':'')+' queued — leave to place '+(n===1?'it':'them')+'.';}
+  if(qbar){qbar.style.display=n>0?'block':'none';qbar.textContent=n+' sticker'+(n!==1?'s':'')+' in inventory — place during play.';}
   var priceEl=document.getElementById('shop-slot-price');
   if(priceEl)priceEl.textContent='$'+(shopPool.slotSpinCost||4);
   var sqItems=shopPool.sq||[];
@@ -177,8 +174,6 @@ function renderShop(){
       blist.appendChild(item);
     }
   }
-  var alBtn=document.getElementById('alchemist-btn');
-  if(alBtn){var hasAl=false;for(var _ai=0;_ai<S.placed.length;_ai++)if(S.placed[_ai].id==='alchemist'){hasAl=true;break;}alBtn.style.display=hasAl?'':'none';alBtn.style.opacity=S.alchemistUsed?'0.4':'';}
 }
 
 function _sqBigIcon(d){
@@ -455,8 +450,16 @@ function _onReelStopped(){
 
 function _pickReelResult(id){
   var d=sqd(id);if(!d)return;
-  var qty=d.qty||1;
-  for(var k=0;k<qty;k++)S.pendingSquares.push({id:id});
+  var isTile=d.type==='tile';
+  if(isTile){
+    if(!S.tileStickers)S.tileStickers=[];
+    if(S.tileStickers.length>=5){toast('Sticker bar is full! (max 5)');return;}
+    S.tileStickers.push({id:id});
+    if(typeof renderTileStickerBar==='function')renderTileStickerBar();
+  } else {
+    var qty=d.qty||1;
+    for(var k=0;k<qty;k++)S.stickerInventory.push({id:id});
+  }
   document.querySelectorAll('.reel-item.reel-sel').forEach(function(el){el.classList.remove('reel-sel');el.onclick=null;});
   if(_reels){
     for(var ri=0;ri<_reels.length;ri++){
@@ -472,7 +475,8 @@ function _pickReelResult(id){
   }
   shopPool.slotResult=null;
   renderShop();renderHUD();
-  toast((qty>1?qty+'× ':'')+d.name+' queued!');
+  if(isTile){toast(d.name+' added to sticker bar!');}
+  else{var qty2=d.qty||1;toast((qty2>1?qty2+'× ':'')+d.name+' queued!');}
 }
 
 function _stopReels(){
@@ -668,7 +672,7 @@ function buyPack(i){
     toast('Tile Pack: '+added.join(', ')+' added!');
   } else if(pack.type==='sq'){
     var d=sqd(pack.sqId);var qty=(d&&d.qty)||1;
-    for(var k=0;k<qty;k++)S.pendingSquares.push({id:pack.sqId});
+    for(var k=0;k<qty;k++)S.stickerInventory.push({id:pack.sqId});
     renderShop();renderHUD();
     toast(qty+'× '+d.name+' queued — place them after leaving shop!');
   }
@@ -738,9 +742,19 @@ function forgeUpgrade(tileId,variant,cost){
 function buySq(i){
   var item=shopPool.sq[i];var d=sqd(item.id);if(!item||item.sold||!d)return;
   if(!S.devMode&&S.gold<d.cost){toast('Not enough gold!');return;}
+  if(d.type==='tile'){
+    if(!S.tileStickers)S.tileStickers=[];
+    if(S.tileStickers.length>=5){toast('Sticker bar is full! (max 5)');return;}
+    if(!S.devMode)S.gold-=d.cost;item.sold=true;
+    S.tileStickers.push({id:item.id});
+    if(typeof renderTileStickerBar==='function')renderTileStickerBar();
+    renderShop();renderHUD();
+    toast(d.name+' added to sticker bar!');
+    return;
+  }
   if(!S.devMode)S.gold-=d.cost;item.sold=true;
   var qty=d.qty||1;
-  for(var k=0;k<qty;k++)S.pendingSquares.push({id:item.id});
+  for(var k=0;k<qty;k++)S.stickerInventory.push({id:item.id});
   renderShop();renderHUD();
   toast((qty>1?qty+'× ':'')+d.name+' queued — place '+(qty>1?'them':'it')+' after leaving shop!');
 }
@@ -756,7 +770,18 @@ function openPackReveal(name,contents){
     var card=document.createElement('div');card.className='prc';
     var qtyLine=qty>1?'<div style="font-size:30px;color:#f0e080;font-weight:normal;margin-bottom:2px">'+qty+'× bundle</div>':'';
     card.innerHTML='<div style="font-size:20px;font-weight:normal;color:'+d.fg+'">'+sqIconHTML(d,28)+'</div><div style="font-size:32px;font-weight:normal;color:'+d.fg+'">'+d.name+'</div>'+qtyLine+'<div style="font-size:30px;color:#9090b0;margin:4px 0">'+d.desc+'</div><div class="scr '+rc+'" style="margin-top:4px">'+d.rarity+'</div>';
-    (function(did,c){c.onclick=function(){var dq=sqd(did);var qty=(dq&&dq.qty)||1;for(var k=0;k<qty;k++)S.pendingSquares.push({id:did});c.classList.add('chosen');c.textContent=qty>1?qty+'× Queued!':'Queued!';var cs=grid.getElementsByClassName('prc');for(var k=0;k<cs.length;k++){cs[k].style.pointerEvents='none';cs[k].style.opacity='0.4';}c.style.opacity='1';setTimeout(function(){document.getElementById('pack-modal').style.display='none';enterShopPhase();},600);};})(contents[i],card);
+    (function(did,c){c.onclick=function(){var dq=sqd(did);if(!dq)return;var qty=(dq&&dq.qty)||1;
+      if(dq.type==='tile'){
+        if(!S.tileStickers)S.tileStickers=[];
+        if(S.tileStickers.length>=5){toast('Sticker bar is full! (max 5)');return;}
+        S.tileStickers.push({id:did});
+        if(typeof renderTileStickerBar==='function')renderTileStickerBar();
+        c.classList.add('chosen');c.textContent='Added to bar!';
+      } else {
+        for(var k=0;k<qty;k++)S.stickerInventory.push({id:did});
+        c.classList.add('chosen');c.textContent=qty>1?qty+'× Queued!':'Queued!';
+      }
+      var cs=grid.getElementsByClassName('prc');for(var k=0;k<cs.length;k++){cs[k].style.pointerEvents='none';cs[k].style.opacity='0.4';}c.style.opacity='1';setTimeout(function(){document.getElementById('pack-modal').style.display='none';enterShopPhase();},600);};})(contents[i],card);
     grid.appendChild(card);
   }
   document.getElementById('pack-modal').style.display='flex';
@@ -778,9 +803,9 @@ function acceptBounty(i){
   if(!S.devMode&&S.gold<b.cost){toast('Not enough gold!');return;}
   if(!S.devMode)S.gold-=b.cost;
   b.accepted=true;
-  S.bounties=S.bounties||[];S.bounties.push({word:b.word,reward:b.reward,variant:b.variant||null});
+  S.bounties=S.bounties||[];S.bounties.push({word:b.word,reward:b.reward});
   renderShop();renderHUD();
-  toast('Bounty accepted! Play "'+b.word+'" to earn $'+b.reward+'!');
+  toast('Bounty accepted! Play "'+b.word+'" for +$'+b.reward+' + '+bountyRewardLabel()+'!');
 }
 
 function closeShop(){document.getElementById('shop-screen').style.display='none';S.phase='play';}

@@ -73,4 +73,6 @@ document.addEventListener('click',function(e){
     startGame();
   }
   requestAnimationFrame(hpStep);
+  requestAnimationFrame(function(){SP.step();});
+  requestAnimationFrame(function(){SSP.step();});
 })();

@@ -1,32 +1,32 @@
 // =====================================================================
-// SCORING v2 — bracket-based cumulative letter/mult tracking
+// SCORING — bracket-based cumulative letter/mult tracking
 //
 // Letter score (L) and mult score (M) are separate tracks:
 //   Final: total = round(L × (1 + sum(plusMults)) × product(xmults))
 //
 // Per tile (brackets 1-6, run for every tile in every word):
 //   1. Base letter score added to L
-//   2. Local +letter  (sticker on same sq, cooldown-gated)
-//   3. Global +letter (Commons, Censor, Blue bonus)
+//   2. Local additive (Void, Gilded — cooldown-gated)
+//   3. Global +letter (Commons, NATO, Blue bonus)
 //   4. Local ×letter + local xmult (DL/TL → ×L; DW/TW → push xmult)
-//   5. Global ×letter (Knight ×3, Magnet ×2, Lex Eye ×2)
-//   6. Retrigger      (Red Sticker: loops 1-5; Red tile: loops 1-5; both respect cooldown gate)
+//   5. Global ×letter (Chess pieces ×3; King TW on aura squares)
+//   6. Retrigger      (Red Sticker: loops 1-5; Red tile: loops 1-5)
 //
 // Post-word (run once after all tiles across all words):
-//   Global +letter : Midas, Bounty flat chips, Bingo +50
-//   Local  +mult   : Anchor (on activated square only)
-//   Global +mult   : Scholar, Aristocrat, Lucky Blank, Babel, Pressure Cooker, tile-count
-//   Global  xmult  : Quill, Tome, Bounty Hunter, Slot Machine
-//   Final transform: Palindrome Engine ×2
+//   Bingo +50
+//   Sticker onPostWord hooks (Scholar, Aristocrat, Pressure Cooker,
+//     Bounty Hunter, Crossroads, Palindrome Engine, Inkwell, etc.)
+//   Bounty reward
+//   Slot Machine xmult
+//   Final transform: Palindrome Engine ×palMult
 //
 // Word order: cross words scored before main word (per-tile only).
 // Both contribute to the same L / plusMults / xmults accumulators.
 //
 // Cooldowns: local effects are gated by S.localCooldowns (a Set of sqIdx).
-// Within one play no flags are set — a square can fire multiple times
-// (e.g. Red on DW in two words → DW fires 4×). After scorePlay() commits,
-// every activated square is added to S.localCooldowns, which persists
-// until clearBoardLetters() resets it (between stages).
+// Within one play no flags are set — a square can fire multiple times.
+// After scorePlay() commits, every activated square is added to
+// S.localCooldowns, which persists until clearBoardLetters() (between stages).
 // =====================================================================
 
 function newTiles(){
@@ -111,33 +111,25 @@ function _buildCtx(mainWord){
     activatedSqs:new Set(),
     allSc1:true, anyHigh:false, blankCt:0, newTileCount:0, maxSc:0,
     mainWord:mainWord||'',
-    anchorActivations:0,
+    crossWordCount:0,
     slotUsed:false, preview:false,
     // sticker flags/counts populated below
     commonsCount:0, natoMap:{},
-    magnetIdxs:[],chessPieces:[],chessKingActive:false,
-    lexEye:false,purist:false,prism:false,palMult:1,
+    chessPieces:[],chessKingActive:false,
+    purist:false,palMult:1,
+    stickerLocked:(currentConstraint()==='c_stickers')&&!(S.stickersSoldThisStage>0),
   };
-  for(var i=0;i<S.placed.length;i++){
-    var p=S.placed[i];
-    var pDef=sqd(p.id);
-    if(pDef&&pDef.onBuildCtx)pDef.onBuildCtx(ctx,p);
-  }
-  // The Thing: inject its square as each adjacent chess piece
-  for(var ti=0;ti<S.placed.length;ti++){
-    if(S.placed[ti].id!=='the_thing')continue;
-    var tSq=S.placed[ti].sqIdx,tR=Math.floor(tSq/B),tC=tSq%B;
-    var dirs=[[-1,0],[1,0],[0,-1],[0,1]];
-    for(var di=0;di<dirs.length;di++){
-      var nr=tR+dirs[di][0],nc=tC+dirs[di][1];
-      if(nr<0||nr>=B||nc<0||nc>=B)continue;
-      var adjId=S.board[nr*B+nc];
-      if(adjId==='chess_king'){ctx.chessKingActive=true;continue;}
-      if(adjId==='chess_knight'||adjId==='chess_bishop'||adjId==='chess_rook'||adjId==='chess_queen'){
-        ctx.chessPieces.push({sqIdx:tSq,id:adjId,aura:chessGetAura(tSq,adjId)});
-      }
+  if(!ctx.stickerLocked){
+    for(var i=0;i<S.placed.length;i++){
+      var p=S.placed[i];
+      var pDef=sqd(p.id);
+      if(pDef&&pDef.onBuildCtx)pDef.onBuildCtx(ctx,p);
     }
-    break;
+    for(var i=0;i<S.tileStickers.length;i++){
+      var ts=S.tileStickers[i];
+      var tsDef=sqd(ts.id);
+      if(tsDef&&tsDef.onBuildCtx)tsDef.onBuildCtx(ctx,ts);
+    }
   }
   return ctx;
 }
@@ -157,22 +149,16 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
   // --- Bracket 1: base ---
   var baseSc=tile.isBlank?(tile.sc||0):tileSc;
   if(tile.variant==='blue'&&!tile.isBlank)baseSc+=(tile.blueBonus||0);
+  var _letterUsed=!tile.isBlank&&tile.letter&&currentConstraint()==='c_letters'&&S.usedLetters&&S.usedLetters.has(tile.letter);
+  if(_letterUsed)baseSc=0;
   ts+=baseSc;
   ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,
-    label:tile.letter+(tile.isBlank?' (blank)':'')});
+    label:tile.letter+(tile.isBlank?' (blank)':'')+ (_letterUsed?' (used-0)':'')});
 
   // --- Bracket 2: local additive (cooldown-gated) ---
-  if(sqActive&&sqDef){
+  if(sqActive&&sqDef&&!ctx.stickerLocked){
     var acted=false;
-    if(sqDef.id==='vowel_shrine'&&(ctx.prism||'AEIOU'.indexOf(tile.letter)>=0)){
-      ts*=4;
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Vowel Shrine ×4',floatSqIdx:sqIdx});
-      acted=true;
-    }else if(sqDef.id==='consonant_shrine'&&tile.letter&&(ctx.prism||'AEIOU?_'.indexOf(tile.letter)<0)){
-      ts*=4;
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Consonant Shrine ×4',floatSqIdx:sqIdx});
-      acted=true;
-    }else if(sqDef.id==='void'){
+    if(sqDef.id==='void'){
       ts-=baseSc;
       ctx.plusMults.push(2);
       ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Void (0 pts)',floatSqIdx:sqIdx});
@@ -182,9 +168,6 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
       ctx.tgold++;
       ctx.events.push({type:'gold',delta:1,sqIdx:sqIdx,label:'Gilded +$1',floatSqIdx:sqIdx});
       acted=true;
-    }else if(sqDef.id==='anchor'&&ctx.mainWord.length>=5){
-      ctx.anchorActivations++;
-      acted=true;
     }
     if(acted&&!ctx.preview)ctx.activatedSqs.add(sqIdx);
   }
@@ -193,7 +176,7 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
   if(ctx.commonsCount>0&&!tile.isBlank&&tileSc===1){
     var cb3=ctx.commonsCount*3;
     ts+=cb3;
-    ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Commons +'+cb3});
+    ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Commons +'+cb3,floatTsId:'the_commons'});
   }
   if(tile.variant==='gold'){
     ctx.tgold++;
@@ -204,14 +187,14 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
     for(var _ni=0;_ni<nb.count;_ni++){
       var _natoSq=nb.sqIdxs[_ni];
       ts+=nb.ls;
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:nb.name+' +'+nb.ls,floatSqIdx:_natoSq});
+      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:nb.name+' +'+nb.ls,floatSqIdx:_natoSq,floatTsId:nb.id});
       ctx.plusMults.push(nb.lm);
-      ctx.events.push({type:'plus-mult',delta:nb.lm,label:nb.name+' +'+nb.lm+' mult',floatSqIdx:_natoSq});
+      ctx.events.push({type:'plus-mult',delta:nb.lm,label:nb.name+' +'+nb.lm+' mult',floatSqIdx:_natoSq,floatTsId:nb.id});
     }
   }
 
   // --- Bracket 4: local ×letter (DL/TL) + local xmult (DW/TW) ---
-  if(sqActive&&sqDef&&sqDef.bm){
+  if(sqActive&&sqDef&&sqDef.bm&&!ctx.stickerLocked){
     var bm=sqDef.bm;
     if(bm==='dl'||bm==='tl'){
       var f4=bm==='dl'?(ctx.purist?4:2):(ctx.purist?9:3);
@@ -227,14 +210,7 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
     }
   }
 
-  // --- Bracket 5: global ×letter (Magnet, Chess, Lex Eye, Rune) ---
-  for(var mi=0;mi<ctx.magnetIdxs.length;mi++){
-    if(adjSq(sqIdx,ctx.magnetIdxs[mi])){
-      ts*=2;
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Magnet ×2',floatSqIdx:ctx.magnetIdxs[mi]});
-      break;
-    }
-  }
+  // --- Bracket 5: global ×letter (Chess) ---
   for(var ci=0;ci<ctx.chessPieces.length;ci++){
     var aura=ctx.chessPieces[ci].aura;
     var inAura=false;
@@ -244,17 +220,13 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
       ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'♟ ×3',floatSqIdx:ctx.chessPieces[ci].sqIdx});
       if(ctx.chessKingActive&&tile.isNew){
         ctx.xmults.push(3);
-        ctx.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'♚ King ×3'});
+        ctx.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'♚ King ×3',floatTsId:'chess_king'});
       }
       break;
     }
   }
-  if(ctx.lexEye&&!tile.isBlank&&'QXZJ'.indexOf(tile.letter)>=0){
-    ts*=2;
-    ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Lex Eye ×2'});
-  }
   // Slot Machine (fires once per play)
-  if(sqActive&&sqDef&&sqDef.id==='slot_machine'&&!ctx.slotUsed){
+  if(sqActive&&sqDef&&sqDef.id==='slot_machine'&&!ctx.slotUsed&&!ctx.stickerLocked){
     ctx.slotUsed=true;
     if(!ctx.preview&&!S._slotMachineRoll){
       var roll={wm_mult:1,gold:0,variant:null,parts:[]};
@@ -272,7 +244,7 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
   // --- Bracket 6: retrigger (Red Sticker, Red tile) ---
   // Continues from current ts — does NOT reset to 0.
   if(!skipRetrigger){
-    if(sqActive&&sqDef&&sqDef.id==='echo'){
+    if(sqActive&&sqDef&&sqDef.id==='echo'&&!ctx.stickerLocked){
       if(!ctx.preview)ctx.activatedSqs.add(sqIdx);
       ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:'Red Sticker',floatSqIdx:sqIdx});
       ts=_scoreTilePasses(tile,ctx,ts,true);
@@ -346,8 +318,12 @@ function scorePlay(nt,dir,preview){
   }
 
   // Score cross words first (per-tile brackets 1-6)
+  // Crossroads: display-only tick per crossword, purely so a hovered tooltip can track the
+  // count live — the real mult is applied once at the end via onPostWord (see below).
+  var _hasCrossroads=false;for(var _cri=0;_cri<S.tileStickers.length;_cri++)if(S.tileStickers[_cri].id==='crossroads'){_hasCrossroads=true;break;}
   for(var ci=0;ci<crossWords.length;ci++){
     var cwtiles=crossWords[ci].tiles;
+    if(_hasCrossroads&&!ctx.stickerLocked)ctx.events.push({type:'crossword-tick',isSilent:true});
     for(var ti=0;ti<cwtiles.length;ti++)_scoreTile(cwtiles[ti],ctx,false);
   }
   // Score main word (per-tile brackets 1-6)
@@ -361,25 +337,27 @@ function scorePlay(nt,dir,preview){
     ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Bingo +50'});
   }
 
-  // Anchor activations (computed per-tile, not a per-word hook)
-  if(ctx.anchorActivations>0){
-    var ad=ctx.anchorActivations*3;
-    ctx.plusMults.push(ad);
-    ctx.events.push({type:'plus-mult',delta:ad,label:'Anchor +'+ad+' mult'});
-  }
-
   // Sticker onPostWord hooks — each sticker pushes directly to ctx
-  for(var pwi=0;pwi<S.placed.length;pwi++){
-    var _pDef=sqd(S.placed[pwi].id);
-    if(_pDef&&_pDef.onPostWord)_pDef.onPostWord(main.word,main.tiles,ctx,S.placed[pwi]);
+  ctx.crossWordCount=crossWords.length;
+  if(!ctx.stickerLocked){
+    for(var pwi=0;pwi<S.placed.length;pwi++){
+      var _pDef=sqd(S.placed[pwi].id);
+      if(_pDef&&_pDef.onPostWord)_pDef.onPostWord(main.word,main.tiles,ctx,S.placed[pwi]);
+    }
+    for(var twi=0;twi<S.tileStickers.length;twi++){
+      var _tDef=sqd(S.tileStickers[twi].id);
+      if(_tDef&&_tDef.onPostWord){
+        var _evStart=ctx.events.length;
+        _tDef.onPostWord(main.word,main.tiles,ctx,S.tileStickers[twi]);
+        for(var _evi=_evStart;_evi<ctx.events.length;_evi++){
+          var _tev=ctx.events[_evi];
+          if((_tev.type==='letter'||_tev.type==='plus-mult'||_tev.type==='x-mult')&&_tev.floatSqIdx==null&&_tev.floatTsId==null)_tev.floatTsId=S.tileStickers[twi].id;
+        }
+      }
+    }
   }
-
-  // Permanent Tome xmult (S.ts is a persistent run stat, not tied to Tome being placed)
-  if((S.ts||0)>0){
-    var tf=1+S.ts;
-    ctx.xmults.push(tf);
-    ctx.events.push({type:'x-mult',factor:tf,label:'Tome ×'+tf});
-  }
+  // Bounty reward — applied last so it multiplies everything
+  if(S._pendingBountyReward&&!preview)applyBountyReward(ctx);
 
   if(!preview&&ctx.slotUsed&&S._slotMachineRoll){
     var smr=S._slotMachineRoll;
@@ -412,6 +390,7 @@ function scorePlay(nt,dir,preview){
     mainWord:main.word,bingo:bingo,
     letters:ctx.letters,plusMults:ctx.plusMults,xmults:ctx.xmults,mult:mult,
     allWords:getAllWords(nt,dir),
+    crossWordCount:crossWords.length,
   };
 }
 
@@ -434,12 +413,14 @@ function scoreWord(wt,word,isMain,extraChips,cwWts){
   }
   if(extraChips&&extraChips>0){ctx.letters+=extraChips;}
   if(isMain){
-    if(ctx.anchorActivations>0)ctx.plusMults.push(ctx.anchorActivations*3);
     for(var pwi=0;pwi<S.placed.length;pwi++){
       var _pDef=sqd(S.placed[pwi].id);
       if(_pDef&&_pDef.onPostWord)_pDef.onPostWord(word,wt,ctx,S.placed[pwi]);
     }
-    if((S.ts||0)>0)ctx.xmults.push(1+S.ts);
+    for(var twi=0;twi<S.tileStickers.length;twi++){
+      var _tDef=sqd(S.tileStickers[twi].id);
+      if(_tDef&&_tDef.onPostWord)_tDef.onPostWord(word,wt,ctx,S.tileStickers[twi]);
+    }
   }
   var plusSum=0;for(var i=0;i<ctx.plusMults.length;i++)plusSum+=ctx.plusMults[i];
   var xprod=1;for(var i=0;i<ctx.xmults.length;i++)xprod*=ctx.xmults[i];
@@ -770,6 +751,17 @@ function bumpSA(id){var el=document.getElementById(id);if(!el)return;el.classLis
 function scoreDelay(ms){return new Promise(function(r){setTimeout(r,ms);});}
 function fmtMult(m){var r=Math.round(m);if(m>=10||Math.abs(m-r)<0.001)return r.toString();return parseFloat(m.toFixed(2)).toString();}
 
+// Bounces the matching hotbar sticker face(s) when its effect contributes to scoring.
+function _bounceTsSticker(id){
+  var els=document.querySelectorAll('#tile-sticker-bar .sticker-tile[data-ts-id="'+id+'"]');
+  for(var i=0;i<els.length;i++){
+    var el=els[i];
+    el.classList.remove('sq-binking');
+    void el.offsetWidth;
+    el.classList.add('sq-binking');
+  }
+}
+
 // Waits for the sticker peel+flatten to reach 'hold' before the ding fires.
 // Starts the peel now if it hasn't been started yet (handles events[0] edge case).
 async function _awaitPeelHold(sqIdx){
@@ -791,6 +783,7 @@ async function runScoreAnim(events,total){
   var delay=1000,minDelay=100,delayStep=50;
   var animPlusSum=0,animXprod=1;_scoreDingN=0;
   var _saLSynced=0; // tracks last value written to saL, to skip redundant isSilent updates
+  S._crossroadsLiveCount=S.crossroadsCount||0; // baseline for live tooltip ticks this play
 
   function refreshMult(){
     var m=(1+animPlusSum)*animXprod;
@@ -838,6 +831,7 @@ async function runScoreAnim(events,total){
         if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
         if(!ev._skip)_playScoreDing();
         if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
+        if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
         if(tileEl&&!ev._skip){tileEl.classList.remove('binking');void tileEl.offsetWidth;tileEl.classList.add('binking');}
         if(ev.isTileLocal){
           if(r)showScorePop(ev.lettersAfter,r.left+r.width/2-20,r.top-4,'#0d2a50','#80c8ff');
@@ -853,11 +847,19 @@ async function runScoreAnim(events,total){
       if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
       if(!ev._skip&&!ev.silent)_playScoreDing();
       if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
+      if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
       var br=row.getBoundingClientRect();
       showScorePop('+'+ev.delta+' mult',br.left+100,br.top-32,'#500808','#ff8080');
       animPlusSum+=ev.delta;
       refreshMult();
       if(!ev._skip){await scoreDelay(curDelay);}
+
+    }else if(ev.type==='crossword-tick'){
+      // Display-only: bumps Crossroads' live preview counter so a hovered tooltip steps up
+      // as each crossword finishes scoring, even though the real mult applies later as one
+      // event in the post-word phase (see crossroads' onPostWord in data.js).
+      S._crossroadsLiveCount=(S._crossroadsLiveCount||0)+1;
+      _tooltipRefreshIfOpen();
 
     }else if(ev.type==='x-mult'){
       if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
@@ -866,6 +868,7 @@ async function runScoreAnim(events,total){
       if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
       if(!ev._skip)_playScoreDing();
       if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
+      if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
       if(r2)showScorePop(ev.factor,r2.left+r2.width/2-20,r2.top-4,'#500808','#ff6060');
       else{var br2=row.getBoundingClientRect();showScorePop(ev.factor+' mult',br2.left+100,br2.top-32,'#500808','#ff6060');}
       if(tileEl2&&!ev._skip){tileEl2.classList.remove('binking');void tileEl2.offsetWidth;tileEl2.classList.add('binking');}

@@ -79,8 +79,9 @@ function achvCheck(event, data) {
       if (S.seed) achvUnlock('seeded_win');
       break;
     case 'shop_exit':
-      if ((S.placed || []).length >= 5)  achvUnlock('collect_5');
-      if ((S.placed || []).length >= 10) achvUnlock('collect_10');
+      var _stickerCount=(S.placed||[]).length+(S.tileStickers||[]).length;
+      if (_stickerCount >= 5)  achvUnlock('collect_5');
+      if (_stickerCount >= 10) achvUnlock('collect_10');
       if (S.gold >= 50) achvUnlock('gold_50');
       break;
   }

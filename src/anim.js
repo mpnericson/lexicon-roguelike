@@ -72,6 +72,67 @@ function animBountyComplete(chipIndex, boardIdxs) {
   });
 }
 
+// Apply gold glow immediately (called before scoring so glow persists through anim)
+function _applyBountyGlow(boardIdxs, chipIndex) {
+  for (var i = 0; i < boardIdxs.length; i++) {
+    var sq = document.querySelector('[data-sq-idx="' + boardIdxs[i] + '"]');
+    if (!sq) continue;
+    var tileEl = sq.querySelector('.board-tile') || sq;
+    tileEl.classList.add('bounty-gold-pulse');
+  }
+  var brow = document.getElementById('bounty-row');
+  var chips = brow ? Array.prototype.slice.call(brow.children) : [];
+  var chip = chipIndex < chips.length ? chips[chipIndex] : null;
+  if (chip) chip.classList.add('bounty-chip-pulse');
+}
+
+// Slide the bounty chip out (called after scoring animation; skips the pulse phase)
+function animBountySlideOut(chipIndex) {
+  return new Promise(function(resolve) {
+    // Remove lingering glow classes
+    var pulsed = document.querySelectorAll('.bounty-gold-pulse');
+    for (var i = 0; i < pulsed.length; i++) pulsed[i].classList.remove('bounty-gold-pulse');
+    var brow = document.getElementById('bounty-row');
+    var chips = brow ? Array.prototype.slice.call(brow.children) : [];
+    var chip = chipIndex < chips.length ? chips[chipIndex] : null;
+    if (chip) chip.classList.remove('bounty-chip-pulse');
+    if (!chip) { resolve(); return; }
+    var belowChips = chips.slice(chipIndex + 1);
+    var chipR = chip.getBoundingClientRect();
+    var slideUp = chipR.height + 4;
+    var clone = chip.cloneNode(true);
+    clone.style.cssText = 'position:fixed;left:' + chipR.left + 'px;top:' + chipR.top + 'px;'
+      + 'width:' + chipR.width + 'px;height:' + chipR.height + 'px;z-index:9998;pointer-events:none;';
+    document.body.appendChild(clone);
+    chip.style.visibility = 'hidden';
+    var slideOutDur = 600;
+    var slideOutDist = chipR.left + chipR.width + 20;
+    var slideStart = performance.now();
+    function animateSlide(now) {
+      var tOut = Math.min(1, (now - slideStart) / slideOutDur);
+      var eOut = tOut * tOut * tOut;
+      clone.style.transform = 'translateX(-' + (eOut * slideOutDist) + 'px)';
+      clone.style.opacity = Math.max(0, 1 - tOut * 1.4) + '';
+      if (tOut < 1) { requestAnimationFrame(animateSlide); return; }
+      clone.remove();
+      if (!belowChips.length) { resolve(); return; }
+      var slideUpDur = 500;
+      var upStart = performance.now();
+      function animateUp(now2) {
+        var tUp = Math.min(1, (now2 - upStart) / slideUpDur);
+        var eUp = tUp * tUp * tUp;
+        for (var j = 0; j < belowChips.length; j++)
+          belowChips[j].style.transform = 'translateY(-' + (eUp * slideUp) + 'px)';
+        if (tUp < 1) { requestAnimationFrame(animateUp); return; }
+        for (var j = 0; j < belowChips.length; j++) belowChips[j].style.transform = '';
+        resolve();
+      }
+      requestAnimationFrame(animateUp);
+    }
+    requestAnimationFrame(animateSlide);
+  });
+}
+
 function _bagSpriteShow(bagEl) {
   var DISPLAY_SZ = 230;
   var bagR = bagEl.getBoundingClientRect();

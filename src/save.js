@@ -27,8 +27,6 @@ function saveGame() {
       }),
       placed: (S.placed || []).map(function(p) { return {id:p.id, sqIdx:p.sqIdx}; }),
       discPressure: S.discPressure || 0,
-      censorApplied: !!S.censorApplied,
-      alchemistUsed: !!S.alchemistUsed,
       palUnlocked: !!S.palUnlocked,
       phase: (S.phase === 'shop' || S.phase === 'placing') ? 'play' : S.phase,
       bounties: S.bounties || [],
@@ -40,7 +38,13 @@ function saveGame() {
       endlessRound: S.endlessRound || 0,
       roundsCompleted: S.roundsCompleted || 0,
       localCooldowns: Array.from(S.localCooldowns||[]),
-      drunkStreak: S.drunkStreak || 0
+      drunkStreak: S.drunkStreak || 0,
+      constraintOrder: S.constraintOrder||[],
+      usedLetters: Array.from(S.usedLetters||[]),
+      stickersSoldThisStage: S.stickersSoldThisStage||0,
+      crossroadsCount: S.crossroadsCount||0,
+      tileStickers: (S.tileStickers||[]).map(function(ts){return{id:ts.id};}),
+      stickerInventory: (S.stickerInventory||[]).map(function(p){return{id:p.id};})
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch(e) {}
@@ -75,13 +79,12 @@ function loadGame() {
         return def ? Object.assign({}, def, {sqIdx: p.sqIdx}) : null;
       }).filter(Boolean),
       discPressure: d.discPressure || 0,
-      censorApplied:  !!d.censorApplied,
-      alchemistUsed:  !!d.alchemistUsed,
       palUnlocked:    !!d.palUnlocked,
       phase: d.phase || 'play',
-      pendingSquares: [], sqHand: [], sqStaged: {},
+      stickerInventory: (d.stickerInventory||[]).map(function(p){return(p&&p.id)?{id:p.id}:null;}).filter(Boolean),
+      sqHand: [], sqStaged: {},
       seed: d.seed, _slotMachineRoll: null,
-      bounties: d.bounties || [],
+      bounties: (d.bounties||[]).map(function(b){return b?{word:b.word,reward:b.reward||5}:null;}).filter(Boolean),
       bhMult: d.bhMult || 1,
       palMult: d.palMult || 1,
       palWords: d.palWords || [],
@@ -91,6 +94,11 @@ function loadGame() {
       roundsCompleted: d.roundsCompleted || 0,
       localCooldowns: new Set(d.localCooldowns||[]),
       drunkStreak: d.drunkStreak || 0,
+      constraintOrder: d.constraintOrder||[],
+      usedLetters: new Set(d.usedLetters||[]),
+      stickersSoldThisStage: d.stickersSoldThisStage||0,
+      crossroadsCount: d.crossroadsCount||0,
+      tileStickers: (d.tileStickers||[]).map(function(ts){return(ts&&ts.id)?{id:ts.id}:null;}).filter(Boolean),
       devMode: false
     };
     return true;
