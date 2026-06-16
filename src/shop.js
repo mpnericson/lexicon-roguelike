@@ -66,7 +66,10 @@ function leaveShop(){
   achvCheck('shop_exit');
   saveGame();
   S.phase='play';
-  animShopToBoard(function(){ _burstHandTiles(); });
+  animShopToBoard(function(){
+    if((S.stickerInventory||[]).length>0)enterPlacingPhase();
+    else _burstHandTiles();
+  });
 }
 
 function enterPlacingPhase(){
