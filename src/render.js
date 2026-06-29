@@ -70,7 +70,7 @@ function renderBoard(){
     }
     var bt=S.bt[i];var showTile=bt&&!bt.flying&&!viewingBoard;
     if(showTile){
-      var bbadge=bt.variant==='gold'?'<span class="vbadge vbadge-gold" style="font-size:'+Math.max(5,Math.round(sz*.14))+'px">$</span>':bt.variant==='blue'?'<span class="vbadge vbadge-blue" style="font-size:'+Math.max(5,Math.round(sz*.14))+'px">+'+(LS[bt.letter]||0)+'</span>':bt.variant==='red'?'<span class="vbadge vbadge-red" style="font-size:'+Math.max(5,Math.round(sz*.14))+'px">×2</span>':'';
+      var bbadge='';
       var spr=(bt.isBlank&&bt.letter&&bt.letter>='A'&&bt.letter<='Z')?blankTileSpr(bt.letter,bt.variant||null,sz):tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,bt.variant||null,sz);
       var _stkCls=(!bt.isNew&&bt._stackLevel>0)?(bt._stackLevel>=2?' jenga-stacked-2':' jenga-stacked'):'';
       var face=document.createElement('div');face.className='tile board-tile'+(bt.isNew?' is-new':'')+_stkCls+(bt.variant?' var-'+bt.variant:'')+' tile-spr';
@@ -143,7 +143,7 @@ function renderBoard(){
     // Jenga: render stacked top tile with elevation
     if(S.btTop&&S.btTop[i]&&!S.btTop[i].flying&&!viewingBoard){
       var btt=S.btTop[i];
-      var bbadgeT=btt.variant==='gold'?'<span class="vbadge vbadge-gold" style="font-size:'+Math.max(5,Math.round(sz*.14))+'px">$</span>':btt.variant==='blue'?'<span class="vbadge vbadge-blue" style="font-size:'+Math.max(5,Math.round(sz*.14))+'px">+'+(LS[btt.letter]||0)+'</span>':btt.variant==='red'?'<span class="vbadge vbadge-red" style="font-size:'+Math.max(5,Math.round(sz*.14))+'px">×2</span>':'';
+      var bbadgeT='';
       var sprT=(btt.isBlank&&btt.letter&&btt.letter>='A'&&btt.letter<='Z')?blankTileSpr(btt.letter,btt.variant||null,sz):tileSpr(btt.isBlank?null:btt.letter,btt.isBlank,btt.variant||null,sz);
       var _btopLvl=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;
       var topFace=document.createElement('div');
@@ -340,7 +340,7 @@ function renderHand(){
   hpRebuild(vis);
   for(var vi=0;vi<vis.length;vi++){
     var t=vis[vi].t,oi=vis[vi].oi;
-    var badge=t.variant==='gold'?'<span class="vbadge vbadge-gold">$</span>':t.variant==='blue'?'<span class="vbadge vbadge-blue">+'+(LS[t.letter]||0)+'</span>':t.variant==='red'?'<span class="vbadge vbadge-red">×2</span>':'';
+    var badge='';
     var spr=(t.isBlank&&t.blankAs)?blankTileSpr(t.blankAs,t.variant||null,68):tileSpr(t.isBlank?null:t.letter,t.isBlank,t.variant||null,68);
     var face=document.createElement('div');
     face.className='tile hand-tile'+(t.isBlank?' blank-t':'')+(t.sel?' selected':'')+(t.variant?' var-'+t.variant:'')+' tile-spr';
@@ -393,13 +393,15 @@ function _renderStickerBarInto(bar,ph,src){
     var face=document.createElement('div');
     face.className='sticker-tile';
     face.setAttribute('data-ts-id',ts.id);
-    var baseCss='position:absolute;width:68px;height:68px;left:'+(ph.x[vi]-34-ph.left)+'px;';
+    var tw=ph.TILE_W;
+    var topPx=src==='shop-sticker'?2:8;
+    var baseCss='position:absolute;width:'+tw+'px;height:'+tw+'px;top:'+topPx+'px;left:'+(ph.x[vi]-tw/2-ph.left)+'px;';
     if(d.iconPng){
       face.style.cssText=baseCss+'border-radius:8px;overflow:hidden;';
-      face.innerHTML='<img src="'+d.iconPng+'" style="width:68px;height:68px;image-rendering:pixelated;display:block;pointer-events:none">';
+      face.innerHTML='<img src="'+d.iconPng+'" style="width:'+tw+'px;height:'+tw+'px;image-rendering:pixelated;display:block;pointer-events:none">';
     } else {
       face.style.cssText=baseCss+'background:#12122a;border:2px solid '+d.fg+';border-radius:8px;color:'+d.fg+';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;';
-      face.innerHTML=sqIconHTML(d,28)+'<span style="font-size:10px;text-align:center;pointer-events:none;overflow:hidden;width:64px;white-space:nowrap;text-overflow:ellipsis">'+d.name+'</span>';
+      face.innerHTML=sqIconHTML(d,Math.round(tw*28/68))+'<span style="font-size:'+Math.round(tw*10/68)+'px;text-align:center;pointer-events:none;overflow:hidden;width:'+Math.round(tw*64/68)+'px;white-space:nowrap;text-overflow:ellipsis">'+d.name+'</span>';
     }
     var isDragging=activeDrag&&activeDrag.src===src&&activeDrag.vi===vi;
     if(isDragging)face.style.opacity='0';
@@ -440,7 +442,7 @@ function _renderShopPhysicsStickerBar(bar){
     ctr.style.cssText='position:absolute;font-size:clamp(7px,1.2vw,17px);color:#8880a8;pointer-events:none;line-height:1;top:50%;transform:translateY(-50%)';
     // position it just right of the last tile
     SSP.bounds();
-    var lastX=SSP.x.length>0?SSP.x[stickers.length-1]+34-SSP.left:0;
+    var lastX=SSP.x.length>0?SSP.x[stickers.length-1]+SSP.TILE_W/2-SSP.left:0;
     ctr.style.left=(lastX+6)+'px';
     ctr.textContent=stickers.length+'/5';
     bar.appendChild(ctr);
@@ -481,13 +483,14 @@ function _openTileStickerModal(idx,id){
   var sellBtn=document.getElementById('sq-sell-btn');
   if(sellBtn){
     sellBtn.textContent='Sell $'+sell;
-    sellBtn.onclick=(function(i,sv,dn){return function(){
+    sellBtn.onclick=(function(i,sv,dn,dd){return function(){
       S.tileStickers.splice(i,1);
       S.gold+=sv;
       document.getElementById('sq-modal').style.display='none';
       renderTileStickerBar();renderHUD();
       toast(dn+' sold for $'+sv+'!');
-    };})(idx,sell,d.name);
+      if(dd&&dd.onSell)dd.onSell();
+    };})(idx,sell,d.name,d);
   }
   document.getElementById('sq-modal').style.display='flex';
 }

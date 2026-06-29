@@ -10,7 +10,7 @@ function makePhysics(opts) {
 
   var ph = {
     tiles: [], x: [], vx: [], held: -1,
-    TILE_W: 68, GAP: 0,
+    TILE_W: opts.tileW || 68, GAP: 0,
     DAMP: 0.55, SPRING: 0.14,
     RAF: null, aL: 0, aR: 0, left: 0,
     fromX: [], toX: [], settleAt: 0, settleDur: 150,
@@ -142,7 +142,7 @@ function makePhysics(opts) {
 
 var HP = makePhysics({ areaId: 'hand-area', tileClass: 'hand-tile', dragSrc: 'hand' });
 var SP = makePhysics({ areaId: 'tile-sticker-bar', tileClass: 'sticker-tile', dragSrc: 'sticker' });
-var SSP = makePhysics({ areaId: 'shop-sticker-bar', tileClass: 'sticker-tile', dragSrc: 'shop-sticker' });
+var SSP = makePhysics({ areaId: 'shop-sticker-bar', tileClass: 'sticker-tile', dragSrc: 'shop-sticker', tileW: 111 });
 
 // Backward-compat wrappers so existing callers in drag.js / render.js / init.js keep working.
 function hpBounds() { HP.bounds(); }

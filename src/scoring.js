@@ -145,6 +145,7 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
   var sqDef=sqId?sqd(sqId):null;
   var sqActive=!S.localCooldowns.has(sqIdx);
   var tileSc=tile.isBlank?(tile.sc||0):(LS[tile.letter]||0);
+  if(!ctx.preview&&sqId==='spring_trap'){if(!ctx.springTraps)ctx.springTraps=[];if(ctx.springTraps.indexOf(sqIdx)<0)ctx.springTraps.push(sqIdx);}
 
   // --- Bracket 1: base ---
   var baseSc=tile.isBlank?(tile.sc||0):tileSc;
@@ -167,6 +168,10 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
     }else if(sqDef.id==='gilded'){
       ctx.tgold++;
       ctx.events.push({type:'gold',delta:1,sqIdx:sqIdx,label:'Gilded +$1',floatSqIdx:sqIdx});
+      acted=true;
+    }else if(sqDef.id==='spring_trap'){
+      ts+=9;
+      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Spring Trap +9',floatSqIdx:sqIdx});
       acted=true;
     }
     if(acted&&!ctx.preview)ctx.activatedSqs.add(sqIdx);
@@ -294,6 +299,7 @@ function scorePlay(nt,dir,preview){
   var ctx=_buildCtx(main.word);
   ctx.preview=!!preview;
   ctx.newTileCount=nt.length;
+  ctx._freeHandCount=S.hand.filter(function(t){return t!==null;}).length;
   if(!preview)S._slotMachineRoll=null;
 
   // Tile-count base +mult — established before any per-tile scoring
@@ -303,7 +309,7 @@ function scorePlay(nt,dir,preview){
     ctx.events.push({type:'plus-mult',delta:_tcb,label:ctx.newTileCount+' tiles +'+_tcb+' mult',silent:true});
   }
 
-  var bingo=nt.length>=7;
+  var bingo=ctx._freeHandCount>0&&nt.length>=ctx._freeHandCount;
 
   // Extract cross words
   var cx=dir==='h'?'v':'h';
@@ -391,6 +397,7 @@ function scorePlay(nt,dir,preview){
     letters:ctx.letters,plusMults:ctx.plusMults,xmults:ctx.xmults,mult:mult,
     allWords:getAllWords(nt,dir),
     crossWordCount:crossWords.length,
+    springTraps:ctx.springTraps||[],
   };
 }
 

@@ -35,6 +35,7 @@ window.addEventListener('resize',function(){hpBounds();renderBoard();});
 document.addEventListener('keydown',function(e){
   if(e.key==='Enter'&&S.phase==='play'&&!e.target.closest('.modal-overlay'))playWord();
   if(e.key==='Delete'&&S.phase==='play')discardTiles();
+  if(e.key==='Escape'){var _bt=document.getElementById('bag-ui-tiles');if(_bt&&_bt.dataset.expandedLetter)_bagCollapseLetter(_bt);}
 });
 document.addEventListener('pointerdown',function(e){
   var btn=e.target.closest('button');

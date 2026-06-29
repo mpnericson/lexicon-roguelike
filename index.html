@@ -20,35 +20,40 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 #hand-wrap{display:flex;align-items:center;gap:10px;height:80px;flex-shrink:0}
 #hand-area{position:relative;flex:1;height:68px;overflow:visible}
 #shop-screen{position:fixed;top:0;left:0;width:100%;height:100%;background:#06060e;z-index:200;display:none;align-items:center;justify-content:center}
-#shop-canvas{position:relative;width:min(100vw,calc(100vh * 16 / 9));aspect-ratio:256/144;flex-shrink:0}
+#shop-canvas{position:relative;width:min(100vw,calc(100vh * 16 / 10));aspect-ratio:256/160;flex-shrink:0;overflow:hidden}
 #shop-reel-layer{position:absolute;left:0;top:0;width:100%;height:100%}
 .shop-reel{position:absolute;overflow:hidden;background:#0c0618}
 .reel-strip{position:absolute;top:0;left:0;width:100%;will-change:transform}
-.reel-item{width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3%;background:#0c0618;border-bottom:1px solid #1e0830}
-.reel-item.reel-sel{background:#1a0d3a;outline:2px solid rgba(240,224,128,0.7);outline-offset:-2px;cursor:pointer}
-.reel-item.reel-sel:hover{background:#261550}
+/* Slot_reel.png is a 40×112 sprite: a repeating unit of 4px border + 32px window (40w×36h/unit).
+   Each .reel-item is exactly one unit tall, so stacked items' borders butt together seamlessly. */
+.reel-item{width:100%;position:relative;background-color:#0c0618;background-image:url(Assets/sprites/Slot_reel.png);background-repeat:no-repeat;background-position:0 0;background-size:100% 311.111%;image-rendering:pixelated}
+.shop-reel.reel-common .reel-item{background-image:url(Assets/sprites/Slot_reel_common.png)}
+.shop-reel.reel-rare .reel-item{background-image:url(Assets/sprites/Slot_reel_rare.png)}
+.reel-item.reel-sel{background-color:#1a0d3a;outline:2px solid rgba(240,224,128,0.7);outline-offset:-2px;cursor:pointer}
+.reel-item.reel-sel:hover{background-color:#261550}
 @keyframes reel-pop{0%{transform:scale(1);filter:brightness(1)}30%{transform:scale(1.22);filter:brightness(1.5)}65%{transform:scale(0.91);filter:brightness(1.1)}85%{transform:scale(1.06);filter:brightness(1)}100%{transform:scale(1);filter:brightness(1)}}
 .reel-pop-anim{animation:reel-pop 0.42s ease-out;position:relative;z-index:5}
-.reel-icon{flex:1;display:flex;align-items:center;justify-content:center;width:100%;font-size:clamp(18px,8vw,110px);line-height:1}
-.reel-icon img{max-width:68%;max-height:62%;image-rendering:pixelated;display:block}
-.reel-name{flex-shrink:0;text-align:center;width:100%;line-height:1.2;padding:0 3%;font-size:clamp(5px,0.82vw,12px)}
+/* Positioned to land exactly inside the sprite's window: 10%/80% horizontal, 11.111%/88.889% vertical */
+.reel-icon{position:absolute;left:10%;top:11.111%;width:80%;height:88.889%;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:clamp(14px,6vw,90px);line-height:1}
+.reel-icon img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;display:block}
 #shop-bg{position:absolute;left:0;top:0;width:100%;height:100%;image-rendering:pixelated;pointer-events:none}
-#shop-slot-price{position:absolute;left:56.64%;top:58.33%;width:7.42%;height:9.03%;display:flex;align-items:center;justify-content:center;font-size:clamp(8px,2.2vw,32px);color:#e0c8ff;pointer-events:none}
-#shop-handle-img{position:absolute;left:0;top:0;width:100%;height:100%;image-rendering:pixelated;pointer-events:none;z-index:3}
-#shop-handle-hit{position:absolute;left:66.02%;top:18.75%;width:8.98%;height:43.75%;touch-action:none;cursor:grab;user-select:none;z-index:4}
+#shop-slot-price{position:absolute;left:63.6719%;top:54.375%;width:6.6406%;height:6.25%;display:flex;align-items:center;justify-content:center;font-size:clamp(18px,3.5vw,60px);color:#e0c8ff;pointer-events:none;z-index:5}
+#shop-handle-img{position:absolute;left:0;top:6.875%;width:100%;height:auto;image-rendering:pixelated;pointer-events:none;z-index:3}
+#shop-handle-hit{position:absolute;left:66.02%;top:23.75%;width:8.98%;height:39.375%;touch-action:none;cursor:grab;user-select:none;z-index:4}
 #shop-handle-hit:active{cursor:grabbing}
-.shop-pack-box{position:absolute;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3%;text-align:center;padding:4%}
+.shop-pack-box{position:absolute;overflow:visible;cursor:pointer;z-index:4}
 .shop-pack-box:hover{filter:brightness(1.35)}
 .shop-pack-box.sold{opacity:0.4;cursor:default;pointer-events:none;filter:none}
-.shop-pack-icon{line-height:1;font-size:clamp(16px,8vw,130px);text-align:center;flex:1;display:flex;align-items:center;justify-content:center;width:100%}
-.shop-pack-icon img{max-width:85%;max-height:85%;image-rendering:pixelated;display:block}
-.shop-pack-cost{font-size:clamp(9px,1.9vw,28px);color:#f0c060;flex-shrink:0}
+.shop-pack-icon{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.shop-pack-icon img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;display:block}
+.shop-pack-icon span{font-size:clamp(16px,5vw,80px);line-height:1}
+.shop-pack-cost{position:absolute;top:calc(100% + 3px);left:50%;transform:translateX(-50%);font-size:clamp(9px,1.9vw,28px);color:#f0c060;white-space:nowrap}
 /* Bag: sprite is 32×32, content bbox is x6-28 y10-31 (23×22px)
    Rendered sprite height H=34vh → content: 23.375vh tall, 24.44vh wide
    Div sized to content area; sprite offset so content aligns with div */
-#shop-bag-btn{position:absolute;left:86%;bottom:0.5%;transform:translateX(-50%);width:24.44vh;height:23.38vh;cursor:pointer;overflow:visible;background:none;border:none;padding:0}
+#shop-bag-btn{position:absolute;right:1.5625%;bottom:0.5%;width:24.44vh;height:23.38vh;cursor:pointer;overflow:visible;background:none;border:none;padding:0}
 #shop-bag-sprite{position:absolute;height:34vh;width:auto;top:-10.625vh;left:-6.375vh;image-rendering:pixelated;display:block;pointer-events:none}
-#shop-bounty-list{position:absolute;left:72%;top:20%;width:25%;height:50%;overflow:hidden;display:flex;flex-direction:column;gap:4%;padding:2% 3%}
+#shop-bounty-list{position:absolute;left:72%;top:18.125%;width:25%;height:45%;overflow:hidden;display:flex;flex-direction:column;gap:4%;padding:2% 3%}
 .shop-bounty-item{flex-shrink:0}
 .shop-bounty-chip{width:100%;background-image:url(Assets/sprites/bounty-background.png);background-size:100% 100%;background-repeat:no-repeat;image-rendering:pixelated;box-sizing:border-box;overflow:hidden;display:flex;align-items:center;padding:4% 3%;gap:3px}
 .shop-bounty-accept-btn{flex-shrink:0;aspect-ratio:1;align-self:center;background:#f0c060;border:2px solid #a89000;border-radius:4px;box-shadow:0 2px 0 #7a6800;color:#2a1f0e;font-family:'Jersey 10',Georgia;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
@@ -58,7 +63,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .shop-top-btn{background:rgba(10,10,30,0.75);border:1px solid #4a4a6a;border-radius:3px;color:#c0c0e0;font-family:'Jersey 10',Georgia;font-size:clamp(8px,1.6vw,24px);cursor:pointer;padding:1.5% 4%}
 .shop-top-btn:hover{border-color:#f0e080;color:#f0e080}
 .shop-top-btn.green{border-color:#4a8a4a;color:#80c080}.shop-top-btn.green:hover{border-color:#80c080}
-#shop-gold-display{position:absolute;left:0.5%;top:0.5%;font-size:clamp(8px,1.8vw,26px);color:#f0c060;background:rgba(0,0,0,0.55);padding:1% 3%;border-radius:3px;pointer-events:none;z-index:5}
+#shop-gold-display{position:absolute;left:2.3438%;top:1.25%;width:10.9375%;height:11.875%;display:flex;align-items:center;justify-content:center;font-size:clamp(18px,6vw,100px);color:#f0c060;pointer-events:none;z-index:6;overflow:hidden}
 #shop-queue-bar{position:absolute;left:0;right:0;bottom:0;background:rgba(0,22,0,0.9);padding:1% 3%;color:#80c080;font-size:clamp(4px,0.8vw,13px);text-align:center;display:none;z-index:5}
 #slot-result-panel{display:none;position:absolute;left:2%;top:4%;width:60%;background:rgba(6,6,20,0.96);border:1px solid #5a5a8a;border-radius:4px;padding:3%;flex-direction:column;align-items:center;gap:4%;z-index:10}
 .slot-result-card{background:#1e1e3a;border:2px solid #5a5a8a;border-radius:4px;padding:5%;cursor:pointer;text-align:center;flex:1;min-width:0}
@@ -235,6 +240,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .bag-float-item:hover>div{animation-play-state:paused}
 .bag-float-item .tile.tile-spr,.bag-float-item .tile:not(.tile-spr){transition:filter 0.15s ease,transform 0.15s ease}
 .bag-float-item:hover .tile.tile-spr,.bag-float-item:hover .tile:not(.tile-spr){filter:brightness(1.22) drop-shadow(0 0 10px rgba(240,224,128,0.5));transform:translateY(-7px)}
+.bag-float-item[style*='opacity: 0']:hover .tile.tile-spr,.bag-float-item[style*='opacity: 0']:hover .tile:not(.tile-spr){transform:none;filter:none}
 #bag-ui-overlay,#shop-bag-overlay{position:fixed;inset:0;background:#0f2018;z-index:9000;flex-direction:column;align-items:center;justify-content:center;gap:20px}
 .top-btn{background:#12122a;border:1px solid #3a3a5a;border-radius:6px;color:#a0a0c0;padding:4px 10px;cursor:pointer;font-family:'Jersey 10',Georgia;font-size:30px;flex-shrink:0}
 .top-btn:hover{border-color:#f0e080;color:#f0e080}
@@ -311,7 +317,11 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .sticker-tile{width:68px;height:68px;cursor:grab;position:absolute;top:8px;transition:transform 0.12s ease,filter 0.12s ease}
 .sticker-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(200,160,255,0.45));z-index:10}
 /* Shop sticker bar — physics-driven, no box */
-#shop-sticker-bar{position:absolute;left:31%;top:72%;width:47%;height:24%;z-index:5;overflow:visible}
+#shop-sticker-bar{position:absolute;left:6.7031%;top:2.25%;width:53%;height:15%;z-index:5;overflow:visible}
+/* New shop UI animated sprites */
+#shop-slot-buttons{position:absolute;left:5.2734%;top:50.9375%;width:56.25%;image-rendering:pixelated;z-index:3;pointer-events:none}
+#shop-slot-tray{position:absolute;left:-0.1953%;top:62.5%;width:67.1875%;image-rendering:pixelated;z-index:3;pointer-events:none}
+
 </style>
 </head>
 <body>
@@ -427,12 +437,12 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
   <div id="shop-canvas">
     <!-- Layer 1: slot reels (behind shop bg) -->
     <div id="shop-reel-layer">
-      <div id="shop-reel-1" class="shop-reel" style="left:7.42%;top:26.39%;width:14.06%;height:29.86%"></div>
-      <div id="shop-reel-2" class="shop-reel" style="left:26.17%;top:26.39%;width:14.06%;height:29.86%"></div>
-      <div id="shop-reel-3" class="shop-reel" style="left:45.31%;top:26.39%;width:14.06%;height:29.86%"></div>
+      <div id="shop-reel-1" class="shop-reel" style="left:7.42%;top:23.75%;width:14.45%;height:25%"></div>
+      <div id="shop-reel-2" class="shop-reel" style="left:26.17%;top:23.75%;width:14.45%;height:25%"></div>
+      <div id="shop-reel-3" class="shop-reel" style="left:45.31%;top:23.75%;width:14.45%;height:25%"></div>
     </div>
     <!-- Layer 2: shop background PNG (transparent slot windows show reels through) -->
-    <img id="shop-bg" src="Assets/animations/shop-bg/shop-bg-frame0.png">
+    <img id="shop-bg" src="Assets/sprites/shop_ui.png">
     <!-- Layer 3+: all interactive UI on top -->
     <div id="shop-gold-display">$0</div>
     <div id="shop-top-bar">
@@ -442,9 +452,12 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
     <div id="shop-slot-price">$4</div>
     <img id="shop-handle-img" src="Assets/animations/slot-handle/slot-handle-frame0.png">
     <div id="shop-handle-hit"></div>
-    <div id="shop-pack-0" class="shop-pack-box" style="left:3.52%;top:72.22%;width:10.94%;height:23.61%"></div>
-    <div id="shop-pack-1" class="shop-pack-box" style="left:19.92%;top:72.22%;width:10.94%;height:23.61%"></div>
+    <div id="shop-pack-0" class="shop-pack-box" style="left:77.3438%;top:56.875%;width:8.5938%;height:13.75%"></div>
+    <div id="shop-pack-1" class="shop-pack-box" style="left:86.7188%;top:56.875%;width:8.5938%;height:13.75%"></div>
     <div id="shop-bag-btn" onclick="openShopBagUI()"><img id="shop-bag-sprite" src="Assets/animations/bag/bag-frame0.png"></div>
+    <img id="shop-slot-buttons" src="Assets/animations/slot-buttons/Slot_buttons1.png">
+    <img id="shop-slot-tray" src="Assets/animations/slot-tray/slot_tray1.png">
+
     <div id="shop-sticker-bar"></div>
     <div id="shop-bounty-list"></div>
     <div id="shop-queue-bar"></div>

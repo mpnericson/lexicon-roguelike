@@ -76,6 +76,41 @@ async function playWord(){
       if(S.palWords.indexOf(main.word)<0){S.palWords.push(main.word);S.palMult=(S.palMult||1)+0.25;toast('Palindrome Engine: ×'+fmtMult(S.palMult)+'!');}
     }
   }else{toast(scoreLockMsg);}
+  // Spring trap: eject tile(s) into bag before commit
+  if(res&&res.springTraps&&res.springTraps.length){
+    for(var _sti=0;_sti<res.springTraps.length;_sti++){
+      var _stIdx=res.springTraps[_sti];
+      if(!S.bt[_stIdx]||S.board[_stIdx]!=='spring_trap')continue;
+      var _stTile=S.bt[_stIdx];
+      var _stRoll=_rng();var _stVariant=_stRoll<0.25?'gold':_stRoll<0.5?'blue':_stRoll<0.75?'red':(_stTile.variant||null);
+      var _stBagTile={letter:_stTile.isBlank?'_':_stTile.letter,isBlank:!!_stTile.isBlank,id:uid(),variant:_stVariant,blueBonus:_stTile.blueBonus||0};
+      if(_stTile.isNew){
+        var _stHt=S.hand[_stTile.handIdx]||null;
+        if(!_stHt&&_stTile.tileId)for(var _shfi=0;_shfi<S.hand.length;_shfi++){if(S.hand[_shfi]&&S.hand[_shfi].id===_stTile.tileId){_stHt=S.hand[_shfi];break;}}
+        if(_stHt)_stHt._done=true;
+      }
+      var _stCell=document.querySelector('[data-sq-idx="'+_stIdx+'"]');
+      var _stRect=_stCell?_stCell.getBoundingClientRect():null;
+      S.bt[_stIdx]=null;S.board[_stIdx]=null;
+      for(var _spi=S.placed.length-1;_spi>=0;_spi--){if(S.placed[_spi].id==='spring_trap'&&S.placed[_spi].sqIdx===_stIdx){S.placed.splice(_spi,1);break;}}
+      S.bag.push(_stBagTile);
+      var _stVLabel=_stVariant?(' as '+_stVariant):'';
+      toast('Spring Trap! '+(_stBagTile.isBlank?'?':_stBagTile.letter)+' returned to bag'+_stVLabel+'.');
+      renderBoard();
+      await new Promise(function(r){animSpringTrap(_stRect,_stBagTile,r);});
+    }
+    S.bag=shuffle(S.bag);
+  }
+  // Consume perishable board stickers where new tiles landed
+  var _perishableChanged=false;
+  for(var _pi=0;_pi<nt.length;_pi++){
+    var _pIdx=nt[_pi].idx;var _pSid=S.board[_pIdx];if(!_pSid)continue;
+    var _pDef=sqd(_pSid);if(!_pDef||!_pDef.perishable)continue;
+    S.board[_pIdx]=null;
+    for(var _pri=S.placed.length-1;_pri>=0;_pri--){if(S.placed[_pri].sqIdx===_pIdx){S.placed.splice(_pri,1);break;}}
+    _perishableChanged=true;
+  }
+  if(_perishableChanged)renderBoard();
   // Bounty slide-out: fires after scoring animation completes
   if(_bountyIdx>=0){
     S._pendingBountyReward=null;
@@ -123,6 +158,15 @@ async function playWord(){
   saveGame();
   if(S.score>=tgt())setTimeout(roundComplete,700);
   else if(S.plays===0)setTimeout(function(){
+    // Safety Net: if score >= 25% of target, advance to shop and destroy the sticker
+    var _snIdx=-1;for(var _si=0;_si<(S.tileStickers||[]).length;_si++){if(S.tileStickers[_si].id==='safety_net'){_snIdx=_si;break;}}
+    if(_snIdx>=0&&S.score>=Math.floor(tgt()*0.25)){
+      S.tileStickers.splice(_snIdx,1);
+      renderTileStickerBar();renderHUD();
+      toast('Safety Net! Advancing to shop...');
+      setTimeout(advanceRound,1200);
+      return;
+    }
     showGO('Scored '+S.score.toLocaleString()+' / '+tgt().toLocaleString()+'.');
     var needed=tgt()-S.score;
     if(window._lastPlaySnap&&DICT){

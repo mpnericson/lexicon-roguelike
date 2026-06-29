@@ -32,6 +32,7 @@ function saveGame() {
       bounties: S.bounties || [],
       bhMult: S.bhMult || 1,
       palMult: S.palMult || 1,
+      playerMult: S.playerMult || 1,
       palWords: S.palWords || [],
       lastWordLen: S.lastWordLen || 0,
       endless: !!S.endless,
@@ -87,6 +88,7 @@ function loadGame() {
       bounties: (d.bounties||[]).map(function(b){return b?{word:b.word,reward:b.reward||5}:null;}).filter(Boolean),
       bhMult: d.bhMult || 1,
       palMult: d.palMult || 1,
+      playerMult: d.playerMult || 1,
       palWords: d.palWords || [],
       lastWordLen: d.lastWordLen || 0,
       endless: !!d.endless,
@@ -119,6 +121,7 @@ function resumeGame() {
   document.getElementById('placing-controls').style.display = 'none';
   HP.x = []; HP.vx = []; HP.tiles = [];
   if (typeof _resetZoom === 'function') _resetZoom();
+  drawFull();
   renderAll();
   if (S.phase === 'play') _scheduleRankSolve();
 }

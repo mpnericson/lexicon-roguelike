@@ -261,6 +261,10 @@ function _checkRankReward(score, top10) {
     if (score >= top10[i].score) { rank = i + 1; break; }
   }
   if (rank <= 10) _showRankReward(rank);
+  if (rank === 1) {
+    var _hasPlayer=false;for(var _pi=0;_pi<(S.tileStickers||[]).length;_pi++)if(S.tileStickers[_pi].id==='the_player'){_hasPlayer=true;break;}
+    if(_hasPlayer){S.playerMult=parseFloat(((S.playerMult||1)+0.5).toFixed(2));toast('The Player: ×'+S.playerMult.toFixed(1)+' mult!');}
+  }
 }
 
 function _showRankReward(rank) {

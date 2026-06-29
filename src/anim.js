@@ -458,6 +458,95 @@ function _burstBoardTiles(onDone) {
   });
 }
 
+function animSpringTrap(fromRect, tileData, onDone) {
+  var bagEl  = document.getElementById('bag-btn');
+  var bagSpr = document.getElementById('bag-sprite');
+  if (!bagEl || !fromRect) { if (onDone) onDone(); return; }
+
+  _playSpringBoing();
+
+  // Target: bag mouth — top-centre of the sprite (where the opening is)
+  var bagSprEl = document.getElementById('bag-sprite');
+  var bsr = bagSprEl ? bagSprEl.getBoundingClientRect() : bagEl.getBoundingClientRect();
+  var sz = Math.round(fromRect.width) || 48;
+  var startX = fromRect.left + fromRect.width  / 2;
+  var startY = fromRect.top  + fromRect.height / 2;
+  var endX   = bsr.left + bsr.width  * 0.46;
+  var endY   = bsr.top  + bsr.height * 0.20;
+
+  // Slight upward arc: push control point above the midpoint of the straight path
+  var arcLift = Math.max(55, Math.abs(endX - startX) * 0.11);
+  var cpX = (startX + endX) / 2;
+  var cpY = (startY + endY) / 2 - arcLift;
+
+  var MAX_SCALE  = 6.5;
+  var ARC_DUR    = 760;  // spring launch to bag mouth (fast, then decelerates)
+  var SWALLOW_DUR = 380; // tile shrinks into bag as bag closes
+
+  var spr   = tileSpr(tileData.isBlank ? null : tileData.letter, tileData.isBlank, tileData.variant || null, sz);
+  var layer = document.getElementById('anim-layer');
+  var flyEl = document.createElement('div');
+  flyEl.className = 'tile tile-spr';
+  flyEl.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;'
+    + 'width:' + sz + 'px;height:' + sz + 'px;transform-origin:center center;' + spr;
+  layer.appendChild(flyEl);
+
+  // Bag opens immediately and holds at frame 5, waiting for the tile
+  if (bagSpr) _animBagFrames(bagSpr, 0, 5, 48, null);
+
+  var t0 = performance.now();
+  var swallowStarted = false;
+
+  function tick(now) {
+    var elapsed = now - t0;
+
+    if (elapsed < ARC_DUR) {
+      var tLin  = Math.min(1, elapsed / ARC_DUR);
+      // Cubic ease-out: explosive spring launch that decelerates toward bag
+      var tEase = 1 - Math.pow(1 - tLin, 3);
+
+      // Quadratic bezier along the slight upward arc
+      var u  = 1 - tEase;
+      var cx = u*u*startX + 2*u*tEase*cpX + tEase*tEase*endX;
+      var cy = u*u*startY + 2*u*tEase*cpY + tEase*tEase*endY;
+
+      // Scale: parabolic peak at temporal midpoint (sin curve)
+      var scale = 1 + (MAX_SCALE - 1) * Math.sin(Math.PI * tLin);
+
+      flyEl.style.left      = (cx - sz / 2) + 'px';
+      flyEl.style.top       = (cy - sz / 2) + 'px';
+      flyEl.style.transform = 'scale(' + scale.toFixed(3) + ')';
+      requestAnimationFrame(tick);
+    } else {
+      // Swallow: tile shrinks to nothing at bag mouth; bag closes around it
+      if (!swallowStarted) {
+        swallowStarted = true;
+        flyEl.style.left      = (endX - sz / 2) + 'px';
+        flyEl.style.top       = (endY - sz / 2) + 'px';
+        flyEl.style.transform = 'scale(1)';
+        if (bagSpr) _animBagFrames(bagSpr, 5, 0, 76, null);
+      }
+
+      var sf = Math.min(1, (elapsed - ARC_DUR) / SWALLOW_DUR);
+      // Ease-in shrink: brief linger then collapses fast
+      var swallowScale = Math.max(0, 1 - sf * sf);
+
+      flyEl.style.left      = (endX - sz / 2) + 'px';
+      flyEl.style.top       = (endY - sz / 2) + 'px';
+      flyEl.style.transform = 'scale(' + swallowScale.toFixed(3) + ')';
+
+      if (sf < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        flyEl.remove();
+        if (onDone) onDone();
+      }
+    }
+  }
+
+  requestAnimationFrame(tick);
+}
+
 function _burstHandTiles() {
   var layer = document.getElementById('anim-layer');
   layer.innerHTML = '';

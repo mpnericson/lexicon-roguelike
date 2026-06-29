@@ -30,7 +30,7 @@ var LS={A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1
 var DIST={A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1};
 // Bounty reward config — change type/value here to rebalance
 // type: 'x-mult' | 'plus-mult' | 'letters' | 'gold'
-var BOUNTY_REWARD={type:'x-mult',value:3};
+var BOUNTY_REWARD={type:'x-mult',value:2};
 function bountyRewardLabel(){var r=BOUNTY_REWARD;if(r.type==='x-mult')return '×'+r.value;if(r.type==='plus-mult')return '+'+r.value+' mult';if(r.type==='letters')return '+'+r.value+' pts';if(r.type==='gold')return '+$'+r.value;return '?';}
 function applyBountyReward(ctx){
   var r=BOUNTY_REWARD;
@@ -71,15 +71,15 @@ function constraintDef(){
 
 var SQ=[
   // ── Board stickers: letter/word multipliers ──
-  {id:'dl',name:'Double Letter',desc:'Letter scores ×2.',rarity:'common',cost:3,qty:6,bg:'#14305a',fg:'#6aaaff',icon:'DL',type:'board',bm:'dl'},
-  {id:'tl',name:'Triple Letter',desc:'Letter scores ×3.',rarity:'common',cost:3,qty:4,bg:'#0d2050',fg:'#4488ff',icon:'TL',type:'board',bm:'tl'},
-  {id:'dw',name:'Double Word',desc:'Word ×2 when new tile lands here.',rarity:'common',cost:3,qty:2,bg:'#6a1818',fg:'#ff8080',icon:'DW',type:'board',bm:'dw'},
-  {id:'tw',name:'Triple Word',desc:'Word ×3 when new tile lands here.',rarity:'common',cost:3,qty:1,bg:'#500808',fg:'#ff6060',icon:'TW',type:'board',bm:'tw'},
+  {id:'dl',name:'Double Letter',desc:'Letter scores ×2.',rarity:'common',cost:3,qty:6,bg:'#14305a',fg:'#6aaaff',icon:'DL',type:'board',bm:'dl',perishable:true},
+  {id:'tl',name:'Triple Letter',desc:'Letter scores ×3.',rarity:'common',cost:3,qty:4,bg:'#0d2050',fg:'#4488ff',icon:'TL',type:'board',bm:'tl',perishable:true},
+  {id:'dw',name:'Double Word',desc:'Word ×2 when new tile lands here.',rarity:'common',cost:3,qty:2,bg:'#6a1818',fg:'#ff8080',icon:'DW',type:'board',bm:'dw',perishable:true},
+  {id:'tw',name:'Triple Word',desc:'Word ×3 when new tile lands here.',rarity:'common',cost:3,qty:1,bg:'#500808',fg:'#ff6060',icon:'TW',type:'board',bm:'tw',perishable:true},
   // ── Board stickers: local effects ──
-  {id:'echo',name:'Red Sticker',desc:'Letter here scores twice.',rarity:'common',cost:3,qty:3,bg:'#1a3a5a',fg:'#80c0ff',icon:'EC',type:'local',apply:function(tc,t,w,st){return{cb:tc,mb:0};}},
-  {id:'gilded',name:'Gilded',desc:'Letter here earns +$1.',rarity:'common',cost:3,qty:3,bg:'#3a2a00',fg:'#f0c060',icon:'GL',type:'local',apply:function(tc,t,w,st){st.gold=(st.gold||0)+1;return{cb:0,mb:0};}},
-  {id:'void',name:'Void',desc:'Letter scores 0 letter score but +2 mult.',rarity:'uncommon',cost:5,qty:3,bg:'#1a0a2a',fg:'#c080ff',icon:'VO',type:'local',apply:function(tc,t,w,st){return{cb:-tc,mb:2};}},
-  {id:'paint_bucket',name:'Paint Bucket',desc:'Tile placed here becomes a blank when the board clears at end of stage.',rarity:'uncommon',cost:5,qty:2,bg:'#0a2a2a',fg:'#60d0d0',icon:'PB',type:'local',apply:function(tc,t,w,st){return{cb:0,mb:0};}},
+  {id:'echo',name:'Red Sticker',desc:'Letter here scores twice.',rarity:'common',cost:3,qty:3,bg:'#1a3a5a',fg:'#80c0ff',icon:'EC',type:'local',apply:function(tc,t,w,st){return{cb:tc,mb:0};},perishable:true},
+  {id:'gilded',name:'Gilded',desc:'Letter here earns +$1.',rarity:'common',cost:3,qty:3,bg:'#3a2a00',fg:'#f0c060',icon:'GL',type:'local',apply:function(tc,t,w,st){st.gold=(st.gold||0)+1;return{cb:0,mb:0};},perishable:true},
+  {id:'void',name:'Void',desc:'Letter scores 0 letter score but +2 mult.',rarity:'uncommon',cost:5,qty:3,bg:'#1a0a2a',fg:'#c080ff',icon:'VO',type:'local',apply:function(tc,t,w,st){return{cb:-tc,mb:2};},perishable:true},
+  {id:'paint_bucket',name:'Paint Bucket',desc:'Tile placed here becomes a blank when the board clears at end of stage.',rarity:'uncommon',cost:5,qty:2,bg:'#0a2a2a',fg:'#60d0d0',icon:'PB',type:'local',apply:function(tc,t,w,st){return{cb:0,mb:0};},perishable:true},
   // ── Tile stickers: common ──
   {id:'inkwell',name:'Inkwell',desc:'+$1 every word played.',rarity:'common',cost:3,bg:'#0a1a0a',fg:'#60d060',icon:'IK',type:'tile',
     onPostWord:function(w,wt,ctx){ctx.tgold++;ctx.events.push({type:'gold',delta:1,label:'Inkwell +$1'});}},
@@ -92,6 +92,21 @@ var SQ=[
   {id:'pressure_cooker',name:'Pressure Cooker',desc:'Each discard this round adds +1 mult to the next word.',rarity:'common',cost:3,bg:'#2a0a0a',fg:'#f08060',icon:'PC',type:'tile',
     liveDesc:function(p){var dp=S.discPressure||0;return 'Each discard adds +1 mult to the next word. Stored: <span style="color:#f0e040">+'+dp+' mult</span>.';},
     onPostWord:function(w,wt,ctx){var dp=S.discPressure||0;if(dp>0){ctx.plusMults.push(dp);ctx.events.push({type:'plus-mult',delta:dp,label:'Pressure Cooker +'+dp+' mult'});}}},
+  {id:'the_marshall',name:'The Marshall',desc:'Each tile in a bounty word scores +5 letter score.',rarity:'common',cost:3,bg:'#1a1200',fg:'#f0c840',icon:'MR',type:'tile',
+    onPostWord:function(w,wt,ctx){
+      if(!S._pendingBountyReward)return;
+      var bonus=wt.length*5;ctx.letters+=bonus;
+      ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Marshall +'+bonus});
+    }},
+  {id:'the_hangman',name:'The Hangman',desc:'+15 mult for a bounty word.',rarity:'common',cost:3,bg:'#1a0a00',fg:'#f08040',icon:'HG',type:'tile',
+    onPostWord:function(w,wt,ctx){
+      if(!S._pendingBountyReward)return;
+      ctx.plusMults.push(15);ctx.events.push({type:'plus-mult',delta:15,label:'Hangman +15 mult'});
+    }},
+  {id:'the_miser',name:'The Miser',desc:'+×0.1 mult for each coloured tile in your bag.',rarity:'uncommon',cost:5,bg:'#1a1a0a',fg:'#d4af37',icon:'MS',
+    liveDesc:function(p){var n=S.bag.filter(function(t){return t.variant;}).length;var f=parseFloat((1+n*0.1).toFixed(2));return n+' coloured tile'+(n!==1?'s':'')+' in bag → <span style="color:#f0e040">×'+f.toFixed(2)+' mult</span>';},
+    onPostWord:function(w,wt,ctx){var n=S.bag.filter(function(t){return t.variant;}).length;if(n>0){var f=parseFloat((1+n*0.1).toFixed(2));ctx.xmults.push(f);ctx.events.push({type:'x-mult',factor:f,label:'The Miser ×'+f.toFixed(2)});}}},
+  {id:'spring_trap',name:'Spring Trap',desc:'Tile here gets +9 letter score. After scoring, it launches back into your bag with a 25% chance of becoming each colour variant. One-time use.',rarity:'uncommon',cost:5,qty:3,bg:'#0a2a08',fg:'#80f040',icon:'ST',type:'board',perishable:true},
   // ── Tile stickers: uncommon ──
   {id:'bounty_hunter',name:'Bounty Hunter',desc:'Each completed bounty permanently adds ×0.25 to your score multiplier.',rarity:'uncommon',cost:5,bg:'#1a2a0a',fg:'#c0e080',icon:'BH',type:'tile',
     liveDesc:function(p){var bh=parseFloat((S.bhMult||1).toFixed(2));return 'Each completed bounty: permanent +×0.25 mult. Currently applying <span style="color:#f0e040">×'+bh+' mult</span>.';},
@@ -129,7 +144,36 @@ var SQ=[
         if(count>0)toast('Bourgeois collects +$'+count+'!');
       }
     }},
+  {id:'insatiable',name:'Insatiable',desc:'+1 discard at the start of every round.',rarity:'uncommon',cost:5,bg:'#1a0a30',fg:'#d060ff',icon:'IN',type:'tile'},
+  {id:'emergency_rations',name:'Emergency Rations',desc:'Sell this sticker to open your bag and pull one tile of your choice into your hand.',rarity:'uncommon',cost:5,bg:'#2a1400',fg:'#f0a040',icon:'RS',type:'tile',
+    onSell:function(){
+      if(!S.bag.length){toast('Bag is empty!');return;}
+      window._bagPickMode=function(tile){
+        var idx=-1;for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===tile.id){idx=i;break;}}
+        if(idx<0)return;
+        S.bag.splice(idx,1);
+        S.hand.push({letter:tile.isBlank?'_':tile.letter,isBlank:!!tile.isBlank,id:uid(),variant:tile.variant||null,blueBonus:tile.blueBonus||0});
+        window._bagPickMode=null;
+        closeBagUI();
+        HP.x=[];HP.vx=[];
+        renderAll();
+        toast('Emergency Rations: '+(tile.isBlank?'Blank':tile.letter)+' drawn from bag!');
+      };
+      openBagModal();
+    }},
+  {id:'the_target',name:'The Target',desc:'Playing all tiles from your hand: ×2 mult and +$5.',rarity:'uncommon',cost:5,bg:'#2a0a00',fg:'#ff6030',icon:'TG',type:'tile',
+    onPostWord:function(w,wt,ctx){
+      if(ctx.newTileCount>0&&ctx.newTileCount>=ctx._freeHandCount){
+        ctx.xmults.push(2);ctx.tgold+=5;
+        ctx.events.push({type:'x-mult',factor:2,label:'The Target ×2'});
+        ctx.events.push({type:'gold',delta:5,label:'The Target +$5'});
+      }
+    }},
   // ── Tile stickers: rare ──
+  {id:'the_player',name:'The Player',desc:'Each best play permanently adds ×0.5 mult. Starts at ×1.',rarity:'rare',cost:8,qty:1,bg:'#0a1a2a',fg:'#80d0ff',icon:'PL',type:'tile',
+    liveDesc:function(p){var pm=parseFloat((S.playerMult||1).toFixed(2));var n=Math.round((pm-1)*2);return n>0?n+' best play'+(n!==1?'s':'')+' → <span style="color:#f0e040">×'+pm.toFixed(1)+' mult</span>.':'Play the best available word to start stacking.';},
+    onPostWord:function(w,wt,ctx){var pm=S.playerMult||1;if(pm>1){ctx.xmults.push(pm);ctx.events.push({type:'x-mult',factor:parseFloat(pm.toFixed(2)),label:'The Player ×'+pm.toFixed(1)});}}},
+  {id:'safety_net',name:'Safety Net',desc:'If you fail a stage but scored at least 25% of the target, advance to the shop anyway. Destroyed on use.',rarity:'uncommon',cost:5,qty:1,bg:'#001a2a',fg:'#60c8ff',icon:'SN',type:'tile'},
   {id:'drunk_text',name:'Drunk Text',
    desc:'Play any word, even misspelled. Invalid words: letter score ÷2, mult ÷2. Each correct word in a row: +×0.1 bonus.',
    rarity:'rare',cost:8,bg:'#1a0a28',fg:'#d090ff',icon:'DT',type:'tile',
@@ -261,22 +305,22 @@ function _chessHoverOff() {
 SQ.push(
   {id:'chess_knight', name:'Knight',
    desc:'×3 letter score to any word tile on an L-shape square from here. Comes as a pair.',
-   rarity:'rare', cost:8, qty:2, bg:'#1a1a2a', fg:'#d0d0f0', icon:'♞', type:'board',
+   rarity:'rare', cost:8, qty:2, bg:'#1a1a2a', fg:'#d0d0f0', icon:'♞', type:'board', perishable:true,
    onBuildCtx:function(ctx,p){ctx.chessPieces.push({sqIdx:p.sqIdx,id:p.id,aura:chessGetAura(p.sqIdx,p.id)});}},
 
   {id:'chess_bishop', name:'Bishop',
    desc:'×3 letter score to any word tile on a diagonal from here. Blocked by occupied squares. Comes as a pair.',
-   rarity:'rare', cost:8, qty:2, bg:'#2a1a08', fg:'#f0d080', icon:'♝', type:'board',
+   rarity:'rare', cost:8, qty:2, bg:'#2a1a08', fg:'#f0d080', icon:'♝', type:'board', perishable:true,
    onBuildCtx:function(ctx,p){ctx.chessPieces.push({sqIdx:p.sqIdx,id:p.id,aura:chessGetAura(p.sqIdx,p.id)});}},
 
   {id:'chess_rook', name:'Rook',
    desc:'×3 letter score to any word tile on the same row or column. Blocked by occupied squares. Comes as a pair.',
-   rarity:'rare', cost:8, qty:2, bg:'#0a2a0a', fg:'#80f080', icon:'♜', type:'board',
+   rarity:'rare', cost:8, qty:2, bg:'#0a2a0a', fg:'#80f080', icon:'♜', type:'board', perishable:true,
    onBuildCtx:function(ctx,p){ctx.chessPieces.push({sqIdx:p.sqIdx,id:p.id,aura:chessGetAura(p.sqIdx,p.id)});}},
 
   {id:'chess_queen', name:'Queen',
    desc:'×3 letter score to any word tile in all 8 directions. Not blocked by tiles.',
-   rarity:'rare', cost:8, qty:1, bg:'#2a0a2a', fg:'#f080f0', icon:'♛', type:'board',
+   rarity:'rare', cost:8, qty:1, bg:'#2a0a2a', fg:'#f080f0', icon:'♛', type:'board', perishable:true,
    onBuildCtx:function(ctx,p){ctx.chessPieces.push({sqIdx:p.sqIdx,id:p.id,aura:chessGetAura(p.sqIdx,p.id)});}}
 );
 
@@ -284,7 +328,7 @@ SQ.push(
 SQ.push(
   {id:'slot_machine', name:'Slot Machine',
    desc:'Word through here: 50% ×2 mult, 5% ×10 mult, 30% +$3, 5% +$10, 1% all tiles go gold/red/blue — all independent.',
-   rarity:'rare', cost:8, qty:8, bg:'#2a0a30', fg:'#d060ff', icon:'$?',
+   rarity:'rare', cost:8, qty:8, bg:'#2a0a30', fg:'#d060ff', icon:'$?', perishable:true,
    applyAlways:true,
    apply:function(tc,t,word,st){
      if(st._slotUsed)return{cb:0,mb:0};
@@ -312,7 +356,7 @@ SQ.push(
 SQ.push(
   {id:'proletariat', name:'The Proletariat',
    desc:'+0.25 mult per Proletariat on board. While gold < $4: 50% chance after each word to spread to a random adjacent empty square.',
-   rarity:'uncommon', cost:5, qty:1, bg:'#2a0808', fg:'#ff6040', icon:'PR',
+   rarity:'uncommon', cost:5, qty:1, bg:'#2a0808', fg:'#ff6040', icon:'PR', perishable:true,
    liveDesc:function(p){var n=0;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='proletariat')n++;var v=parseFloat((0.25*n).toFixed(2));return n+' on board → <span style="color:#f0e040">+'+v+' mult</span> per word.'+(S.gold<4?' <span style="color:#f0d060">Gold < $4</span>: 50% chance to spread after each word.':'');},
    onPostWord:function(w,wt,ctx){
      if(ctx._proletariatDone)return;
