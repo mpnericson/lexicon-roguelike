@@ -173,6 +173,12 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
       ts+=9;
       ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Spring Trap +9',floatSqIdx:sqIdx});
       acted=true;
+    }else if(sqDef.id==='whack_a_mole'){
+      ctx.xmults.push(3);
+      ctx.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'Whack-a-Mole ×3',floatSqIdx:sqIdx});
+      ctx.tgold+=5;
+      ctx.events.push({type:'gold',delta:5,sqIdx:sqIdx,label:'Whack-a-Mole +$5',floatSqIdx:sqIdx});
+      acted=true;
     }
     if(acted&&!ctx.preview)ctx.activatedSqs.add(sqIdx);
   }

@@ -103,14 +103,34 @@ async function playWord(){
   }
   // Consume perishable board stickers where new tiles landed
   var _perishableChanged=false;
+  var _glueSquares=[];
+  for(var _sgi=0;_sgi<S.placed.length;_sgi++){if(S.placed[_sgi].id==='super_glue'&&S.placed[_sgi].sqIdx!=null)_glueSquares.push(S.placed[_sgi].sqIdx);}
+  var _wamConsumed=[];
   for(var _pi=0;_pi<nt.length;_pi++){
     var _pIdx=nt[_pi].idx;var _pSid=S.board[_pIdx];if(!_pSid)continue;
     var _pDef=sqd(_pSid);if(!_pDef||!_pDef.perishable)continue;
+    if(_pSid!=='super_glue'){var _glued=false;for(var _sgi2=0;_sgi2<_glueSquares.length;_sgi2++){if(adjSq(_pIdx,_glueSquares[_sgi2])){_glued=true;break;}}if(_glued)continue;}
+    if(_pSid==='whack_a_mole')_wamConsumed.push(_pIdx);
     S.board[_pIdx]=null;
     for(var _pri=S.placed.length-1;_pri>=0;_pri--){if(S.placed[_pri].sqIdx===_pIdx){S.placed.splice(_pri,1);break;}}
     _perishableChanged=true;
   }
   if(_perishableChanged)renderBoard();
+  // Whack-a-Mole: spawn replacement in a random empty square within Manhattan-5 of origin
+  for(var _wami=0;_wami<_wamConsumed.length;_wami++){
+    var _wamOr=Math.floor(_wamConsumed[_wami]/B),_wamOc=_wamConsumed[_wami]%B;
+    var _wamC=[];
+    for(var _wamI=0;_wamI<B*B;_wamI++){
+      var _wr=Math.floor(_wamI/B),_wc=_wamI%B;
+      if(Math.abs(_wr-_wamOr)+Math.abs(_wc-_wamOc)<=5&&_wamI!==_wamConsumed[_wami]&&!S.board[_wamI]&&!S.bt[_wamI])_wamC.push(_wamI);
+    }
+    if(!_wamC.length)continue;
+    var _wamNew=_wamC[Math.floor(_rng()*_wamC.length)];
+    S.board[_wamNew]='whack_a_mole';
+    S.placed.push({id:'whack_a_mole',sqIdx:_wamNew});
+    renderBoard();
+    toast('Whack-a-Mole! It moved.');
+  }
   // Bounty slide-out: fires after scoring animation completes
   if(_bountyIdx>=0){
     S._pendingBountyReward=null;

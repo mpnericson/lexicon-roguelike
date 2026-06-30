@@ -69,6 +69,10 @@ function constraintDef(){
   return null;
 }
 
+// Stickers The Thing cannot copy (utility / non-scoring mechanics).
+// Add copyable:false to a sticker definition to block it without editing this list.
+var _THING_BLOCKED={the_thing:true,easy_mode:true,jenga:true,midas_touch:true,insatiable:true,emergency_rations:true,safety_net:true,sheriffs_office:true};
+
 var SQ=[
   // ── Board stickers: letter/word multipliers ──
   {id:'dl',name:'Double Letter',desc:'Letter scores ×2.',rarity:'common',cost:3,qty:6,bg:'#14305a',fg:'#6aaaff',icon:'DL',type:'board',bm:'dl',perishable:true},
@@ -80,6 +84,7 @@ var SQ=[
   {id:'gilded',name:'Gilded',desc:'Letter here earns +$1.',rarity:'common',cost:3,qty:3,bg:'#3a2a00',fg:'#f0c060',icon:'GL',type:'local',apply:function(tc,t,w,st){st.gold=(st.gold||0)+1;return{cb:0,mb:0};},perishable:true},
   {id:'void',name:'Void',desc:'Letter scores 0 letter score but +2 mult.',rarity:'uncommon',cost:5,qty:3,bg:'#1a0a2a',fg:'#c080ff',icon:'VO',type:'local',apply:function(tc,t,w,st){return{cb:-tc,mb:2};},perishable:true},
   {id:'paint_bucket',name:'Paint Bucket',desc:'Tile placed here becomes a blank when the board clears at end of stage.',rarity:'uncommon',cost:5,qty:2,bg:'#0a2a2a',fg:'#60d0d0',icon:'PB',type:'local',apply:function(tc,t,w,st){return{cb:0,mb:0};},perishable:true},
+  {id:'super_glue',name:'Super Glue',desc:'Adjacent board stickers are not consumed when tiles land on them.',rarity:'uncommon',cost:5,qty:3,bg:'#2a1a00',fg:'#f0c860',icon:'SG',type:'board',perishable:true},
   // ── Tile stickers: common ──
   {id:'inkwell',name:'Inkwell',desc:'+$1 every word played.',rarity:'common',cost:3,bg:'#0a1a0a',fg:'#60d060',icon:'IK',type:'tile',
     onPostWord:function(w,wt,ctx){ctx.tgold++;ctx.events.push({type:'gold',delta:1,label:'Inkwell +$1'});}},
@@ -107,6 +112,7 @@ var SQ=[
     liveDesc:function(p){var n=S.bag.filter(function(t){return t.variant;}).length;var f=parseFloat((1+n*0.1).toFixed(2));return n+' coloured tile'+(n!==1?'s':'')+' in bag → <span style="color:#f0e040">×'+f.toFixed(2)+' mult</span>';},
     onPostWord:function(w,wt,ctx){var n=S.bag.filter(function(t){return t.variant;}).length;if(n>0){var f=parseFloat((1+n*0.1).toFixed(2));ctx.xmults.push(f);ctx.events.push({type:'x-mult',factor:f,label:'The Miser ×'+f.toFixed(2)});}}},
   {id:'spring_trap',name:'Spring Trap',desc:'Tile here gets +9 letter score. After scoring, it launches back into your bag with a 25% chance of becoming each colour variant. One-time use.',rarity:'uncommon',cost:5,qty:3,bg:'#0a2a08',fg:'#80f040',icon:'ST',type:'board',perishable:true},
+  {id:'whack_a_mole',name:'Whack-a-Mole',desc:'×3 mult, +$5. Moves to a random empty square within 5 of here after scoring.',rarity:'uncommon',cost:5,qty:3,bg:'#1a1000',fg:'#c08040',icon:'WM',type:'board',perishable:true},
   // ── Tile stickers: uncommon ──
   {id:'bounty_hunter',name:'Bounty Hunter',desc:'Each completed bounty permanently adds ×0.25 to your score multiplier.',rarity:'uncommon',cost:5,bg:'#1a2a0a',fg:'#c0e080',icon:'BH',type:'tile',
     liveDesc:function(p){var bh=parseFloat((S.bhMult||1).toFixed(2));return 'Each completed bounty: permanent +×0.25 mult. Currently applying <span style="color:#f0e040">×'+bh+' mult</span>.';},
@@ -198,7 +204,37 @@ var SQ=[
     onBuildCtx:function(ctx){ctx.palMult=S.palMult||1;}},
   {id:'chess_king',name:'The King',desc:'Every square in any chess piece aura becomes a Triple Word square.',rarity:'rare',cost:8,qty:1,bg:'#1a1500',fg:'#ffd700',icon:'♚',type:'tile',
     onBuildCtx:function(ctx){ctx.chessKingActive=true;}},
-  {id:'the_thing',name:'The Thing',desc:'Copies the effect of the sticker to its right in the sticker bar.',rarity:'rare',cost:8,qty:1,bg:'#0a1a0a',fg:'#50c050',icon:'◈',type:'tile'},
+  {id:'the_thing',name:'The Thing',desc:'Copies the effect of the sticker immediately to its right in the sticker bar. Some utility stickers cannot be copied.',rarity:'rare',cost:8,qty:1,bg:'#0a1a0a',fg:'#50c050',icon:'◈',type:'tile',
+    liveDesc:function(p){
+      var myIdx=-1;for(var _i=0;_i<S.tileStickers.length;_i++){if(S.tileStickers[_i]===p){myIdx=_i;break;}}
+      if(myIdx<0||myIdx>=S.tileStickers.length-1)return 'No sticker to the right — move The Thing left of a sticker to copy it.';
+      var rTs=S.tileStickers[myIdx+1];var rDef=sqd(rTs.id);
+      if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return 'Copying: <span style="color:#ff6060">'+(rDef?rDef.name:rTs.id)+' — not copyable</span>';
+      var base='Copying: <span style="color:#f0e040">'+rDef.name+'</span>';
+      if(rDef.liveDesc)base+='<br>'+rDef.liveDesc(rTs);
+      return base;
+    },
+    onBuildCtx:function(ctx,ts){
+      var myIdx=-1;for(var _i=0;_i<S.tileStickers.length;_i++){if(S.tileStickers[_i]===ts){myIdx=_i;break;}}
+      if(myIdx<0||myIdx>=S.tileStickers.length-1)return;
+      var rTs=S.tileStickers[myIdx+1];var rDef=sqd(rTs.id);
+      if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return;
+      if(rDef.onBuildCtx)rDef.onBuildCtx(ctx,rTs);
+    },
+    onPostWord:function(w,wt,ctx,ts){
+      var myIdx=-1;for(var _i=0;_i<S.tileStickers.length;_i++){if(S.tileStickers[_i]===ts){myIdx=_i;break;}}
+      if(myIdx<0||myIdx>=S.tileStickers.length-1)return;
+      var rTs=S.tileStickers[myIdx+1];var rDef=sqd(rTs.id);
+      if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return;
+      if(rDef.onPostWord)rDef.onPostWord(w,wt,ctx,rTs);
+    },
+    onEndStage:function(ts){
+      var myIdx=-1;for(var _i=0;_i<S.tileStickers.length;_i++){if(S.tileStickers[_i]===ts){myIdx=_i;break;}}
+      if(myIdx<0||myIdx>=S.tileStickers.length-1)return;
+      var rTs=S.tileStickers[myIdx+1];var rDef=sqd(rTs.id);
+      if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return;
+      if(rDef.onEndStage)rDef.onEndStage(rTs);
+    }},
 ];
 
 // ── NATO Phonetic Alphabet stickers ──
@@ -356,7 +392,7 @@ SQ.push(
 SQ.push(
   {id:'proletariat', name:'The Proletariat',
    desc:'+0.25 mult per Proletariat on board. While gold < $4: 50% chance after each word to spread to a random adjacent empty square.',
-   rarity:'uncommon', cost:5, qty:1, bg:'#2a0808', fg:'#ff6040', icon:'PR', perishable:true,
+   rarity:'uncommon', cost:5, qty:1, bg:'#2a0808', fg:'#ff6040', icon:'PR', type:'board', perishable:true,
    liveDesc:function(p){var n=0;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='proletariat')n++;var v=parseFloat((0.25*n).toFixed(2));return n+' on board → <span style="color:#f0e040">+'+v+' mult</span> per word.'+(S.gold<4?' <span style="color:#f0d060">Gold < $4</span>: 50% chance to spread after each word.':'');},
    onPostWord:function(w,wt,ctx){
      if(ctx._proletariatDone)return;

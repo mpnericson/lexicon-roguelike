@@ -61,6 +61,7 @@ function enterShopPhase(){
 }
 
 function leaveShop(){
+  _shopTipHideImmediate();
   _stopSignAnim();
   _stopReels();
   achvCheck('shop_exit');
@@ -139,13 +140,14 @@ function renderShop(){
   for(var pi=0;pi<2;pi++){
     var box=document.getElementById('shop-pack-'+pi);if(!box)continue;
     var item=sqItems[pi];
-    if(!item){box.innerHTML='';box.className='shop-pack-box';box.onclick=null;continue;}
-    var d=sqd(item.id);if(!d){box.innerHTML='';continue;}
+    if(!item){box.innerHTML='';box.className='shop-pack-box';box.onclick=null;box.onmouseenter=null;box.onmouseleave=null;continue;}
+    var d=sqd(item.id);if(!d){box.innerHTML='';box.onmouseenter=null;box.onmouseleave=null;continue;}
     var iconHtml=d.iconPng
       ?'<img src="'+d.iconPng+'">'
       :'<span>'+d.icon+'</span>';
     box.innerHTML='<div class="shop-pack-icon">'+iconHtml+'</div><div class="shop-pack-cost" style="color:'+d.fg+'">'+'$'+d.cost+'</div>';
     box.className='shop-pack-box'+(item.sold?' sold':'');
+    (function(sid,el){el.onmouseenter=function(){_shopTipShow(sid,el);};el.onmouseleave=function(){_shopTipHide();};})(item.id,box);
     if(!item.sold){(function(idx){box.onclick=function(){buySq(idx);};})(pi);}else box.onclick=null;
   }
   var blist=document.getElementById('shop-bounty-list');
@@ -747,8 +749,11 @@ function _showPillowStickers(ids,canvas){
     el.onclick=(function(sid){return function(){
       _pillowEls.forEach(function(e){if(e&&e.parentNode)e.parentNode.removeChild(e);});
       _pillowEls=[];
+      _shopTipHideImmediate();
       _closeSlotTray(function(){_pickReelResult(sid);});
     };})(id);
+    el.onmouseenter=(function(sid,e){return function(){_shopTipShow(sid,e);};})(id,el);
+    el.onmouseleave=function(){_shopTipHide();};
     canvas.appendChild(el);
     _pillowEls.push(el);
     setTimeout(function(){el.style.transform='scale(1)';},i*100+60);
@@ -1205,7 +1210,7 @@ function openPackReveal(name,contents){
         for(var k=0;k<qty;k++)S.stickerInventory.push({id:did});
         c.classList.add('chosen');c.textContent=qty>1?qty+'× Queued!':'Queued!';
       }
-      var cs=grid.getElementsByClassName('prc');for(var k=0;k<cs.length;k++){cs[k].style.pointerEvents='none';cs[k].style.opacity='0.4';}c.style.opacity='1';setTimeout(function(){document.getElementById('pack-modal').style.display='none';enterShopPhase();},600);};})(contents[i],card);
+      var cs=grid.getElementsByClassName('prc');for(var k=0;k<cs.length;k++){cs[k].style.pointerEvents='none';cs[k].style.opacity='0.4';}c.style.opacity='1';setTimeout(function(){document.getElementById('pack-modal').style.display='none';_shopTipHideImmediate();enterShopPhase();},600);};c.onmouseenter=function(){_shopTipShow(did,c);};c.onmouseleave=function(){_shopTipHide();};})(contents[i],card);
     grid.appendChild(card);
   }
   document.getElementById('pack-modal').style.display='flex';
@@ -1233,3 +1238,48 @@ function acceptBounty(i){
 }
 
 function closeShop(){document.getElementById('shop-screen').style.display='none';S.phase='play';}
+
+// ── SHOP STICKER TOOLTIP ──
+var _shopTipShowTimer=null,_shopTipHideTimer=null;
+
+function _shopTipShow(id,triggerEl){
+  clearTimeout(_shopTipHideTimer);_shopTipHideTimer=null;
+  clearTimeout(_shopTipShowTimer);
+  _shopTipShowTimer=setTimeout(function(){_shopTipShowTimer=null;_shopTipRender(id,triggerEl);},250);
+}
+
+function _shopTipHide(){
+  clearTimeout(_shopTipShowTimer);_shopTipShowTimer=null;
+  clearTimeout(_shopTipHideTimer);
+  _shopTipHideTimer=setTimeout(function(){
+    _shopTipHideTimer=null;
+    var el=document.getElementById('shop-sticker-tooltip');
+    if(el){el.style.opacity='0';el.style.display='none';}
+  },250);
+}
+
+function _shopTipHideImmediate(){
+  clearTimeout(_shopTipShowTimer);_shopTipShowTimer=null;
+  clearTimeout(_shopTipHideTimer);_shopTipHideTimer=null;
+  var el=document.getElementById('shop-sticker-tooltip');
+  if(el){el.style.opacity='0';el.style.display='none';}
+}
+
+function _shopTipRender(id,triggerEl){
+  var d=sqd(id);if(!d)return;
+  var el=document.getElementById('shop-sticker-tooltip');if(!el)return;
+  document.getElementById('shoptt-name').textContent=d.name;
+  document.getElementById('shoptt-name').style.color=d.fg;
+  document.getElementById('shoptt-desc').innerHTML=_sqDescHTML(id,null);
+  el.style.display='block';el.style.opacity='0';
+  requestAnimationFrame(function(){
+    var w=el.offsetWidth,h=el.offsetHeight;
+    var tr=triggerEl.getBoundingClientRect();
+    var left=(tr.left+tr.right)/2-w/2;
+    left=Math.max(8,Math.min(left,window.innerWidth-w-8));
+    var top=tr.top-h-8;
+    if(top<8)top=tr.bottom+8;
+    el.style.left=left+'px';el.style.top=top+'px';
+    el.style.opacity='1';
+  });
+}

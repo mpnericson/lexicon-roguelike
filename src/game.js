@@ -35,7 +35,9 @@ function _generateBounties(count,exclude){
     var idx=Math.floor(_rng()*pool.length);
     var word=pool.splice(idx,1)[0];
     excSet[word]=true;
-    result.push({word:word,reward:tier.reward});
+    var _wls=0;for(var _wli=0;_wli<word.length;_wli++)_wls+=(LS[word[_wli].toUpperCase()]||0);
+    var _wr=Math.round((tier.reward+_wls)/2);
+    result.push({word:word,reward:_wr});
   }
   return result;
 }
@@ -341,6 +343,17 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
   var items=Array.from(container.querySelectorAll('.bag-float-item'));
   if(clickedIdx<0||clickedIdx>=items.length){delete container.dataset.expandedLetter;return;}
 
+  // Remove any stale expand overlay and snap all item transforms to rest before reading rects,
+  // so rapid clicks don't measure mid-animation positions.
+  var _staleStack=document.getElementById('_bag-expand-stack');
+  if(_staleStack&&_staleStack.parentNode)_staleStack.parentNode.removeChild(_staleStack);
+  items.forEach(function(item){
+    if(item._archAnim){item._archAnim.cancel();delete item._archAnim;}
+    delete item._archParams;
+    item.style.transition='none';item.style.transform='';item.style.opacity='';
+  });
+  void container.offsetHeight;
+
   var clickedRect=items[clickedIdx].getBoundingClientRect();
   var clickedCX=clickedRect.left+clickedRect.width/2;
 
@@ -388,9 +401,46 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
     if(cx>clickedCX+clickedRect.width/2)rightItems.push(item);
     else leftItems.push(item);
   });
+  // For odd numCols the anchor column sits in the middle, so tiles directly above/below
+  // (same cx) would all fall into leftItems. Move one to rightItems so both sides
+  // end up the same distance from the expanded cluster and from the screen edge.
+  var _anchorColRightItem=null;
+  if(numCols%2===1){
+    var _aci=-1;
+    for(var _aii=0;_aii<leftItems.length;_aii++){
+      var _acx=leftItems[_aii].getBoundingClientRect().left+leftItems[_aii].getBoundingClientRect().width/2;
+      if(Math.abs(_acx-clickedCX)<sz*0.6){_aci=_aii;break;}
+    }
+    if(_aci>=0){_anchorColRightItem=leftItems[_aci];rightItems.push(leftItems[_aci]);leftItems.splice(_aci,1);}
+  }
   // Both gaps always equal sz=73px: left gap = baseLeftShift-sz-anchorCol*slot = sz.
   var baseLeftShift=2*sz+anchorCol*slot;
   var baseRightShift=(numCols-anchorCol)*slot-2*colGap;
+  // The anchor-col tile moved to the right starts at anchor-X (not anchor-X+slot), so it
+  // needs one extra slot of shift. baseRightShift+slot = baseLeftShift for all odd numCols,
+  // giving perfect mirror symmetry around the expanded cluster.
+  var _acolRightShift=baseRightShift+slot;
+  // Anchor-column tiles that move laterally also slide vertically:
+  //   odd numCols  → all anchor-col tiles drop to bottom row.
+  //   even numCols + middle anchor → tiles above the anchor drop one row down to anchor's row;
+  //                                  tiles at/below anchor shift laterally only.
+  var _anchorColDy=[];
+  if(numGridRows>1){
+    var _doOddCols=numCols%2===1;
+    var _doEvenMid=numCols%2===0&&anchorRow>0&&anchorRow<numGridRows-1;
+    if(_doOddCols||_doEvenMid){
+      var _anchorRowY=gridRowYs[anchorRow];
+      var _botRowY=gridRowYs[numGridRows-1];
+      leftItems.concat(rightItems).forEach(function(item){
+        var _iax=item.getBoundingClientRect().left+item.getBoundingClientRect().width/2;
+        if(Math.abs(_iax-clickedCX)<sz*0.6){
+          var _itemTop=item.getBoundingClientRect().top;
+          var _targetY=_doOddCols?_botRowY:(_itemTop<_anchorRowY-10?_anchorRowY:null);
+          if(_targetY!==null)_anchorColDy.push({el:item,dy:_targetY-_itemTop,fast:_doEvenMid});
+        }
+      });
+    }
+  }
 
   // Fill anchor-col non-anchor rows first, then fan outward left/right.
   var anchorColRows=[];
@@ -454,14 +504,32 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
 
   requestAnimationFrame(function(){requestAnimationFrame(function(){
     if(_bagExpandGen!==gen)return;
-    var TRANS='transform 0.45s cubic-bezier(0.4,0,0.2,1)';
-    leftItems.forEach(function(item){
-      item.style.transition=TRANS;item.style.transform='translateX('+(-baseLeftShift)+'px)';
-    });
-    rightItems.forEach(function(item){
-      item.style.transition=TRANS;item.style.transform='translateX('+baseRightShift+'px)';
-    });
+    // 323ms ease-in-out matches the lateral phase of the two-phase column-tile animation.
+    var TRANS='transform 323ms ease-in-out';
+    var _effectiveRightShift=_anchorColRightItem?_acolRightShift:baseRightShift;
+    function _applyItemAnim(item,dx){
+      var _idy=0,_ifast=false;
+      for(var _di=0;_di<_anchorColDy.length;_di++){if(_anchorColDy[_di].el===item){_idy=_anchorColDy[_di].dy;_ifast=!!_anchorColDy[_di].fast;break;}}
+      if(_idy>1){
+        // Phase 1: lateral (ease-in-out, 323ms). Phase 2: drop (ease-in). All lateral movement is simultaneous.
+        // Lateral phase is always 323ms so speed stays constant.
+        // fast=true (one-row drop): drop phase shortened to 140ms; normal: 197ms.
+        var _latMs=323,_dropMs=_ifast?140:197,_dur=_latMs+_dropMs,_split=_latMs/_dur;
+        item._archParams={dx:dx,dy:_idy,latMs:_latMs,dropMs:_dropMs};
+        item._archAnim=item.animate([
+          {offset:0,      transform:'translateX(0px) translateY(0px)',      easing:'ease-in-out'},
+          {offset:_split, transform:'translateX('+dx+'px) translateY(0px)', easing:'ease-in'},
+          {offset:1,      transform:'translateX('+dx+'px) translateY('+_idy+'px)'}
+        ],{duration:_dur,easing:'linear',fill:'forwards'});
+      } else {
+        item.style.transition=TRANS;item.style.transform='translateX('+dx+'px)'+(_idy?' translateY('+_idy+'px)':'');
+      }
+    }
+    leftItems.forEach(function(item){_applyItemAnim(item,-baseLeftShift);});
+    rightItems.forEach(function(item){_applyItemAnim(item,_effectiveRightShift);});
     items[clickedIdx].style.pointerEvents=window._bagPickMode?'auto':'none';
+    items[clickedIdx].style.transition='transform 0.52s cubic-bezier(0.4,0,0.2,1)';
+    items[clickedIdx].style.transform='scale(1.1)';
     var clickedDots=items[clickedIdx].querySelector('.variant-dots');
     if(clickedDots)clickedDots.style.opacity='0';
     if(window._bagPickMode){
@@ -472,7 +540,7 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
     if(stackEl){Array.from(stackEl.children).forEach(function(outer,pi){
       var delay=pi*30;
       outer.style.transition='transform 0.45s cubic-bezier(0.4,0,0.2,1) '+delay+'ms, opacity 0.2s ease '+delay+'ms';
-      outer.style.transform='translateX(0) translateY(0)';
+      outer.style.transform='translateX(0) translateY(0) scale(1.1)';
       outer.style.opacity='1';
     });}
     setTimeout(function(){
@@ -486,24 +554,53 @@ function _bagCollapseLetter(container){
   var gen=++_bagExpandGen;
   // Clear state immediately so rapid clicks see consistent state
   delete container.dataset.expandedLetter;
-  var stackEl=document.getElementById('_bag-expand-stack');
-  if(stackEl){stackEl.style.opacity='0';setTimeout(function(){if(stackEl.parentNode)stackEl.parentNode.removeChild(stackEl);},300);}
   var items=Array.from(container.querySelectorAll('.bag-float-item'));
+  // Find rise duration before anything else so the stack overlay can wait for it.
+  var _riseMs=0;
+  items.forEach(function(item){if(!_riseMs&&item._archAnim&&item._archAnim.playState==='finished'&&item._archParams)_riseMs=item._archParams.dropMs;});
+  var stackEl=document.getElementById('_bag-expand-stack');
+  if(stackEl){setTimeout(function(){stackEl.style.opacity='0';setTimeout(function(){if(stackEl.parentNode)stackEl.parentNode.removeChild(stackEl);},300);},_riseMs);}
   items.forEach(function(item){
+    if(item._archAnim&&item._archAnim.playState==='running'){
+      // In-flight: bake current position so CSS transition returns from mid-point.
+      try{item._archAnim.commitStyles();}catch(e){}item._archAnim.cancel();delete item._archAnim;delete item._archParams;
+    }
+    // Finished arch animations are left for the rAF to reverse.
     if(item._onPickClick){item.removeEventListener('click',item._onPickClick);delete item._onPickClick;}
     var inner=item.children[0];if(inner)inner.style.animationPlayState='paused';
   });
   requestAnimationFrame(function(){requestAnimationFrame(function(){
     if(_bagExpandGen!==gen)return;
-    var TRANS='transform 0.4s cubic-bezier(0.4,0,0.2,1), opacity 0.3s';
-    items.forEach(function(item){item.style.transition=TRANS;item.style.transform='';item.style.opacity='';item.style.pointerEvents='';});
+    // Phase 1: column tiles rise. Phase 2: ALL tiles sweep laterally together.
+    // _riseMs already computed above; reused here via closure.
+    // Regular tiles wait _riseMs before their lateral transition so all movement is simultaneous.
+    var CLAT='transform 323ms ease-in-out '+_riseMs+'ms';
+    items.forEach(function(item){
+      if(item._archAnim&&item._archAnim.playState==='finished'&&item._archParams){
+        // Phase 1: rise (ease-out). Phase 2: lateral back (ease-in-out), same timing as all other tiles.
+        item._archAnim.cancel();delete item._archAnim;
+        var _p=item._archParams;delete item._archParams;
+        var _cd=_p.dropMs+_p.latMs,_ro=_p.dropMs/_cd;
+        item.style.transition='none';
+        item._archAnim=item.animate([
+          {offset:0,   transform:'translateX('+_p.dx+'px) translateY('+_p.dy+'px)',easing:'ease-out'},
+          {offset:_ro, transform:'translateX('+_p.dx+'px) translateY(0px)',         easing:'ease-in-out'},
+          {offset:1,   transform:'translateX(0px) translateY(0px)'}
+        ],{duration:_cd,easing:'linear',fill:'forwards'});
+        item.style.opacity='';item.style.pointerEvents='';
+      } else {
+        item.style.transition=CLAT;item.style.transform='';item.style.opacity='';item.style.pointerEvents='';
+      }
+    });
     setTimeout(function(){
       if(_bagExpandGen!==gen)return;
       items.forEach(function(item){
+        if(item._archAnim){item._archAnim.cancel();delete item._archAnim;}
+        item.style.transition='';
         var inner=item.children[0];if(inner)inner.style.animationPlayState='';
         var dots=item.querySelector('.variant-dots');if(dots)dots.style.opacity='';
       });
-    },420);
+    },_riseMs+323+50);
   });});
 }
 
