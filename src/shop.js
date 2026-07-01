@@ -781,16 +781,7 @@ function _pickReelResult(id){
   var rl=document.getElementById('shop-reel-layer');
   if(rl){rl.style.transition='none';rl.style.opacity='1';}
   var d=sqd(id);if(!d)return;
-  var isTile=d.type==='tile';
-  if(isTile){
-    if(!S.tileStickers)S.tileStickers=[];
-    if(S.tileStickers.length>=5){toast('Sticker bar is full! (max 5)');return;}
-    S.tileStickers.push({id:id});
-    if(typeof renderTileStickerBar==='function')renderTileStickerBar();
-  } else {
-    var qty=d.qty||1;
-    for(var k=0;k<qty;k++)S.stickerInventory.push({id:id});
-  }
+  if(!addStickerFromShop(id))return;
   document.querySelectorAll('.reel-item.reel-sel').forEach(function(el){el.classList.remove('reel-sel');el.onclick=null;});
   if(_reels){
     for(var ri=0;ri<_reels.length;ri++){
@@ -806,8 +797,9 @@ function _pickReelResult(id){
   }
   shopPool.slotResult=null;
   renderShop();renderHUD();
-  if(isTile){toast(d.name+' added to sticker bar!');}
-  else{var qty2=d.qty||1;toast((qty2>1?qty2+'× ':'')+d.name+' queued!');}
+  var isTile=d.type==='tile',qty=d.qty||1;
+  if(isTile)toast(d.name+' added to sticker bar!');
+  else toast((qty>1?qty+'× ':'')+d.name+' queued!');
 }
 
 function _stopReels(){
@@ -894,8 +886,7 @@ function spinSlots(){
   if(_trayIsOpen){toast('Close the tray first!');return;}
   if(document.querySelector('.reel-item.reel-sel')){toast('Pick a sticker from the reels first!');return;}
   var cost=shopPool.slotSpinCost||4;
-  if(!S.devMode&&S.gold<cost){toast('Not enough gold!');return;}
-  if(!S.devMode)S.gold-=cost;
+  if(!spendGold(cost))return;
   shopPool.slotSpinsThisVisit=(shopPool.slotSpinsThisVisit||0)+1;
   shopPool.slotSpinCost=5+shopPool.slotSpinsThisVisit*3;
   renderHUD();renderShop();
@@ -984,12 +975,6 @@ function openShopBagUI(){
       var te=document.createElement('div');
       te.className='tile tile-spr'+(t.isBlank?' blank-t':'')+(t.variant?' var-'+t.variant:'');
       te.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+spr;
-      if(t.variant){
-        var bdg=document.createElement('span');
-        bdg.className='vbadge vbadge-'+t.variant;
-        bdg.textContent=t.variant==='gold'?'$':t.variant==='blue'?'+'+(LS[t.letter]||0):'×2';
-        te.appendChild(bdg);
-      }
       inner.appendChild(te);
       item.appendChild(inner);
       item.onclick=(function(tile,el){
@@ -1017,16 +1002,15 @@ function _renderBagActions(sel,actDiv){
   }
   actDiv.appendChild(mkBtn('Enchant $2',shopPool.bagEnchantUsed,function(){_bagEnchantFlow(t,sel,actDiv);}));
   actDiv.appendChild(mkBtn('Destroy $2',shopPool.bagDestroyUsed,function(){
-    if(!S.devMode&&S.gold<2){toast('Not enough gold!');return;}
     var idx=-1;for(var i=0;i<S.bag.length;i++)if(S.bag[i].id===t.id){idx=i;break;}
     if(idx<0){toast('Tile not found.');return;}
-    if(!S.devMode)S.gold-=2;S.bag.splice(idx,1);shopPool.bagDestroyUsed=true;shopPool.bagDisplay=null;
+    if(!spendGold(2))return;
+    S.bag.splice(idx,1);shopPool.bagDestroyUsed=true;shopPool.bagDisplay=null;
     renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
     toast((t.isBlank?'Blank':t.letter)+' destroyed!');closeShopBagUI();renderShop();
   }));
   actDiv.appendChild(mkBtn('Duplicate $2',shopPool.bagDupUsed,function(){
-    if(!S.devMode&&S.gold<2){toast('Not enough gold!');return;}
-    if(!S.devMode)S.gold-=2;
+    if(!spendGold(2))return;
     S.bag.push(Object.assign({},t,{id:uid()}));S.bag=shuffle(S.bag);shopPool.bagDupUsed=true;shopPool.bagDisplay=null;
     renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
     toast((t.isBlank?'Blank':t.letter)+' duplicated!');closeShopBagUI();renderShop();
@@ -1034,7 +1018,6 @@ function _renderBagActions(sel,actDiv){
 }
 
 function _bagEnchantFlow(t,sel,actDiv){
-  if(!S.devMode&&S.gold<2){toast('Not enough gold!');return;}
   actDiv.innerHTML='';
   var variants=[{v:'gold',label:'Gold',desc:'+$1 when scored',col:'#f0c060'},{v:'blue',label:'Blue',desc:'Score grows each play',col:'#60b8ff'},{v:'red',label:'Red',desc:'Triggers twice',col:'#ff8080'}];
   variants.forEach(function(vt){
@@ -1043,10 +1026,12 @@ function _bagEnchantFlow(t,sel,actDiv){
     b.style.cssText='background:#1a1a3a;border:1px solid '+vt.col+';color:'+vt.col+';font-family:\'Jersey 10\',Georgia;font-size:28px;cursor:pointer;padding:8px 16px;border-radius:4px';
     b.textContent=vt.label+' $2';
     b.onclick=function(){
-      if(!S.devMode&&S.gold<2){toast('Not enough gold!');return;}
-      var found=false;for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===t.id){S.bag[i].variant=vt.v;if(vt.v==='blue')S.bag[i].blueBonus=0;found=true;break;}}
-      if(!found){toast('Tile not found.');return;}
-      if(!S.devMode)S.gold-=2;shopPool.bagEnchantUsed=true;shopPool.bagDisplay=null;
+      var idx=-1;for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===t.id){idx=i;break;}}
+      if(idx<0){toast('Tile not found.');return;}
+      if(!spendGold(2))return;
+      S.bag[idx].variant=vt.v;if(vt.v==='blue')S.bag[idx].blueBonus=0;
+      if(vt.v==='blue')_autoRegisterBlueAnchors();
+      shopPool.bagEnchantUsed=true;shopPool.bagDisplay=null;
       renderHUD();toast(vt.label+' '+t.letter+' enchanted!');closeShopBagUI();renderShop();
     };
     actDiv.appendChild(b);
@@ -1073,8 +1058,8 @@ function closeShopBagUI(){
 
 function buyTileCard(i){
   var tc=shopPool.tileCards[i];if(!tc||tc.bought)return;
-  if(!S.devMode&&S.gold<tc.cost){toast('Not enough gold!');return;}
-  if(!S.devMode)S.gold-=tc.cost;tc.bought=true;
+  if(!spendGold(tc.cost))return;
+  tc.bought=true;
   S.bag.push({letter:tc.letter,isBlank:false,id:uid(),variant:tc.variant,blueBonus:0});
   S.bag=shuffle(S.bag);renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
   toast(tc.variant.charAt(0).toUpperCase()+tc.variant.slice(1)+' '+tc.letter+' added to bag!');
@@ -1082,8 +1067,7 @@ function buyTileCard(i){
 
 function buyPack(i){
   var pack=(shopPool.packs||[])[i];if(!pack||pack.sold)return;
-  if(!S.devMode&&S.gold<pack.cost){toast('Not enough gold!');return;}
-  if(!S.devMode)S.gold-=pack.cost;
+  if(!spendGold(pack.cost))return;
   pack.sold=true;
   if(pack.type==='sticker'){
     renderHUD();
@@ -1117,7 +1101,6 @@ function renderHammerModal(){
     var tl=sorted[i];var s=document.createElement('div');s.className='h-tile'+(tl.variant?' var-'+tl.variant:'');
     s.style.cursor='pointer';s.style.position='relative';
     s.innerHTML='<span class="tl">'+(tl.isBlank?'?':tl.letter)+'</span><span class="ts">'+(tl.isBlank?0:(LS[tl.letter]||0))+'</span>';
-    if(tl.variant){var vb=document.createElement('span');vb.className='vbadge vbadge-'+tl.variant;vb.textContent=tl.variant==='gold'?'$':tl.variant==='blue'?'↑':'×2';s.appendChild(vb);}
     (function(tile){s.onclick=function(){hammerTile(tile);renderHammerModal();};})(tl);grid.appendChild(s);
   }
 }
@@ -1160,32 +1143,41 @@ function renderForgeModal(){
 function closeForgeStep(){if(forgeSelectedTile){forgeSelectedTile=null;renderForgeModal();}else document.getElementById('forge-modal').style.display='none';}
 
 function forgeUpgrade(tileId,variant,cost){
-  if(!S.devMode&&S.gold<cost){toast('Not enough gold!');return;}
   var found=false;
   for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===tileId&&!S.bag[i].variant){S.bag[i].variant=variant;if(variant==='blue')S.bag[i].blueBonus=0;found=true;break;}}
   if(!found){toast('Tile not found.');return;}
-  if(!S.devMode)S.gold-=cost;renderShop();renderHUD();
+  if(!spendGold(cost))return;
+  if(variant==='blue')_autoRegisterBlueAnchors();
+  renderShop();renderHUD();
   var n={gold:'Gold',blue:'Blue',red:'Red'};toast(n[variant]+' tile forged!');
+}
+
+// Routes a freshly acquired sticker into tileStickers or stickerInventory.
+// Returns false (with a toast) if the tile sticker bar is full; true otherwise.
+function addStickerFromShop(id){
+  var d=sqd(id);if(!d)return false;
+  if(d.type==='tile'){
+    if(!S.tileStickers)S.tileStickers=[];
+    if(S.tileStickers.length>=5){toast('Sticker bar is full! (max 5)');return false;}
+    S.tileStickers.push({id:id});
+    if(typeof renderTileStickerBar==='function')renderTileStickerBar();
+    return true;
+  }
+  var qty=d.qty||1;
+  for(var k=0;k<qty;k++)S.stickerInventory.push({id:id});
+  return true;
 }
 
 function buySq(i){
   var item=shopPool.sq[i];var d=sqd(item.id);if(!item||item.sold||!d)return;
-  if(!S.devMode&&S.gold<d.cost){toast('Not enough gold!');return;}
-  if(d.type==='tile'){
-    if(!S.tileStickers)S.tileStickers=[];
-    if(S.tileStickers.length>=5){toast('Sticker bar is full! (max 5)');return;}
-    if(!S.devMode)S.gold-=d.cost;item.sold=true;
-    S.tileStickers.push({id:item.id});
-    if(typeof renderTileStickerBar==='function')renderTileStickerBar();
-    renderShop();renderHUD();
-    toast(d.name+' added to sticker bar!');
-    return;
-  }
-  if(!S.devMode)S.gold-=d.cost;item.sold=true;
-  var qty=d.qty||1;
-  for(var k=0;k<qty;k++)S.stickerInventory.push({id:item.id});
+  var isTile=d.type==='tile';
+  if(isTile&&(S.tileStickers||[]).length>=5){toast('Sticker bar is full! (max 5)');return;}
+  if(!spendGold(d.cost))return;
+  item.sold=true;
+  addStickerFromShop(item.id);
   renderShop();renderHUD();
-  toast((qty>1?qty+'× ':'')+d.name+' queued — place '+(qty>1?'them':'it')+' after leaving shop!');
+  if(isTile)toast(d.name+' added to sticker bar!');
+  else{var qty=d.qty||1;toast((qty>1?qty+'× ':'')+d.name+' queued — place '+(qty>1?'them':'it')+' after leaving shop!');}
 }
 
 function openPackReveal(name,contents){
@@ -1199,17 +1191,10 @@ function openPackReveal(name,contents){
     var card=document.createElement('div');card.className='prc';
     var qtyLine=qty>1?'<div style="font-size:30px;color:#f0e080;font-weight:normal;margin-bottom:2px">'+qty+'× bundle</div>':'';
     card.innerHTML='<div style="font-size:20px;font-weight:normal;color:'+d.fg+'">'+sqIconHTML(d,28)+'</div><div style="font-size:32px;font-weight:normal;color:'+d.fg+'">'+d.name+'</div>'+qtyLine+'<div style="font-size:30px;color:#9090b0;margin:4px 0">'+d.desc+'</div><div class="scr '+rc+'" style="margin-top:4px">'+d.rarity+'</div>';
-    (function(did,c){c.onclick=function(){var dq=sqd(did);if(!dq)return;var qty=(dq&&dq.qty)||1;
-      if(dq.type==='tile'){
-        if(!S.tileStickers)S.tileStickers=[];
-        if(S.tileStickers.length>=5){toast('Sticker bar is full! (max 5)');return;}
-        S.tileStickers.push({id:did});
-        if(typeof renderTileStickerBar==='function')renderTileStickerBar();
-        c.classList.add('chosen');c.textContent='Added to bar!';
-      } else {
-        for(var k=0;k<qty;k++)S.stickerInventory.push({id:did});
-        c.classList.add('chosen');c.textContent=qty>1?qty+'× Queued!':'Queued!';
-      }
+    (function(did,c){c.onclick=function(){var dq=sqd(did);if(!dq)return;
+      if(!addStickerFromShop(did))return;
+      var isTile=dq.type==='tile',qty=dq.qty||1;
+      c.classList.add('chosen');c.textContent=isTile?'Added to bar!':(qty>1?qty+'× Queued!':'Queued!');
       var cs=grid.getElementsByClassName('prc');for(var k=0;k<cs.length;k++){cs[k].style.pointerEvents='none';cs[k].style.opacity='0.4';}c.style.opacity='1';setTimeout(function(){document.getElementById('pack-modal').style.display='none';_shopTipHideImmediate();enterShopPhase();},600);};c.onmouseenter=function(){_shopTipShow(did,c);};c.onmouseleave=function(){_shopTipHide();};})(contents[i],card);
     grid.appendChild(card);
   }
@@ -1219,18 +1204,17 @@ function openPackReveal(name,contents){
 function skipPack(){document.getElementById('pack-modal').style.display='none';enterShopPhase();}
 
 function hammerTile(tile){
-  if(!S.devMode&&S.gold<3){toast('Not enough gold!');return;}
   var idx=-1;for(var i=0;i<S.bag.length;i++)if(S.bag[i].id===tile.id){idx=i;break;}
   if(idx<0){toast('Tile not found.');return;}
-  if(!S.devMode)S.gold-=3;S.bag.splice(idx,1);
+  if(!spendGold(3))return;
+  S.bag.splice(idx,1);
   renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
   toast((tile.isBlank?'Blank':tile.letter)+' destroyed!');
 }
 
 function acceptBounty(i){
   var b=shopPool.bounties[i];if(!b||b.accepted)return;
-  if(!S.devMode&&S.gold<b.cost){toast('Not enough gold!');return;}
-  if(!S.devMode)S.gold-=b.cost;
+  if(!spendGold(b.cost))return;
   b.accepted=true;
   S.bounties=S.bounties||[];S.bounties.push({word:b.word,reward:b.reward});
   renderShop();renderHUD();

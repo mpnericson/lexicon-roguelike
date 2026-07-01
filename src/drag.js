@@ -652,11 +652,9 @@ function _burstNewTilesFromBag(nKept,nTotal,bagEl,onDone){
     (function(tData,idx){
       var p=_handLandingParams(nKept,nTotal,idx);
       var spr=(tData.isBlank&&tData.blankAs)?blankTileSpr(tData.blankAs,tData.variant||null,68):tileSpr(tData.isBlank?null:tData.letter,tData.isBlank,tData.variant||null,68);
-      var badge=tData.variant==='gold'?'<span class="vbadge vbadge-gold">$</span>':tData.variant==='blue'?'<span class="vbadge vbadge-blue">+'+(LS[tData.letter]||0)+'</span>':tData.variant==='red'?'<span class="vbadge vbadge-red">×2</span>':'';
       var flyEl=document.createElement('div');
       flyEl.className='tile hand-tile tile-spr';
       flyEl.style.cssText='position:fixed;z-index:9999;pointer-events:none;width:68px;height:68px;left:'+(bx-34)+'px;top:'+(by-34)+'px;'+spr;
-      flyEl.innerHTML=badge;
       document.body.appendChild(flyEl);
       allFlyEls.push(flyEl);
       setTimeout(function(){

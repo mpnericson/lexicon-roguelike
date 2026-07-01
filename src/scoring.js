@@ -6,18 +6,17 @@
 //
 // Per tile (brackets 1-6, run for every tile in every word):
 //   1. Base letter score added to L
-//   2. Local additive (Void, Gilded — cooldown-gated)
-//   3. Global +letter (Commons, NATO, Blue bonus)
-//   4. Local ×letter + local xmult (DL/TL → ×L; DW/TW → push xmult)
-//   5. Global ×letter (Chess pieces ×3; King TW on aura squares)
-//   6. Retrigger      (Red Sticker: loops 1-5; Red tile: loops 1-5)
+//   2. Local additive — sqDef.onSquareLand(tile,ctx,ts,baseSc,sqIdx) if defined (cooldown-gated)
+//   3. Global +letter — tile sticker onPerTile hooks (Commons, NATO); gold tile
+//   4. Local ×letter + local xmult (DL/TL → ×L; DW/TW → push xmult; Purist doubles these)
+//   5. Global ×letter — _applyChessAura() (chess pieces ×3; King TW on aura squares)
+//   6. Retrigger      — sqDef.retrigger:true (Red Sticker); red tile variant
 //
 // Post-word (run once after all tiles across all words):
 //   Bingo +50
 //   Sticker onPostWord hooks (Scholar, Aristocrat, Pressure Cooker,
-//     Bounty Hunter, Crossroads, Palindrome Engine, Inkwell, etc.)
+//     Bounty Hunter, Crossroads, Palindrome Engine, Inkwell, Slot Machine, etc.)
 //   Bounty reward
-//   Slot Machine xmult
 //   Final transform: Palindrome Engine ×palMult
 //
 // Word order: cross words scored before main word (per-tile only).
@@ -113,24 +112,12 @@ function _buildCtx(mainWord){
     mainWord:mainWord||'',
     crossWordCount:0,
     slotUsed:false, preview:false,
-    // sticker flags/counts populated below
-    commonsCount:0, natoMap:{},
+    // sticker flags populated below via onBuildCtx hooks
     chessPieces:[],chessKingActive:false,
     purist:false,palMult:1,
     stickerLocked:(currentConstraint()==='c_stickers')&&!(S.stickersSoldThisStage>0),
   };
-  if(!ctx.stickerLocked){
-    for(var i=0;i<S.placed.length;i++){
-      var p=S.placed[i];
-      var pDef=sqd(p.id);
-      if(pDef&&pDef.onBuildCtx)pDef.onBuildCtx(ctx,p);
-    }
-    for(var i=0;i<S.tileStickers.length;i++){
-      var ts=S.tileStickers[i];
-      var tsDef=sqd(ts.id);
-      if(tsDef&&tsDef.onBuildCtx)tsDef.onBuildCtx(ctx,ts);
-    }
-  }
+  if(!ctx.stickerLocked)_fireAllStickers('onBuildCtx',[ctx]);
   return ctx;
 }
 
@@ -145,62 +132,32 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
   var sqDef=sqId?sqd(sqId):null;
   var sqActive=!S.localCooldowns.has(sqIdx);
   var tileSc=tile.isBlank?(tile.sc||0):(LS[tile.letter]||0);
-  if(!ctx.preview&&sqId==='spring_trap'){if(!ctx.springTraps)ctx.springTraps=[];if(ctx.springTraps.indexOf(sqIdx)<0)ctx.springTraps.push(sqIdx);}
 
   // --- Bracket 1: base ---
   var baseSc=tile.isBlank?(tile.sc||0):tileSc;
-  if(tile.variant==='blue'&&!tile.isBlank)baseSc+=(tile.blueBonus||0);
   var _letterUsed=!tile.isBlank&&tile.letter&&currentConstraint()==='c_letters'&&S.usedLetters&&S.usedLetters.has(tile.letter);
   if(_letterUsed)baseSc=0;
   ts+=baseSc;
   ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,
     label:tile.letter+(tile.isBlank?' (blank)':'')+ (_letterUsed?' (used-0)':'')});
 
-  // --- Bracket 2: local additive (cooldown-gated) ---
-  if(sqActive&&sqDef&&!ctx.stickerLocked){
-    var acted=false;
-    if(sqDef.id==='void'){
-      ts-=baseSc;
-      ctx.plusMults.push(2);
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Void (0 pts)',floatSqIdx:sqIdx});
-      ctx.events.push({type:'plus-mult',delta:2,label:'Void +2 mult',floatSqIdx:sqIdx});
-      acted=true;
-    }else if(sqDef.id==='gilded'){
-      ctx.tgold++;
-      ctx.events.push({type:'gold',delta:1,sqIdx:sqIdx,label:'Gilded +$1',floatSqIdx:sqIdx});
-      acted=true;
-    }else if(sqDef.id==='spring_trap'){
-      ts+=9;
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Spring Trap +9',floatSqIdx:sqIdx});
-      acted=true;
-    }else if(sqDef.id==='whack_a_mole'){
-      ctx.xmults.push(3);
-      ctx.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'Whack-a-Mole ×3',floatSqIdx:sqIdx});
-      ctx.tgold+=5;
-      ctx.events.push({type:'gold',delta:5,sqIdx:sqIdx,label:'Whack-a-Mole +$5',floatSqIdx:sqIdx});
-      acted=true;
-    }
-    if(acted&&!ctx.preview)ctx.activatedSqs.add(sqIdx);
+  // --- Bracket 2: local additive (cooldown-gated) — sqDef.onSquareLand hook ---
+  if(sqActive&&sqDef&&sqDef.onSquareLand&&!ctx.stickerLocked){
+    ctx._stickerActed=false;
+    var _prevEvLen=ctx.events.length;
+    ts=sqDef.onSquareLand(tile,ctx,ts,baseSc,sqIdx);
+    if(!ctx.preview&&(ctx.events.length>_prevEvLen||ctx._stickerActed))ctx.activatedSqs.add(sqIdx);
   }
 
-  // --- Bracket 3: global additive ---
-  if(ctx.commonsCount>0&&!tile.isBlank&&tileSc===1){
-    var cb3=ctx.commonsCount*3;
-    ts+=cb3;
-    ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Commons +'+cb3,floatTsId:'the_commons'});
-  }
+  // --- Bracket 3: global additive — tile sticker onPerTile hooks + gold tile ---
   if(tile.variant==='gold'){
     ctx.tgold++;
     ctx.events.push({type:'gold',delta:1,sqIdx:sqIdx,label:'Gold tile +$1'});
   }
-  if(!tile.isBlank&&ctx.natoMap[tile.letter]){
-    var nb=ctx.natoMap[tile.letter];
-    for(var _ni=0;_ni<nb.count;_ni++){
-      var _natoSq=nb.sqIdxs[_ni];
-      ts+=nb.ls;
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:nb.name+' +'+nb.ls,floatSqIdx:_natoSq,floatTsId:nb.id});
-      ctx.plusMults.push(nb.lm);
-      ctx.events.push({type:'plus-mult',delta:nb.lm,label:nb.name+' +'+nb.lm+' mult',floatSqIdx:_natoSq,floatTsId:nb.id});
+  if(!ctx.stickerLocked){
+    for(var _pti=0;_pti<S.tileStickers.length;_pti++){
+      var _ptd=sqd(S.tileStickers[_pti].id);
+      if(_ptd&&_ptd.onPerTile)ts=_ptd.onPerTile(tile,ctx,ts,S.tileStickers[_pti]);
     }
   }
 
@@ -221,43 +178,15 @@ function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
     }
   }
 
-  // --- Bracket 5: global ×letter (Chess) ---
-  for(var ci=0;ci<ctx.chessPieces.length;ci++){
-    var aura=ctx.chessPieces[ci].aura;
-    var inAura=false;
-    for(var cj=0;cj<aura.length;cj++)if(sqIdx===aura[cj]){inAura=true;break;}
-    if(inAura){
-      ts*=3;
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'♟ ×3',floatSqIdx:ctx.chessPieces[ci].sqIdx});
-      if(ctx.chessKingActive&&tile.isNew){
-        ctx.xmults.push(3);
-        ctx.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'♚ King ×3',floatTsId:'chess_king'});
-      }
-      break;
-    }
-  }
-  // Slot Machine (fires once per play)
-  if(sqActive&&sqDef&&sqDef.id==='slot_machine'&&!ctx.slotUsed&&!ctx.stickerLocked){
-    ctx.slotUsed=true;
-    if(!ctx.preview&&!S._slotMachineRoll){
-      var roll={wm_mult:1,gold:0,variant:null,parts:[]};
-      if(Math.random()<0.50){roll.wm_mult*=2;roll.parts.push('×2 mult');}
-      if(Math.random()<0.05){roll.wm_mult*=10;roll.parts.push('×10 mult');}
-      if(Math.random()<0.30){roll.gold+=3;roll.parts.push('+$3');}
-      if(Math.random()<0.05){roll.gold+=10;roll.parts.push('+$10');}
-      if(Math.random()<0.01){var v=Math.random();roll.variant=v<1/3?'red':v<2/3?'blue':'gold';roll.parts.push('All '+roll.variant+'!');}
-      S._slotMachineRoll=roll;
-      if(roll.parts.length)(function(p){setTimeout(function(){toast('🎰 Slot: '+p);},400);})(roll.parts.join(' | '));
-    }
-    if(!ctx.preview)ctx.activatedSqs.add(sqIdx);
-  }
+  // --- Bracket 5: global ×letter — chess aura (_applyChessAura defined in indirect.js) ---
+  if(ctx.chessPieces.length)ts=_applyChessAura(tile,ctx,ts,sqIdx);
 
-  // --- Bracket 6: retrigger (Red Sticker, Red tile) ---
+  // --- Bracket 6: retrigger — sqDef.retrigger:true flag or red tile variant ---
   // Continues from current ts — does NOT reset to 0.
   if(!skipRetrigger){
-    if(sqActive&&sqDef&&sqDef.id==='echo'&&!ctx.stickerLocked){
+    if(sqActive&&sqDef&&sqDef.retrigger&&!ctx.stickerLocked){
       if(!ctx.preview)ctx.activatedSqs.add(sqIdx);
-      ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:'Red Sticker',floatSqIdx:sqIdx});
+      ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:sqDef.name,floatSqIdx:sqIdx});
       ts=_scoreTilePasses(tile,ctx,ts,true);
     }
     if(tile.variant==='red'){
@@ -371,15 +300,6 @@ function scorePlay(nt,dir,preview){
   // Bounty reward — applied last so it multiplies everything
   if(S._pendingBountyReward&&!preview)applyBountyReward(ctx);
 
-  if(!preview&&ctx.slotUsed&&S._slotMachineRoll){
-    var smr=S._slotMachineRoll;
-    if(smr.wm_mult>1){
-      ctx.xmults.push(smr.wm_mult);
-      ctx.events.push({type:'x-mult',factor:smr.wm_mult,label:'Slot ×'+smr.wm_mult});
-    }
-    if(smr.gold>0){ctx.tgold+=smr.gold;ctx.events.push({type:'gold',delta:smr.gold,label:'Slot +$'+smr.gold});}
-  }
-
   // Final calculation
   var plusSum=0;for(var i=0;i<ctx.plusMults.length;i++)plusSum+=ctx.plusMults[i];
   var xprod=1;for(var i=0;i<ctx.xmults.length;i++)xprod*=ctx.xmults[i];
@@ -389,10 +309,11 @@ function scorePlay(nt,dir,preview){
   // Palindrome Engine scaling mult
   if(ctx.palMult>1){
     total=Math.round(total*ctx.palMult);
-    ctx.events.push({type:'final-transform',label:'Palindrome Engine ×'+fmtMult(ctx.palMult),total:total});
+    ctx.events.push({type:'final-transform',label:'Palindrome Engine ×'+fmtMult(ctx.palMult),total:total,palMult:ctx.palMult,floatTsId:'palindrome_engine'});
   }
 
-  ctx.events.push({type:'final',letters:ctx.letters,plusSum:plusSum,xprod:xprod,mult:mult,total:total});
+  var _displayMult=ctx.palMult>1?mult*ctx.palMult:mult;
+  ctx.events.push({type:'final',letters:ctx.letters,plusSum:plusSum,xprod:xprod,mult:mult,displayMult:_displayMult,total:total});
 
   // Commit cooldowns (non-preview only)
   if(!preview)ctx.activatedSqs.forEach(function(sq){S.localCooldowns.add(sq);});
@@ -425,16 +346,7 @@ function scoreWord(wt,word,isMain,extraChips,cwWts){
     _scoreTile(t,ctx,false);
   }
   if(extraChips&&extraChips>0){ctx.letters+=extraChips;}
-  if(isMain){
-    for(var pwi=0;pwi<S.placed.length;pwi++){
-      var _pDef=sqd(S.placed[pwi].id);
-      if(_pDef&&_pDef.onPostWord)_pDef.onPostWord(word,wt,ctx,S.placed[pwi]);
-    }
-    for(var twi=0;twi<S.tileStickers.length;twi++){
-      var _tDef=sqd(S.tileStickers[twi].id);
-      if(_tDef&&_tDef.onPostWord)_tDef.onPostWord(word,wt,ctx,S.tileStickers[twi]);
-    }
-  }
+  if(isMain)_fireAllStickers('onPostWord',[word,wt,ctx]);
   var plusSum=0;for(var i=0;i<ctx.plusMults.length;i++)plusSum+=ctx.plusMults[i];
   var xprod=1;for(var i=0;i<ctx.xmults.length;i++)xprod*=ctx.xmults[i];
   var mult=(1+plusSum)*xprod;
@@ -912,13 +824,15 @@ async function runScoreAnim(events,total){
     }else if(ev.type==='final-transform'){
       if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
       if(!ev._skip)_playScoreDing();
+      if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
+      if(ev.palMult&&ev.palMult>1&&!ev._skip){animXprod*=ev.palMult;refreshMult();}
       var br4=row.getBoundingClientRect();
       showScorePop(ev.label,br4.left+60,br4.top-48,'#0a2a2a','#60ffff');
       if(!ev._skip){await scoreDelay(Math.max(200,curDelay));}
 
     }else if(ev.type==='final'){
       saL.textContent=ev.letters;
-      saM.textContent=fmtMult(ev.mult);
+      saM.textContent=fmtMult(ev.displayMult||ev.mult);
       saS.textContent=total.toLocaleString();bumpSA('ls-score');
     }
   }

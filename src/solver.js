@@ -63,8 +63,9 @@ function _solverCanSpell(word, available, blanks) {
 }
 
 // Try placing `word` at (r, c) in direction isH.
-// Returns {score, gold, word, r, c, isH, wt} or null.
-function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestBlueBonus, blankPool, pre) {
+// Returns {score, letters, mult, gold, word, r, c, isH, wt} or null.
+// handTileCount: total tiles in hand (optional) — used for accurate bingo detection.
+function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestBlueBonus, blankPool, pre, handTileCount) {
   var len = word.length;
 
   // Bounds
@@ -172,8 +173,9 @@ function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, handBestB
     }
   }
 
-  var res = scoreWord(wt, word, true, newCount === 7 ? 50 : 0, cwWts);
-  return { score: res.total, gold: res.gold, word: word, r: r, c: c, isH: isH, wt: wt };
+  var _bingo = (handTileCount > 0) ? (newCount >= handTileCount) : (newCount === 7);
+  var res = scoreWord(wt, word, true, _bingo ? 50 : 0, cwWts);
+  return { score: res.total, letters: res.letters, mult: res.mult, gold: res.gold, word: word, r: r, c: c, isH: isH, wt: wt };
 }
 
 // ---- Rank solver — silent background solve, keeps top 10 for reward system ----
@@ -221,8 +223,15 @@ function _rankRunRankSolve(snap) {
   for (var l in handCounts) available[l] = handCounts[l];
   for (var i = 0; i < B*B; i++) { var bt=S.bt[i]; if(bt) available[bt.letter]=(available[bt.letter]||0)+1; }
   var totalBlanks = blankPool.length;
+  var _handTileCount = S.hand.filter(function(t){return t;}).length;
   var pre = _solverPrecompute(), lines = _solverActiveLines();
-  var words = []; DICT.forEach(function(w){ if(w.length>=2&&w.length<=B) words.push(w.toUpperCase()); });
+
+  // Constraint context — captured now so processChunk closures see a consistent snapshot
+  var _con = currentConstraint();
+  var _palLock = _con === 'c_pal' && !S.palUnlocked;
+  var _minLen = _con === 'c_long' ? 5 : (_con === 'c_longer' ? (S.lastWordLen || 0) + 1 : 2);
+
+  var words = []; DICT.forEach(function(w){ if(w.length>=_minLen&&w.length<=B) words.push(w.toUpperCase()); });
 
   function restore() { S.hand=origHand; S.bt=origBt; S.board=origBoard; _rankSolving=false; }
 
@@ -237,8 +246,25 @@ function _rankRunRankSolve(snap) {
         var line = lines[li], maxStart = B - word.length;
         for (var sp = 0; sp <= maxStart; sp++) {
           var r = line.isH ? line.coord : sp, c = line.isH ? sp : line.coord;
-          var res = _solverTryPlace(word,r,c,line.isH,handCounts,handBestVariant,handBestBlueBonus,blankPool,pre);
+          var res = _solverTryPlace(word,r,c,line.isH,handCounts,handBestVariant,handBestBlueBonus,blankPool,pre,_handTileCount);
           if (!res) continue;
+          // Palindrome lock: only palindromes score until unlocked
+          if (_palLock && !isExtendedPalindrome(word)) continue;
+          // Bounty: if this word matches an active bounty, inflate the score to match reality
+          if (S.bounties && S.bounties.length) {
+            var _wLower = word.toLowerCase();
+            for (var _bIdx = 0; _bIdx < S.bounties.length; _bIdx++) {
+              if (S.bounties[_bIdx].word === _wLower) {
+                var _br = BOUNTY_REWARD, _adj = res.score;
+                if (_br.type === 'x-mult')    { _adj = Math.round(res.score * _br.value); }
+                else if (_br.type === 'letters')   { _adj = Math.round((res.letters + _br.value) * res.mult); }
+                else if (_br.type === 'plus-mult') { _adj = Math.round(res.score + res.letters * _br.value); }
+                // 'gold': no score change
+                if (_adj !== res.score) res = { score:_adj, letters:res.letters, mult:res.mult, gold:res.gold, word:res.word, r:res.r, c:res.c, isH:res.isH, wt:res.wt };
+                break;
+              }
+            }
+          }
           var ins = false;
           for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi,0,res); ins=true; break; } }
           if (!ins) best.push(res);

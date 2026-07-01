@@ -70,14 +70,11 @@ function renderBoard(){
     }
     var bt=S.bt[i];var showTile=bt&&!bt.flying&&!viewingBoard;
     if(showTile){
-      var bbadge='';
-      var spr=(bt.isBlank&&bt.letter&&bt.letter>='A'&&bt.letter<='Z')?blankTileSpr(bt.letter,bt.variant||null,sz):tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,bt.variant||null,sz);
+        var spr=(bt.isBlank&&bt.letter&&bt.letter>='A'&&bt.letter<='Z')?blankTileSpr(bt.letter,bt.variant||null,sz):tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,bt.variant||null,sz);
       var _stkCls=(!bt.isNew&&bt._stackLevel>0)?(bt._stackLevel>=2?' jenga-stacked-2':' jenga-stacked'):'';
       var face=document.createElement('div');face.className='tile board-tile'+(bt.isNew?' is-new':'')+_stkCls+(bt.variant?' var-'+bt.variant:'')+' tile-spr';
       face.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+spr;
       face.dataset.spr=spr;face.dataset.tsz=sz;
-      var inner='';
-      face.innerHTML=inner+bbadge;
       if(bt.isNew)attachBoardTileDrag(face,i,sz);
       // Jenga: click on committed tile to stack a selected hand tile
       if(!bt.isNew&&!(S.btTop&&S.btTop[i])&&S.phase==='play'&&typeof hasJenga==='function'&&hasJenga()){
@@ -143,14 +140,12 @@ function renderBoard(){
     // Jenga: render stacked top tile with elevation
     if(S.btTop&&S.btTop[i]&&!S.btTop[i].flying&&!viewingBoard){
       var btt=S.btTop[i];
-      var bbadgeT='';
       var sprT=(btt.isBlank&&btt.letter&&btt.letter>='A'&&btt.letter<='Z')?blankTileSpr(btt.letter,btt.variant||null,sz):tileSpr(btt.isBlank?null:btt.letter,btt.isBlank,btt.variant||null,sz);
       var _btopLvl=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;
       var topFace=document.createElement('div');
       topFace.className='tile board-tile is-new'+(btt.variant?' var-'+btt.variant:'')+' tile-spr '+(_btopLvl>=2?'jenga-stacked-2':'jenga-stacked');
       topFace.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+sprT;
       topFace.dataset.spr=sprT;topFace.dataset.tsz=sz;
-      topFace.innerHTML=bbadgeT;
       if(btt.isNew)attachBoardTileDrag(topFace,i,sz,true);
       sq.appendChild(topFace);
     }
@@ -340,14 +335,11 @@ function renderHand(){
   hpRebuild(vis);
   for(var vi=0;vi<vis.length;vi++){
     var t=vis[vi].t,oi=vis[vi].oi;
-    var badge='';
     var spr=(t.isBlank&&t.blankAs)?blankTileSpr(t.blankAs,t.variant||null,68):tileSpr(t.isBlank?null:t.letter,t.isBlank,t.variant||null,68);
     var face=document.createElement('div');
     face.className='tile hand-tile'+(t.isBlank?' blank-t':'')+(t.sel?' selected':'')+(t.variant?' var-'+t.variant:'')+' tile-spr';
     face.style.cssText='width:68px;height:68px;left:'+(HP.x[vi]-34-HP.left)+'px;top:0;'+spr;
     face.dataset.spr=spr;
-    var inner='';
-    face.innerHTML=inner+badge;
     var isDragging=activeDrag&&activeDrag.src==='hand'&&activeDrag.vi===vi;
     if(isDragging)face.style.opacity='0';
     area.appendChild(face);

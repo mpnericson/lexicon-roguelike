@@ -42,7 +42,7 @@ async function playWord(){
   var _words=getAllWords(nt,dir);
   var _eggWords={};for(var i=0;i<EASTER_EGGS.length;i++)_eggWords[EASTER_EGGS[i].word]=true;
   var _dtInvalid=false;
-  for(var i=0;i<_words.length;i++){if(_eggWords[_words[i]])continue;var v=await validWord(_words[i]);if(!v){if(_hasDT){_dtInvalid=true;}else{flashTiles(nt);window._scoring=false;if(_playBtn)_playBtn.disabled=false;if(!S.devMode){S.gold=Math.max(0,S.gold-2);renderHUD();toast('"'+_words[i]+'" is not a word — fined $2!');}else{toast('"'+_words[i]+'" is not a word.');}return;}}}
+  for(var i=0;i<_words.length;i++){if(_eggWords[_words[i]])continue;var v=await validWord(_words[i]);if(!v){if(_hasDT){_dtInvalid=true;}else{flashTiles(nt);window._scoring=false;if(_playBtn)_playBtn.disabled=false;if(!S.devMode){S.gold=Math.max(0,S.gold-1);renderHUD();toast('"'+_words[i]+'" is not a word — fined $1!');}else{toast('"'+_words[i]+'" is not a word.');}return;}}}
   if(_hasDT){S._drunkValid=!_dtInvalid;if(_dtInvalid)flashTiles(nt);}
   // Easter egg effects (before scoring — can mutate tile variants)
   var _eggApplied=applyEasterEgg(main.word,nt);if(_eggApplied)await new Promise(function(r){setTimeout(r,420);});
@@ -160,19 +160,7 @@ async function playWord(){
   // Predict final hand size so Phase 1 slides tiles to their true final positions.
   var _hm=handMax();var _drawCap=(_con==='c_draw3')?3:_hm;var _pwDrawN=S.devMode?Math.min(_hm-S.hand.length,_drawCap):Math.min(Math.min(_hm-S.hand.length,_drawCap),S.bag.length);
   var _pwTotalN=pwKeptN+Math.max(0,_pwDrawN);
-  // Phase 1: render kept tiles, restore old positions, then slide left to make room.
-  renderAll();
-  var _pwvi2=0;for(var _pwki2=0;_pwki2<S.hand.length;_pwki2++){var _pwt2=S.hand[_pwki2];if(_pwt2&&!_pwt2.onBoard){if(pwKept[_pwt2.id]!==undefined){HP.x[_pwvi2]=pwKept[_pwt2.id];HP.vx[_pwvi2]=0;}_pwvi2++;}}
-  hpBounds();HP.fromX=HP.x.slice();HP.toX=hpRest(_pwTotalN).slice(0,pwKeptN);
-  HP.settleDur=200;HP.settleAt=performance.now();
-  // Phase 2: fires the instant the slide animation ends — no spring physics overlap.
-  await new Promise(function(r){
-    HP.settleCallback=function(){
-      HP.settleDur=150;
-      drawFull();renderHUD();renderBoard();document.getElementById('bag-count').textContent=S.bag.length;
-      _burstNewTilesFromBag(pwKeptN,_pwTotalN,document.getElementById('bag-btn'),r);
-    };
-  });
+  await _animateDrawPhase(pwKept,pwKeptN,_pwTotalN);
   window._scoring=false;
   if(_playBtn)_playBtn.disabled=false;
   saveGame();
@@ -201,6 +189,34 @@ async function playWord(){
       });
     }
   },700);
+}
+
+// Two-phase draw animation shared by playWord and discardTiles.
+// Phase 1: restore kept-tile positions, slide to final layout.
+// Phase 2: burst new tiles from the bag in when phase 1 settles.
+// Returns a Promise that resolves when _burstNewTilesFromBag completes.
+// Callers that need to await (playWord) do so; callers that don't (discardTiles) ignore the Promise.
+function _animateDrawPhase(keptOldPos,keptCount,totalN){
+  renderAll();
+  var vi=0;
+  for(var ki=0;ki<S.hand.length;ki++){
+    var t=S.hand[ki];
+    if(t&&!t.onBoard){
+      if(keptOldPos[t.id]!==undefined){HP.x[vi]=keptOldPos[t.id];HP.vx[vi]=0;}
+      vi++;
+    }
+  }
+  hpBounds();HP.fromX=HP.x.slice();HP.toX=hpRest(totalN).slice(0,keptCount);
+  HP.settleDur=200;HP.settleAt=performance.now();
+  return new Promise(function(resolve){
+    HP.settleCallback=function(){
+      HP.settleDur=150;
+      var _bagBefore=S.bag.length;
+      drawFull();renderHUD();renderBoard();
+      _tickBagCount(_bagBefore,S.bag.length,130);
+      _burstNewTilesFromBag(keptCount,totalN,document.getElementById('bag-btn'),resolve);
+    };
+  });
 }
 
 function flashTiles(nt){
@@ -239,17 +255,7 @@ function discardTiles(){
     var keptCount=S.hand.filter(function(t){return t&&!t.onBoard;}).length;
     var _hm2=handMax();var _drawCap2=(currentConstraint()==='c_draw3')?3:_hm2;var _dcDrawN=S.devMode?Math.min(_hm2-S.hand.length,_drawCap2):Math.min(Math.min(_hm2-S.hand.length,_drawCap2),S.bag.length);
     var _dcTotalN=keptCount+Math.max(0,_dcDrawN);
-    // Phase 1: render kept tiles, restore old positions, then slide left to make room.
-    renderAll();
-    var _vi2=0;for(var _ki2=0;_ki2<S.hand.length;_ki2++){var _t2=S.hand[_ki2];if(_t2&&!_t2.onBoard){if(keptOldPos[_t2.id]!==undefined){HP.x[_vi2]=keptOldPos[_t2.id];HP.vx[_vi2]=0;}_vi2++;}}
-    hpBounds();HP.fromX=HP.x.slice();HP.toX=hpRest(_dcTotalN).slice(0,keptCount);
-    HP.settleDur=200;HP.settleAt=performance.now();
-    // Phase 2: fires the instant the slide animation ends — no spring physics overlap.
-    HP.settleCallback=function(){
-      HP.settleDur=150;
-      drawFull();renderHUD();renderBoard();document.getElementById('bag-count').textContent=S.bag.length;
-      _burstNewTilesFromBag(keptCount,_dcTotalN,document.getElementById('bag-btn'),null);
-    };
+    _animateDrawPhase(keptOldPos,keptCount,_dcTotalN);
   }
   if(!N){afterSnap();return;}
   for(var si=0;si<N;si++){

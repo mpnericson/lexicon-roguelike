@@ -159,8 +159,8 @@ function _refreshCollectionContent(){
   var prevScroll=g.scrollTop;
   g.innerHTML='';
   var types=[
-    {key:'board',label:'Board Stickers',test:function(d){return !!d.bm||!!d.apply||d.type==='board';}},
-    {key:'global',label:'Global Stickers',test:function(d){return !d.bm&&!d.apply&&d.type!=='board';}}
+    {key:'board',label:'Board Stickers',test:function(d){return !!d.bm||d.type==='board'||d.type==='local'||!!d.apply;}},
+    {key:'global',label:'Global Stickers',test:function(d){return !d.bm&&d.type!=='board'&&d.type!=='local'&&!d.apply;}}
   ];
   for(var ti=0;ti<types.length;ti++){
     var tf=types[ti].test;var items=SQ.filter(function(d){return tf(d);});if(!items.length)continue;

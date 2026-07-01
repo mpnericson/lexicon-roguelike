@@ -68,9 +68,9 @@ function startGame(seed){
   S={bag:_bag,hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),btTop:Array(B*B).fill(null),
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,palUnlocked:false,devMode:false,
      phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bhMult:1,palMult:1,playerMult:1,palWords:[],localCooldowns:new Set(),
-     lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,
+     lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,
      constraintOrder:_co.slice(0,STAGES.length),usedLetters:new Set(),stickersSoldThisStage:0,crossroadsCount:0,
-     tileStickers:[],
+     tileStickers:[],bagBlueAnchors:{},
      bounties:_generateBounties(3,[])};
   window._easyHint=null;
   shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};activeDrag=null;
@@ -84,17 +84,51 @@ function startGame(seed){
 
 function handMax(){return(S.bi===2&&currentConstraint()==='c_hand')?6:7;}
 
+function _autoRegisterBlueAnchors(){
+  if(!S.bag||!S.bag.length)return;
+  if(!S.bagBlueAnchors)S.bagBlueAnchors={};
+  var lc={};
+  for(var i=0;i<S.bag.length;i++){var k=S.bag[i].isBlank?'_':(S.bag[i].letter||'_');lc[k]=(lc[k]||0)+1;}
+  for(var i=0;i<S.bag.length;i++){
+    var t=S.bag[i];if(t.variant!=='blue')continue;
+    var k=t.isBlank?'_':(t.letter||'_');
+    if(lc[k]===1&&!S.bagBlueAnchors[k])S.bagBlueAnchors[k]=t.id;
+  }
+}
+
+function _tickBagCount(from,to,ms){
+  var el=document.getElementById('bag-count');if(!el)return;
+  if(from<=to){el.textContent=to;return;}
+  var cur=from;
+  (function step(){cur--;el.textContent=cur;if(cur>to)setTimeout(step,ms);})();
+}
+
 function drawFull(){
   var hm=handMax();
   var _c=currentConstraint();
   var cap=(_c==='c_draw3')?3:(hm-S.hand.length);
   var n=Math.min(hm-S.hand.length,cap);
   if(n<=0)return;
-  if(S.devMode){
-    var _dp='AAEEEIIOOUUTTRRSSNNLLDDGG'.split('');
-    for(var i=0;i<n;i++){var _dl=_dp[Math.floor(Math.random()*_dp.length)];S.hand.push({letter:_dl,isBlank:false,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null,blueBonus:0});}
-  } else {
-    for(var i=0;i<n&&S.bag.length>0;i++){var t=S.bag.pop();S.hand.push({letter:t.letter,isBlank:t.isBlank,id:t.id,blankAs:null,sel:false,onBoard:false,variant:t.variant||null,blueBonus:t.blueBonus||0});}
+  for(var i=0;i<n&&S.bag.length>0;i++){
+    var _dt=null;
+    try{
+      var _anch=S.bagBlueAnchors;
+      if(_anch){
+        var _ai=[];
+        for(var j=0;j<S.bag.length;j++){
+          var _bt=S.bag[j];if(!_bt||_bt.variant!=='blue')continue;
+          var _bk=_bt.isBlank?'_':(_bt.letter||'_');
+          if(_anch[_bk]===_bt.id)_ai.push(j);
+        }
+        if(_ai.length){
+          var _ri=Math.floor(_rng()*_ai.length);
+          _dt=S.bag.splice(_ai[_ri],1)[0];
+          delete _anch[_dt.isBlank?'_':(_dt.letter||'_')];
+        }
+      }
+    }catch(e){}
+    if(!_dt)_dt=S.bag.pop();
+    S.hand.push({letter:_dt.letter,isBlank:_dt.isBlank,id:_dt.id,blankAs:null,sel:false,onBoard:false,variant:_dt.variant||null,blueBonus:_dt.blueBonus||0});
   }
   if(S.phase==='play')_scheduleRankSolve();
 }
@@ -139,10 +173,7 @@ function advanceRound(){
     // Count paint buckets while S.placed still has them
     for(var _pbi=0;_pbi<S.placed.length;_pbi++){var _pb=S.placed[_pbi];if(_pb.id==='paint_bucket'&&_pb.sqIdx!=null&&S.bt[_pb.sqIdx])_pbBlanks++;}
     // End-of-stage sticker effects (Bourgeois, etc.)
-    var _esSnap=S.placed.slice();
-    for(var _esi=0;_esi<_esSnap.length;_esi++){var _esd=sqd(_esSnap[_esi].id);if(_esd&&_esd.onEndStage)_esd.onEndStage(_esSnap[_esi]);}
-    var _esTsSnap=S.tileStickers.slice();
-    for(var _esi2=0;_esi2<_esTsSnap.length;_esi2++){var _esd2=sqd(_esTsSnap[_esi2].id);if(_esd2&&_esd2.onEndStage)_esd2.onEndStage(_esTsSnap[_esi2]);}
+    _fireAllStickers('onEndStage',[]);
   }
 
   if(typeof _resetZoom==='function')_resetZoom();
@@ -167,7 +198,7 @@ function _doStageAnimation(newStage,pbBlanks){
       var _pbMsg=pbBlanks?' Paint Bucket: +'+pbBlanks+' blank'+(pbBlanks!==1?'s':'')+'.':'';
       toast(S.endless?'Endless mode! Targets keep rising.':'New stage — board cleared!'+_pbMsg);
     }
-    S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.palUnlocked=false;S.lastWordLen=0;
+    S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
     S.usedLetters=new Set();S.stickersSoldThisStage=0;
     var _rc=currentConstraint();if(_rc==='c_oneplay')S.plays=1;if(_rc==='c_nodisc')S.disc=0;
     var _insatN=0;for(var _ii=0;_ii<(S.tileStickers||[]).length;_ii++)if(S.tileStickers[_ii].id==='insatiable')_insatN++;
@@ -268,23 +299,30 @@ function _renderBagFloatTiles(cont,tiles,sz){
   var _vdotColors={red:'#b83030',blue:'#3870a8',gold:'#c8a020'};
   for(var oi=0;oi<order.length;oi++){
     var g=groups[order[oi]],f=fc[oi%fc.length];
+    var _gkey=order[oi];
+    // Determine if a blue tile is the anchor for this group:
+    // (a) explicitly promoted, or (b) the only tile of this letter and it's blue
+    var _isBlueAnchor=false;
+    var _pref=S.bagBlueAnchors&&S.bagBlueAnchors[_gkey];
+    if(_pref){for(var _ai=0;_ai<tiles.length;_ai++){if(tiles[_ai].id===_pref&&tiles[_ai].variant==='blue'){_isBlueAnchor=true;break;}}}
+    if(!_isBlueAnchor&&g.count===1&&g.variants.blue===1)_isBlueAnchor=true;
     var item=document.createElement('div');
     item.className='bag-float-item';
     item.dataset.letter=g.isBlank?'_':(g.letter||'_');
     item.style.cssText='cursor:pointer;position:relative';
     var inner=document.createElement('div');
     inner.style.cssText='display:flex;flex-direction:column;align-items:center;animation:'+f.a+' '+f.d+' ease-in-out '+f.dl+' infinite';
-    var spr=tileSpr(g.isBlank?null:g.letter,g.isBlank,null,sz); // always base tile in grid
+    var spr=tileSpr(g.isBlank?null:g.letter,g.isBlank,_isBlueAnchor?'blue':null,sz);
     var te=document.createElement('div');
-    te.className='tile tile-spr'+(g.isBlank?' blank-t':'');
+    te.className='tile tile-spr'+(g.isBlank?' blank-t':'')+(_isBlueAnchor?' var-blue':'');
     te.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+spr;
     inner.appendChild(te);
     var ct=document.createElement('div');
     ct.style.cssText='color:#7ac07a;font-family:\'Jersey 10\',Georgia;font-size:'+Math.round(sz*0.38)+'px;margin-top:4px;line-height:1;text-align:center';
     ct.textContent='×'+g.count;inner.appendChild(ct);
     item.appendChild(inner);
-    // Variant dots float independently ABOVE the tile with their own animations
-    var vkeys=(['red','blue','gold']).filter(function(v){return g.variants[v];});
+    // Variant dots float independently ABOVE the tile — suppress blue dot when blue is the anchor
+    var vkeys=(['red','blue','gold']).filter(function(v){return g.variants[v]&&!(v==='blue'&&_isBlueAnchor);});
     if(vkeys.length){
       var dotAnims=[{a:'bfloat0',d:'1.9s',dl:'0s'},{a:'bfloat2',d:'2.2s',dl:'0.35s'},{a:'bfloat4',d:'1.7s',dl:'0.7s'}];
       var dotsRow=document.createElement('div');
@@ -293,6 +331,7 @@ function _renderBagFloatTiles(cont,tiles,sz){
       vkeys.forEach(function(v,vi){
         var da=dotAnims[vi%dotAnims.length];
         var dotWrap=document.createElement('div');
+        dotWrap.dataset.vdot=v;
         dotWrap.style.cssText='animation:'+da.a+' '+da.d+' ease-in-out '+da.dl+' infinite;';
         var dot=document.createElement('div');
         dot.style.cssText='width:9px;height:9px;border-radius:50%;background:'+_vdotColors[v]+';border:1px solid rgba(255,255,255,0.35);box-shadow:0 0 4px '+_vdotColors[v]+'88;';
@@ -323,21 +362,25 @@ function _bagToggleExpand(letter,clickedIdx,container,allTiles){
   var cur=container.dataset.expandedLetter;
   if(cur===letter){_bagCollapseLetter(container);return;}
   if(cur){
-    // Collapse current then expand new after animation clears
-    _bagCollapseLetter(container);
+    // Match collapse timing: arch tiles rise first (_riseMs), then all sweep laterally (323ms).
+    var _cItems=Array.from(container.querySelectorAll('.bag-float-item'));
+    var _priseMs=0;
+    _cItems.forEach(function(item){if(!_priseMs&&item._archAnim&&item._archAnim.playState==='finished'&&item._archParams)_priseMs=item._archParams.dropMs;});
+    _bagCollapseLetter(container,0.7);
     var g=_bagExpandGen;
     _bagPendingExpand=setTimeout(function(){
       _bagPendingExpand=null;
       if(_bagExpandGen!==g)return;
-      _bagExpandLetter(letter,clickedIdx,container,allTiles);
-    },430);
+      _bagExpandLetter(letter,clickedIdx,container,allTiles,0.7);
+    },Math.round(_priseMs*0.7)+273);
   }else{
     // Nothing expanded — go straight to expand (no collapse, no animation pause)
     _bagExpandLetter(letter,clickedIdx,container,allTiles);
   }
 }
 
-function _bagExpandLetter(letter,clickedIdx,container,allTiles){
+function _bagExpandLetter(letter,clickedIdx,container,allTiles,speedMult){
+  speedMult=speedMult||1;
   var gen=++_bagExpandGen;
   container.dataset.expandedLetter=letter;
   var items=Array.from(container.querySelectorAll('.bag-float-item'));
@@ -377,7 +420,11 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
 
   var matchTiles=allTiles.filter(function(t){return(t.isBlank?'_':t.letter)===letter;});
   var vord={'':0,'red':1,'blue':2,'gold':3};
-  matchTiles.sort(function(a,b){return(vord[a.variant||'']||0)-(vord[b.variant||'']||0);});
+  matchTiles.sort(function(a,b){
+    var pref=S.bagBlueAnchors&&S.bagBlueAnchors[letter];
+    if(pref){if(a.id===pref)return -1;if(b.id===pref)return 1;}
+    return(vord[a.variant||'']||0)-(vord[b.variant||'']||0);
+  });
   var fc=[{a:'bfloat0',d:'2.5s',dl:'0s'},{a:'bfloat1',d:'2.8s',dl:'0.5s'},{a:'bfloat2',d:'3.1s',dl:'1.0s'},{a:'bfloat3',d:'2.6s',dl:'0.3s'},{a:'bfloat4',d:'3.0s',dl:'0.8s'},{a:'bfloat5',d:'2.7s',dl:'1.4s'}];
   var N=matchTiles.length;
   if(N<1){delete container.dataset.expandedLetter;return;}
@@ -420,26 +467,35 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
   // needs one extra slot of shift. baseRightShift+slot = baseLeftShift for all odd numCols,
   // giving perfect mirror symmetry around the expanded cluster.
   var _acolRightShift=baseRightShift+slot;
-  // Anchor-column tiles that move laterally also slide vertically:
-  //   odd numCols  → all anchor-col tiles drop to bottom row.
-  //   even numCols + middle anchor → tiles above the anchor drop one row down to anchor's row;
-  //                                  tiles at/below anchor shift laterally only.
+  // Gravity stack: every column in each displaced group sinks to its lowest available rows.
+  // Left and right groups are processed separately so a column split across both directions
+  // (e.g. odd numCols moving one anchor-col tile right) is treated as two independent columns.
   var _anchorColDy=[];
   if(numGridRows>1){
-    var _doOddCols=numCols%2===1;
-    var _doEvenMid=numCols%2===0&&anchorRow>0&&anchorRow<numGridRows-1;
-    if(_doOddCols||_doEvenMid){
-      var _anchorRowY=gridRowYs[anchorRow];
-      var _botRowY=gridRowYs[numGridRows-1];
-      leftItems.concat(rightItems).forEach(function(item){
+    [leftItems,rightItems].forEach(function(group){
+      var _cg={};
+      group.forEach(function(item){
         var _iax=item.getBoundingClientRect().left+item.getBoundingClientRect().width/2;
-        if(Math.abs(_iax-clickedCX)<sz*0.6){
-          var _itemTop=item.getBoundingClientRect().top;
-          var _targetY=_doOddCols?_botRowY:(_itemTop<_anchorRowY-10?_anchorRowY:null);
-          if(_targetY!==null)_anchorColDy.push({el:item,dy:_targetY-_itemTop,fast:_doEvenMid});
+        var _itemTop=item.getBoundingClientRect().top;
+        var _br=0,_bd=Infinity;
+        for(var _ri=0;_ri<gridRowYs.length;_ri++){var _rd=Math.abs(gridRowYs[_ri]-_itemTop);if(_rd<_bd){_bd=_rd;_br=_ri;}}
+        var _ckey=Math.round(_iax/5)*5;
+        if(!_cg[_ckey])_cg[_ckey]=[];
+        _cg[_ckey].push({el:item,itemTop:_itemTop,row:_br});
+      });
+      Object.keys(_cg).forEach(function(ckey){
+        var _col=_cg[ckey];
+        _col.sort(function(a,b){return a.row-b.row;});
+        var _nac=_col.length;
+        for(var _ati=0;_ati<_nac;_ati++){
+          var _tgtRow=gridRowYs.length-_nac+_ati;
+          if(_tgtRow>=0&&_tgtRow<gridRowYs.length){
+            var _dy=gridRowYs[_tgtRow]-_col[_ati].itemTop;
+            if(_dy>1)_anchorColDy.push({el:_col[_ati].el,dy:_dy,fast:true});
+          }
         }
       });
-    }
+    });
   }
 
   // Fill anchor-col non-anchor rows first, then fan outward left/right.
@@ -504,8 +560,7 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
 
   requestAnimationFrame(function(){requestAnimationFrame(function(){
     if(_bagExpandGen!==gen)return;
-    // 323ms ease-in-out matches the lateral phase of the two-phase column-tile animation.
-    var TRANS='transform 323ms ease-in-out';
+    var TRANS='transform '+Math.round(323*speedMult)+'ms ease-in-out';
     var _effectiveRightShift=_anchorColRightItem?_acolRightShift:baseRightShift;
     function _applyItemAnim(item,dx){
       var _idy=0,_ifast=false;
@@ -514,7 +569,7 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
         // Phase 1: lateral (ease-in-out, 323ms). Phase 2: drop (ease-in). All lateral movement is simultaneous.
         // Lateral phase is always 323ms so speed stays constant.
         // fast=true (one-row drop): drop phase shortened to 140ms; normal: 197ms.
-        var _latMs=323,_dropMs=_ifast?140:197,_dur=_latMs+_dropMs,_split=_latMs/_dur;
+        var _latMs=323,_dropMs=_ifast?140:197,_dur=Math.round((_latMs+_dropMs)*speedMult),_split=_latMs/(_latMs+_dropMs);
         item._archParams={dx:dx,dy:_idy,latMs:_latMs,dropMs:_dropMs};
         item._archAnim=item.animate([
           {offset:0,      transform:'translateX(0px) translateY(0px)',      easing:'ease-in-out'},
@@ -528,7 +583,7 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
     leftItems.forEach(function(item){_applyItemAnim(item,-baseLeftShift);});
     rightItems.forEach(function(item){_applyItemAnim(item,_effectiveRightShift);});
     items[clickedIdx].style.pointerEvents=window._bagPickMode?'auto':'none';
-    items[clickedIdx].style.transition='transform 0.52s cubic-bezier(0.4,0,0.2,1)';
+    items[clickedIdx].style.transition='transform '+Math.round(520*speedMult)+'ms cubic-bezier(0.4,0,0.2,1)';
     items[clickedIdx].style.transform='scale(1.1)';
     var clickedDots=items[clickedIdx].querySelector('.variant-dots');
     if(clickedDots)clickedDots.style.opacity='0';
@@ -537,20 +592,107 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles){
       items[clickedIdx]._onPickClick=function(e){e.stopPropagation();if(window._bagPickMode)window._bagPickMode(_anchorTile);};
       items[clickedIdx].addEventListener('click',items[clickedIdx]._onPickClick);
     }
+    var _blueOuters=[];
     if(stackEl){Array.from(stackEl.children).forEach(function(outer,pi){
-      var delay=pi*30;
-      outer.style.transition='transform 0.45s cubic-bezier(0.4,0,0.2,1) '+delay+'ms, opacity 0.2s ease '+delay+'ms';
+      var delay=Math.round(pi*30*speedMult);
+      outer.style.transition='transform '+Math.round(450*speedMult)+'ms cubic-bezier(0.4,0,0.2,1) '+delay+'ms, opacity '+Math.round(200*speedMult)+'ms ease '+delay+'ms';
       outer.style.transform='translateX(0) translateY(0) scale(1.1)';
       outer.style.opacity='1';
+      if(!window._bagPickMode&&placements[pi].t.variant==='blue'){
+        _blueOuters.push(outer);
+        (function(bOuter,bTile){
+          bOuter.addEventListener('mouseenter',function(){bOuter.style.filter='drop-shadow(0 0 8px #f0e080) drop-shadow(0 0 18px rgba(240,224,128,0.5))';});
+          bOuter.addEventListener('mouseleave',function(){bOuter.style.filter='';});
+          bOuter.addEventListener('click',function(e){
+            e.stopPropagation();
+            if(_bagExpandGen!==gen)return;
+            if(!S.bagBlueAnchors)S.bagBlueAnchors={};
+            S.bagBlueAnchors[letter]=bTile.id;
+            var stEl=document.getElementById('_bag-expand-stack');
+            // Fade out all other stack elements
+            if(stEl){Array.from(stEl.children).forEach(function(ch){if(ch!==bOuter){ch.style.transition='opacity 0.18s ease';ch.style.opacity='0';}});}
+            // Fade out anchor item
+            var anchR=items[clickedIdx].getBoundingClientRect();
+            items[clickedIdx].style.transition='opacity 0.18s ease,transform 0.18s ease';
+            items[clickedIdx].style.opacity='0';items[clickedIdx].style.transform='scale(1)';
+            // Compute movement delta from blue tile position to anchor position
+            var bL=parseFloat(bOuter.style.left),bT=parseFloat(bOuter.style.top);
+            var mvdx=anchR.left-bL,mvdy=anchR.top-bT;
+            bOuter.style.filter='';
+            setTimeout(function(){
+              if(_bagExpandGen!==gen)return;
+              // Phase 1: lateral
+              bOuter.style.transition='transform 250ms ease-in-out';
+              bOuter.style.transform='translateX('+mvdx+'px) translateY(0px) scale(1.05)';
+              setTimeout(function(){
+                if(_bagExpandGen!==gen)return;
+                // Phase 2: vertical
+                bOuter.style.transition='transform 200ms ease-in';
+                bOuter.style.transform='translateX('+mvdx+'px) translateY('+mvdy+'px) scale(1)';
+                setTimeout(function(){
+                  if(_bagExpandGen!==gen)return;
+                  // Blue tile arrived — update anchor item sprite to blue tile
+                  var ai=items[clickedIdx];
+                  var aDiv=ai.querySelector('div');
+                  if(aDiv){var aTe=aDiv.querySelector('.tile.tile-spr');if(aTe){var bSpr=tileSpr(bTile.isBlank?null:bTile.letter,!!bTile.isBlank,'blue',sz);aTe.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+bSpr;aTe.className='tile tile-spr var-blue';}}
+                  var aiDots=ai.querySelector('.variant-dots');if(aiDots){var bDotW=aiDots.querySelector('[data-vdot="blue"]');if(bDotW&&bDotW.parentNode)bDotW.parentNode.removeChild(bDotW);}
+                  ai.style.transition='opacity 0.12s ease';ai.style.opacity='1';ai.style.transform='';ai.style.pointerEvents='';
+                  if(bOuter.parentNode)bOuter.parentNode.removeChild(bOuter);
+                  // Capture arch rise time before collapsing
+                  var _colRiseMs=0;
+                  items.forEach(function(_ci){if(!_colRiseMs&&_ci._archAnim&&_ci._archAnim.playState==='finished'&&_ci._archParams)_colRiseMs=_ci._archParams.dropMs;});
+                  // Collapse side groups — wait for anchor fade-in (120ms) to finish first
+                  var colGen=++_bagExpandGen;
+                  delete container.dataset.expandedLetter;
+                  if(stEl&&stEl.parentNode)stEl.parentNode.removeChild(stEl);
+                  items.forEach(function(item){var inn=item.children[0];if(inn)inn.style.animationPlayState='paused';});
+                  setTimeout(function(){
+                    if(_bagExpandGen!==colGen)return;
+                    var CLAT='transform 323ms ease-in-out '+_colRiseMs+'ms';
+                    items.forEach(function(item,ii){
+                      if(ii===clickedIdx){item.style.transition='';return;}
+                      if(item._archAnim&&item._archAnim.playState==='finished'&&item._archParams){
+                        item._archAnim.cancel();delete item._archAnim;
+                        var _p=item._archParams;delete item._archParams;
+                        var _cd=_p.dropMs+_p.latMs,_ro=_p.dropMs/_cd;
+                        item.style.transition='none';
+                        item._archAnim=item.animate([
+                          {offset:0,transform:'translateX('+_p.dx+'px) translateY('+_p.dy+'px)',easing:'ease-out'},
+                          {offset:_ro,transform:'translateX('+_p.dx+'px) translateY(0px)',easing:'ease-in-out'},
+                          {offset:1,transform:'translateX(0px) translateY(0px)'}
+                        ],{duration:_cd,easing:'linear',fill:'forwards'});
+                        item.style.opacity='';item.style.pointerEvents='';
+                      }else{
+                        item.style.transition=CLAT;item.style.transform='';item.style.opacity='';item.style.pointerEvents='';
+                      }
+                    });
+                    setTimeout(function(){
+                      if(_bagExpandGen!==colGen)return;
+                      items.forEach(function(item){
+                        if(item._archAnim){item._archAnim.cancel();delete item._archAnim;}
+                        item.style.transition='';
+                        var inn=item.children[0];if(inn)inn.style.animationPlayState='';
+                        var dots=item.querySelector('.variant-dots');if(dots)dots.style.opacity='';
+                      });
+                    },_colRiseMs+323+50);
+                  },130);
+                },210);
+              },260);
+            },190);
+          });
+        })(outer,placements[pi].t);
+      }
     });}
     setTimeout(function(){
       if(_bagExpandGen!==gen)return;
       items.forEach(function(item,i){if(i!==clickedIdx){var inner=item.children[0];if(inner)inner.style.animationPlayState='';}});
-    },460);
+      _blueOuters.forEach(function(bo){bo.style.pointerEvents='auto';});
+    },Math.round(460*speedMult));
   });});
 }
 
-function _bagCollapseLetter(container){
+function _bagCollapseLetter(container,speedMult){
+  speedMult=speedMult||1;
   var gen=++_bagExpandGen;
   // Clear state immediately so rapid clicks see consistent state
   delete container.dataset.expandedLetter;
@@ -558,8 +700,9 @@ function _bagCollapseLetter(container){
   // Find rise duration before anything else so the stack overlay can wait for it.
   var _riseMs=0;
   items.forEach(function(item){if(!_riseMs&&item._archAnim&&item._archAnim.playState==='finished'&&item._archParams)_riseMs=item._archParams.dropMs;});
+  var _riseEffMs=Math.round(_riseMs*speedMult);
   var stackEl=document.getElementById('_bag-expand-stack');
-  if(stackEl){setTimeout(function(){stackEl.style.opacity='0';setTimeout(function(){if(stackEl.parentNode)stackEl.parentNode.removeChild(stackEl);},300);},_riseMs);}
+  if(stackEl){setTimeout(function(){stackEl.style.opacity='0';setTimeout(function(){if(stackEl.parentNode)stackEl.parentNode.removeChild(stackEl);},Math.round(300*speedMult));},_riseEffMs);}
   items.forEach(function(item){
     if(item._archAnim&&item._archAnim.playState==='running'){
       // In-flight: bake current position so CSS transition returns from mid-point.
@@ -574,7 +717,7 @@ function _bagCollapseLetter(container){
     // Phase 1: column tiles rise. Phase 2: ALL tiles sweep laterally together.
     // _riseMs already computed above; reused here via closure.
     // Regular tiles wait _riseMs before their lateral transition so all movement is simultaneous.
-    var CLAT='transform 323ms ease-in-out '+_riseMs+'ms';
+    var CLAT='transform '+Math.round(323*speedMult)+'ms ease-in-out '+_riseEffMs+'ms';
     items.forEach(function(item){
       if(item._archAnim&&item._archAnim.playState==='finished'&&item._archParams){
         // Phase 1: rise (ease-out). Phase 2: lateral back (ease-in-out), same timing as all other tiles.
@@ -586,7 +729,7 @@ function _bagCollapseLetter(container){
           {offset:0,   transform:'translateX('+_p.dx+'px) translateY('+_p.dy+'px)',easing:'ease-out'},
           {offset:_ro, transform:'translateX('+_p.dx+'px) translateY(0px)',         easing:'ease-in-out'},
           {offset:1,   transform:'translateX(0px) translateY(0px)'}
-        ],{duration:_cd,easing:'linear',fill:'forwards'});
+        ],{duration:Math.round(_cd*speedMult),easing:'linear',fill:'forwards'});
         item.style.opacity='';item.style.pointerEvents='';
       } else {
         item.style.transition=CLAT;item.style.transform='';item.style.opacity='';item.style.pointerEvents='';
@@ -600,7 +743,7 @@ function _bagCollapseLetter(container){
         var inner=item.children[0];if(inner)inner.style.animationPlayState='';
         var dots=item.querySelector('.variant-dots');if(dots)dots.style.opacity='';
       });
-    },_riseMs+323+50);
+    },Math.round((_riseMs+323)*speedMult)+50);
   });});
 }
 
@@ -687,6 +830,7 @@ function openBagModal(){
     // 2 frames before animation ends — start zoom early while bag is still animating
     ovr.style.display='flex';ovr.style.visibility='hidden';ovr.style.pointerEvents='none';
     document.getElementById('bag-ui-count').textContent=S.bag.length+' tiles remaining';
+    _autoRegisterBlueAnchors();
     var tilesDiv=document.getElementById('bag-ui-tiles');
     _renderBagFloatTiles(tilesDiv,S.bag,73);
     tilesDiv.style.animation='none';void tilesDiv.offsetHeight;
@@ -715,7 +859,7 @@ function closeBagUI(){
 // ─── Tile Audio ───────────────────────────────────────────────────────────────
 var _audioCtx=null,_scoreDingN=0;
 function _getAudioCtx(){
-  if(!_audioCtx)_audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  if(!_audioCtx)_audioCtx=new(window.AudioContext||window['webkitAudioContext'])();
   if(_audioCtx.state==='suspended')_audioCtx.resume();
   return _audioCtx;
 }
@@ -845,6 +989,31 @@ function _playSpringBoing(){
     osc.start(now);osc.stop(now+0.78);
     osc2.start(now);osc2.stop(now+0.33);
   }catch(e){}
+}
+
+// ── Shared gold-spend helper ──
+// Returns true and deducts gold on success; toasts and returns false if insufficient.
+function spendGold(cost){
+  if(!S.devMode&&S.gold<cost){toast('Not enough gold!');return false;}
+  if(!S.devMode)S.gold-=cost;
+  return true;
+}
+
+// ── Fire a sticker hook across all placed board stickers and tile stickers ──
+// Snapshots both arrays before iterating so hooks that modify S.placed/S.tileStickers
+// (e.g. Bourgeois destroying itself on onEndStage) don't corrupt the walk.
+function _fireAllStickers(hookName,args){
+  args=args||[];
+  var _sp=S.placed.slice();
+  for(var _fi=0;_fi<_sp.length;_fi++){
+    var _fp=_sp[_fi],_fd=sqd(_fp.id);
+    if(_fd&&_fd[hookName])_fd[hookName].apply(_fd,args.concat([_fp]));
+  }
+  var _st=S.tileStickers.slice();
+  for(var _fj=0;_fj<_st.length;_fj++){
+    var _fts=_st[_fj],_ftsd=sqd(_fts.id);
+    if(_ftsd&&_ftsd[hookName])_ftsd[hookName].apply(_ftsd,args.concat([_fts]));
+  }
 }
 
 function openBlankChooser(hi,cb2){
