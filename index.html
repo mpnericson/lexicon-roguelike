@@ -8,13 +8,13 @@
 @font-face{font-family:'Jersey 10';src:url('Assets/fonts/Jersey10-Regular.ttf') format('truetype');font-weight:normal;font-style:normal}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;height:100vh;overflow:hidden;user-select:none;touch-action:none}
-#app{display:flex;flex-direction:row;height:100vh;padding:8px;gap:8px}
-/* LEFT PANEL — 24% width */
-#left-panel{display:flex;flex-direction:column;width:24vw;flex-shrink:0;overflow:hidden}
+#app{display:flex;flex-direction:row;height:100vh;background-image:url(Assets/sprites/mainui.png);background-size:100% 100%;background-repeat:no-repeat;image-rendering:pixelated}
+/* LEFT PANEL — 25% width */
+#left-panel{display:flex;flex-direction:column;width:25vw;flex-shrink:0;overflow:hidden}
 /* CENTER COLUMN — fills remaining space */
 #center-col{display:flex;flex-direction:column;flex:1;gap:6px;min-width:0}
-/* RIGHT PANEL — 24% width */
-#right-panel{display:flex;flex-direction:column;gap:8px;width:24vw;flex-shrink:0;justify-content:space-between;background-image:url(Assets/sprites/mainui.png);background-size:266.667% 100%;background-position:100% 0;background-repeat:no-repeat;image-rendering:pixelated;padding:8px}
+/* RIGHT PANEL — 25% width */
+#right-panel{display:flex;flex-direction:column;gap:8px;width:25vw;flex-shrink:0;justify-content:space-between}
 #bounty-section{flex:1;min-height:0;max-height:80vh;overflow-y:auto}
 #board-area{flex:1;display:flex;justify-content:center;align-items:center;overflow:hidden;min-height:0;position:relative}
 #hand-wrap{display:flex;align-items:center;gap:10px;height:80px;flex-shrink:0}
@@ -84,7 +84,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .sq-hand-item{background:#12122a;border:2px solid;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:grab;position:absolute;top:0;width:68px;height:68px}
 .sq-hand-item .sqh-name{font-size:32px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:62px}
 .sq-staged-cell{box-shadow:inset 0 0 0 2px rgba(255,255,255,0.55)!important;cursor:pointer!important}
-#play-controls{display:flex;flex-direction:column;gap:6px}
+#play-controls{display:flex;flex-direction:column;gap:0}
 #placing-controls{display:none;flex-direction:column;gap:6px}
 #shuffle-btn{width:38px;height:68px;background:#2a3a2a;border:2px solid #4a6a4a;border-radius:8px;color:#80c080;font-size:22px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.1s,transform 0.1s}
 .zoom-btn{width:38px;height:31px;background:#12122a;border:2px solid #3a3a5a;border-radius:6px;color:#a0a0c0;font-size:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.1s,border-color 0.1s}
@@ -105,7 +105,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .stage-dot{width:11px;height:11px;border-radius:50%;border:1px solid #4a4a6a}
 .stage-dot.done{background:#5aaa5a;border-color:#5aaa5a}
 .stage-dot.cur{background:#f0e080;border-color:#f0e080}
-#board-wrap{display:inline-grid;gap:2px;background:#0a0a18;padding:6px;border-radius:8px;border:1px solid #2a2a4a}
+#board-wrap{display:inline-grid;gap:0}
 #board-wrap.tiles-hidden .board-tile{visibility:hidden}
 #board-preview-wrap.tiles-hidden .tile{visibility:hidden}
 .sq{border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:normal;position:relative;border:1px solid rgba(255,255,255,0.06)}
@@ -126,7 +126,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 @keyframes bounty-gold-pulse{0%{filter:drop-shadow(0 0 0px rgba(240,192,0,0))}20%{filter:drop-shadow(0 0 18px #f0c060) drop-shadow(0 0 36px rgba(240,192,0,0.85))}55%{filter:drop-shadow(0 0 18px #f0c060) drop-shadow(0 0 36px rgba(240,192,0,0.85))}100%{filter:drop-shadow(0 0 0px rgba(240,192,0,0))}}
 .bounty-chip-pulse{animation:bounty-chip-pulse 0.45s ease-in-out forwards}
 @keyframes bounty-chip-pulse{0%{box-shadow:none}20%{box-shadow:inset 0 0 18px 7px rgba(240,192,0,0.55),0 0 14px 5px rgba(240,192,0,0.4)}55%{box-shadow:inset 0 0 18px 7px rgba(240,192,0,0.55),0 0 14px 5px rgba(240,192,0,0.4)}100%{box-shadow:none}}
-.hand-tile{width:68px;height:68px;box-shadow:0 4px 0 #6b5535;cursor:grab;position:absolute;top:0;transition:transform 0.12s ease,filter 0.12s ease}
+.hand-tile{width:68px;height:68px;box-shadow:0 4px 0 #6b5535;cursor:grab;position:absolute;top:0;transition:transform 0.12s ease,filter 0.12s ease;will-change:filter,transform}
 .hand-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(240,224,128,0.45));z-index:10;cursor:grab}
 .hand-tile.selected{transform:translateY(-5px);z-index:5;filter:brightness(1.15) drop-shadow(0 0 6px rgba(240,224,128,0.35))}
 .btn-icon{height:80px;border-radius:10px;border:none;cursor:pointer;font-size:34px;display:flex;align-items:center;justify-content:center;flex:1;font-family:'Jersey 10',Georgia}
@@ -251,7 +251,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .menu-item.danger{color:#ff8080}.menu-item.danger:hover{background:#2a0a0a}
 #seed-display:hover{background:transparent!important;color:#8880a8!important}
 #hammer-grid,#forge-grid-inner{display:flex;flex-wrap:wrap;gap:6px;max-height:340px;overflow-y:auto;padding:2px}
-#board-preview-wrap{display:inline-grid;gap:2px}
+#board-preview-wrap{display:inline-grid;gap:0}
 @keyframes bink{0%{transform:scale(1) translateY(0)}40%{transform:scale(1.28) translateY(-6px);background:#fffde7!important;box-shadow:0 0 22px rgba(255,220,60,.95),0 2px 0 #7a6800!important}72%{transform:scale(1.04) translateY(0px)}100%{transform:scale(1) translateY(0)}}
 .binking{animation:bink .42s cubic-bezier(.36,.07,.19,.97)!important}
 @keyframes sq-bink{0%{transform:scale(1)}30%{transform:scale(1.22)}65%{transform:scale(0.96)}100%{transform:scale(1)}}
@@ -265,37 +265,42 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .bounty-card-word{font-size:22px;font-weight:normal;color:#f0e080;letter-spacing:2px;margin:4px 0}
 .bounty-card-reward{font-size:30px;color:#60c060;margin-bottom:2px}
 .bounty-card-cost{font-size:30px;color:#9090b0;margin-bottom:6px}
-/* ── STAT PANEL (left 48px of mainui.png) ── */
-#stat-panel{position:relative;flex:1;background-image:url(Assets/sprites/mainui.png);background-size:266.667% 100%;background-position:0 0;background-repeat:no-repeat;image-rendering:pixelated}
-/* Split box left (y=18-30, x=3-17): letter score */
-#stat-word-score-box{position:absolute;top:14.0625%;left:6.25%;width:31.25%;height:10.1562%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+/* ── STAT PANEL ── */
+#stat-panel{position:relative;flex:1}
+/* Split box left (y=4-21, x=5-25): letter score */
+#stat-word-score-box{position:absolute;top:2.5%;left:7.8125%;width:32.8125%;height:11.25%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#ls-letters-wrap{display:flex;align-items:center;gap:4px}
 #ls-letters{font-size:clamp(16px,2.8vw,48px);font-weight:normal;color:#1a3a80;line-height:1}
-/* Split box right (y=18-30, x=27-41): multiplier */
-#stat-progress-box{position:absolute;top:14.0625%;left:56.25%;width:31.25%;height:10.1562%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#ls-tile-delta{font-size:clamp(10px,2vw,36px);font-weight:normal;color:#5890c8;line-height:1;opacity:0;max-width:0;overflow:hidden;white-space:nowrap;transition:opacity 0.15s ease,max-width 0.2s ease;transform-origin:left center}
+#ls-tile-delta.delta-active{opacity:1;max-width:120px}
+@keyframes ls-delta-enter{0%{transform:scale(0.55)}55%{transform:scale(1.22)}80%{transform:scale(0.94)}100%{transform:scale(1)}}
+.delta-enter{animation:ls-delta-enter 0.24s ease-out}
+/* Split box right (y=4-21, x=34-54): multiplier */
+#stat-progress-box{position:absolute;top:2.5%;left:53.125%;width:32.8125%;height:11.25%;display:flex;align-items:center;justify-content:center;overflow:hidden}
 #ls-mult{font-size:clamp(16px,2.8vw,48px);font-weight:normal;color:#801a0a;line-height:1}
 /* × between top boxes — absolutely positioned in stat-panel */
-#ls-op{position:absolute;left:46.88%;transform:translateX(-50%);top:14.0625%;height:10.1562%;display:flex;align-items:center;font-size:clamp(9px,1.6vw,26px);color:#3a2800;line-height:1;pointer-events:none}
-/* Second row (y=36-39): word score (left) and total/target (right) */
-#live-score-row{position:absolute;top:28.125%;left:0;right:0;height:3.125%;margin:0;padding:0;background:none;border:none}
+#ls-op{position:absolute;left:46.09%;transform:translateX(-50%);top:2.5%;height:11.25%;display:flex;align-items:center;font-size:clamp(9px,1.6vw,26px);color:#3a2800;line-height:1;pointer-events:none}
+/* Second row (y=28-33): word score (left) and total/target (right) */
+#live-score-row{position:absolute;top:17.5%;left:0;right:0;height:3.75%;margin:0;padding:0;background:none;border:none}
 #stat-letters-box{position:absolute;left:6.25%;width:37.5%;top:0;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
 #stat-mult-box{position:absolute;left:50%;width:37.5%;top:0;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
 #ls-score{font-size:clamp(10px,2vw,34px);font-weight:normal;color:#3a2800;line-height:1}
 #run-progress{font-size:clamp(8px,1.3vw,22px);font-weight:normal;color:#3a2800;line-height:1.1;white-space:normal;word-break:break-word;overflow:hidden;text-align:center;width:100%}
-/* Three boxes (y=44-54): gold, plays, disc */
-#stat-gold-box{position:absolute;top:34.375%;left:4.17%;width:22.92%;height:8.5938%;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#stat-plays-box{position:absolute;top:34.375%;left:35.42%;width:22.92%;height:8.5938%;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#stat-disc-box{position:absolute;top:34.375%;left:66.67%;width:22.92%;height:8.5938%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+/* Three boxes (y=43-57): gold, plays, disc */
+#stat-gold-box{position:absolute;top:26.875%;left:4.6875%;width:25%;height:9.375%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#stat-plays-box{position:absolute;top:26.875%;left:34.375%;width:25%;height:9.375%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#stat-disc-box{position:absolute;top:26.875%;left:64.0625%;width:25%;height:9.375%;display:flex;align-items:center;justify-content:center;overflow:hidden}
 #hud-gold{font-size:clamp(16px,2.6vw,46px);color:#5a3800;line-height:1}
 #hud-plays{font-size:clamp(16px,2.6vw,46px);color:#2a2a2a;line-height:1}
 #hud-disc{font-size:clamp(16px,2.6vw,46px);color:#6a1a1a;line-height:1}
-/* Bottom info box (y=111-125, x=3-41): stage progress + boards left */
-#stat-rounds-box{position:absolute;top:86.71875%;left:6.25%;width:81.25%;height:11.71875%;display:flex;align-items:stretch;overflow:hidden}
+/* Bottom info box (y=140-155, x=4-55): stage progress + boards left */
+#stat-rounds-box{position:absolute;top:87.5%;left:6.25%;width:81.25%;height:10%;display:flex;align-items:stretch;overflow:hidden}
 #stat-stage-prog{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border-right:1px solid rgba(58,40,0,0.25)}
 #stat-boards-left{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
 #hud-stage-prog{font-size:clamp(10px,1.8vw,30px);color:#3a2800;line-height:1;font-weight:normal}
 #hud-boards-left{font-size:clamp(10px,1.8vw,30px);color:#3a2800;line-height:1;font-weight:normal}
 .stat-box-label{font-size:clamp(5px,0.75vw,11px);color:#7a5a40;line-height:1;text-transform:uppercase;letter-spacing:0.5px}
-#bounty-row{overflow-y:auto;display:flex;flex-direction:column;gap:2px;align-items:center}
+#bounty-row{overflow-y:auto;display:flex;flex-direction:column;gap:2px;align-items:center;max-height:calc(21vw + 10px)}
 #score-bar-wrap{position:absolute;right:0.5vw;top:0.78125%;bottom:0.78125%;width:1vw;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
 #score-bar{width:100%;height:0%;background:linear-gradient(to top,#4aaa4a,#3a8a3a);transition:height .6s cubic-bezier(.22,1,.36,1);flex-shrink:0}
 /* Animations */
@@ -313,7 +318,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 #rp-top-row .btn-icon{height:90px;font-size:22px}
 #play-controls .btn-icon{height:90px;font-size:24px}
 /* Tile sticker hotbar */
-#tile-sticker-bar{height:84px;flex-shrink:0;position:relative;overflow:visible;background:#16162a;border-radius:8px;border:1px solid #2a2a4a}
+#tile-sticker-bar{height:80px;flex-shrink:0;position:relative;overflow:visible}
 .sticker-tile{width:68px;height:68px;cursor:grab;position:absolute;top:8px;transition:transform 0.12s ease,filter 0.12s ease}
 .sticker-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(200,160,255,0.45));z-index:10}
 /* Shop sticker bar — physics-driven, no box */
@@ -331,7 +336,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
   <!-- LEFT PANEL: mainui.png stat panel -->
   <div id="left-panel">
     <div id="stat-panel">
-      <div id="stat-word-score-box"><div id="ls-letters">0</div></div>
+      <div id="stat-word-score-box"><div id="ls-letters-wrap"><div id="ls-letters">0</div><div id="ls-tile-delta"></div></div></div>
       <div id="stat-progress-box"><div id="ls-mult">1</div></div>
       <div id="ls-op">×</div>
       <div id="live-score-row">
@@ -341,14 +346,16 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
       <div id="stat-gold-box"><div id="hud-gold">$0</div></div>
       <div id="stat-plays-box"><div id="hud-plays">4</div></div>
       <div id="stat-disc-box"><div id="hud-disc">3</div></div>
-      <div id="stat-rounds-box">
-        <div id="stat-stage-prog"><div class="stat-box-label">stage</div><div id="hud-stage-prog">1/3</div></div>
-        <div id="stat-boards-left"><div class="stat-box-label">boards left</div><div id="hud-boards-left">12</div></div>
+      <div id="stat-rounds-box" style="display:none">
+        <div id="stat-constraint-upcoming" style="width:100%;display:flex;align-items:flex-start;justify-content:flex-start;padding:3px 6px;text-align:left;font-size:clamp(10px,1.4vw,22px);color:#3a2800;line-height:1.3;overflow:hidden"></div>
       </div>
+      <img id="progress-tracker-sprite" src="Assets/animations/progress tracker/progress_tracker1.png" style="position:absolute;bottom:14.375%;left:1.5625%;width:90.625%;height:auto;image-rendering:pixelated;pointer-events:none">
       <div id="score-bar-wrap">
         <div id="score-bar"></div>
       </div>
       <div id="score-txt" style="display:none"></div>
+      <!-- Constraint banner (boss blinds only) — centred on wood grain below HUD values -->
+      <div id="constraint-banner" style="display:none;position:absolute;top:47%;left:5%;right:5%;background:#1e1608;border:1px solid #7a6020;border-radius:6px;padding:6px 8px;font-size:clamp(8px,1.4vw,22px);color:#f0c060;line-height:1.4;text-align:center"></div>
     </div>
   </div>
 
@@ -362,7 +369,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
     </div>
     <!-- Tiles + shuffle button + zoom buttons -->
     <div id="hand-wrap">
-      <button id="shuffle-btn" onclick="shuffleHand()" title="Shuffle hand">⇄</button>
+      <!-- shuffle-btn hidden; shuffleHand() preserved in play.js for re-adding with asset later -->
+      <button id="shuffle-btn" onclick="shuffleHand()" title="Shuffle hand" style="display:none">⇄</button>
       <div id="hand-area"></div>
       <!-- zoom buttons hidden; code preserved in ui.js (zoomBoard/zoomOut) and anim.js (animBoardZoomIn/Out)
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
@@ -378,11 +386,11 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
   <div id="right-panel">
     <!-- Top group: buttons + bounties -->
     <div style="display:flex;flex-direction:column;gap:20px">
-      <!-- Top row: same scale as play/discard buttons -->
-      <div id="rp-top-row" style="display:flex;gap:6px;flex-shrink:0;align-items:flex-start">
-        <button class="btn-icon btn-icon-gray" id="board-tile-toggle-btn" onclick="toggleBoardTiles()" title="Toggle tiles" style="font-size:28px">◉</button>
-        <div id="menu-wrap" style="position:relative;flex:1">
-          <button class="btn-icon btn-icon-gray" style="width:100%;font-size:28px" onclick="toggleMenu()">☰</button>
+      <!-- Top row: eye toggle + menu sprite -->
+      <div id="rp-top-row" style="position:relative;flex-shrink:0;width:93.75%;align-self:flex-end;margin-right:0.78125vw;margin-top:0.625vh;will-change:transform">
+        <img id="menu-hide-sprite" src="Assets/animations/menu and hide tiles/menu_hide_tiles1.png" style="width:100%;image-rendering:pixelated;display:block;cursor:pointer">
+        <div id="mh-eye-hit" style="position:absolute;left:0;top:0;width:50%;height:100%;cursor:pointer"></div>
+        <div id="menu-wrap" style="position:absolute;right:0;top:0;width:50%;height:100%;cursor:pointer">
           <div id="menu-dropdown" style="display:none">
             <div class="menu-item" onclick="openCollection()">Sticker Collection</div>
             <div class="menu-item" onclick="openAchievementsModal()">Achievements</div>
@@ -400,9 +408,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
       <!-- Bounties -->
       <div id="bounty-row"></div>
     </div>
-    <!-- Constraint banner (boss blinds only) -->
-    <div id="constraint-banner" style="display:none;background:#1e1608;border:1px solid #7a6020;border-radius:8px;padding:8px 10px;font-size:34px;color:#f0c060;line-height:1.35;text-align:center"></div>
-    <!-- Sticker hover tooltip — overlays constraint-banner while hovering a board sticker -->
+    <!-- Sticker hover tooltip — shows when hovering a board sticker -->
     <div id="sq-hover-tooltip" style="display:none;opacity:0;transition:opacity 150ms ease-in;background:#1e1608;border:1px solid #7a6020;border-radius:8px;padding:8px 10px;line-height:1.35">
       <div id="sqht-name" style="font-size:clamp(10px,1.8vw,26px);font-weight:bold;margin-bottom:4px"></div>
       <div id="sqht-desc" style="font-size:clamp(8px,1.35vw,19px);color:#c8c8d8;line-height:1.4"></div>
@@ -414,15 +420,16 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
     <!-- Play controls -->
     <div id="play-controls">
       <div style="display:flex;align-items:flex-end;padding-left:12px">
-        <div id="bag-count">98</div>
+        <div id="bag-count" style="margin-left:0.78125vw">98</div>
         <div style="flex:1"></div>
         <div id="bag-btn" onclick="openBagModal()">
           <img id="bag-sprite" src="Assets/animations/bag/bag-frame0.png">
         </div>
       </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn-icon btn-icon-green" onclick="playWord()" title="Play Word">✓</button>
-        <button class="btn-icon btn-icon-red" onclick="discardTiles()" title="Discard">✕</button>
+      <div id="play-disc-wrap" style="position:relative;width:93.75%;align-self:flex-end;margin-right:0.78125vw;will-change:transform">
+        <img id="play-disc-sprite" src="Assets/animations/play and discard buttons/play_discard_buttons1.png" style="width:100%;image-rendering:pixelated;display:block">
+        <div id="pd-play-hit" style="position:absolute;left:0;top:0;width:50%;height:100%;cursor:pointer"></div>
+        <div id="pd-disc-hit" style="position:absolute;right:0;top:0;width:50%;height:100%;cursor:pointer"></div>
       </div>
       <!-- check word button hidden; checkWordCost() preserved in ui.js
       <button class="btn btn-gray" onclick="checkWordCost()" style="font-size:30px;padding:6px 6px;margin:0;width:100%">Check $1</button>

@@ -85,7 +85,7 @@ SQ.push({id:'emergency_rations',name:'Emergency Rations',
       var idx=-1;for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===tile.id){idx=i;break;}}
       if(idx<0)return;
       S.bag.splice(idx,1);
-      S.hand.push({letter:tile.isBlank?'_':tile.letter,isBlank:!!tile.isBlank,id:uid(),variant:tile.variant||null,blueBonus:tile.blueBonus||0});
+      setTileState(tile,'hand');S.hand.push(tile);
       window._bagPickMode=null;
       closeBagUI();
       HP.x=[];HP.vx=[];

@@ -51,8 +51,9 @@ var shopPool={sq:[],tileCards:[],packs:[],bounties:[]};
 
 function buildBag(){
   var bag=[];var ks=Object.keys(DIST);
-  for(var i=0;i<ks.length;i++)for(var j=0;j<DIST[ks[i]];j++)bag.push({letter:ks[i],isBlank:false,id:uid()});
-  bag.push({letter:'_',isBlank:true,id:uid()});bag.push({letter:'_',isBlank:true,id:uid()});
+  for(var i=0;i<ks.length;i++)for(var j=0;j<DIST[ks[i]];j++)bag.push({letter:ks[i],isBlank:false,id:uid(),variant:null,state:'stored',storedIn:'bag'});
+  bag.push({letter:'_',isBlank:true,id:uid(),variant:null,state:'stored',storedIn:'bag'});
+  bag.push({letter:'_',isBlank:true,id:uid(),variant:null,state:'stored',storedIn:'bag'});
   return shuffle(bag);
 }
 
@@ -70,7 +71,7 @@ function startGame(seed){
      phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bhMult:1,palMult:1,playerMult:1,palWords:[],localCooldowns:new Set(),
      lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,
      constraintOrder:_co.slice(0,STAGES.length),usedLetters:new Set(),stickersSoldThisStage:0,crossroadsCount:0,
-     tileStickers:[],bagBlueAnchors:{},
+     tileStickers:[],bagBlueAnchors:{},pool:_bag.slice(),
      bounties:_generateBounties(3,[])};
   window._easyHint=null;
   shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};activeDrag=null;
@@ -78,6 +79,7 @@ function startGame(seed){
   document.getElementById('play-controls').style.display='flex';
   document.getElementById('placing-controls').style.display='none';
   HP.x=[];HP.vx=[];HP.tiles=[];
+  if(typeof _resetArcQueue==='function')_resetArcQueue();
   if(typeof _resetZoom==='function')_resetZoom();
   drawFull();renderAll();
 }
@@ -96,6 +98,43 @@ function _autoRegisterBlueAnchors(){
   }
 }
 
+// ---- Tile mutation ----
+// transformTile: mutate or destroy a tile wherever it lives (pool, bag, hand, board).
+// opts: { variant:'gold'|'red'|'blue'|null, isBlank:true, destroy:true }
+function transformTile(tileId,opts){
+  if(!tileId)return null;
+  opts=opts||{};
+  if(opts.destroy){
+    if(S.pool)S.pool=S.pool.filter(function(pt){return pt.id!==tileId;});
+    for(var _i=S.bag.length-1;_i>=0;_i--){if(S.bag[_i]&&S.bag[_i].id===tileId){S.bag.splice(_i,1);break;}}
+    for(var _i=S.hand.length-1;_i>=0;_i--){if(S.hand[_i]&&S.hand[_i].id===tileId){S.hand.splice(_i,1);break;}}
+    for(var _i=0;_i<B*B;_i++){
+      if(S.bt[_i]&&S.bt[_i].id===tileId)S.bt[_i]=null;
+      if(S.btTop&&S.btTop[_i]&&S.btTop[_i].id===tileId)S.btTop[_i]=null;
+    }
+    return null;
+  }
+  var _pe=null;
+  if(S.pool){for(var _i=0;_i<S.pool.length;_i++){if(S.pool[_i].id===tileId){_pe=S.pool[_i];break;}}}
+  var _ap=function(o){if(!o)return;if('variant' in opts)o.variant=opts.variant;if(opts.isBlank){o.isBlank=true;o.letter='_';if('blankAs' in o)o.blankAs=null;}};
+  _ap(_pe);
+  for(var _i=0;_i<S.bag.length;_i++){if(S.bag[_i]&&S.bag[_i].id===tileId&&S.bag[_i]!==_pe){_ap(S.bag[_i]);break;}}
+  for(var _i=0;_i<S.hand.length;_i++){if(S.hand[_i]&&S.hand[_i].id===tileId){_ap(S.hand[_i]);break;}}
+  for(var _i=0;_i<B*B;_i++){
+    if(S.bt[_i]&&S.bt[_i].id===tileId)_ap(S.bt[_i]);
+    if(S.btTop&&S.btTop[_i]&&S.btTop[_i].id===tileId)_ap(S.btTop[_i]);
+  }
+  if(opts.variant==='blue')_autoRegisterBlueAnchors();
+  return _pe;
+}
+
+// addTileToBag: create a new tile and add it to both the bag and pool.
+function addTileToBag(opts){
+  var t={letter:opts.letter||'_',isBlank:!!opts.isBlank,id:uid(),variant:opts.variant||null,state:'stored',storedIn:'bag'};
+  S.bag.push(t);(S.pool=S.pool||[]).push(t);
+  return t;
+}
+
 function _tickBagCount(from,to,ms){
   var el=document.getElementById('bag-count');if(!el)return;
   if(from<=to){el.textContent=to;return;}
@@ -103,11 +142,12 @@ function _tickBagCount(from,to,ms){
   (function step(){cur--;el.textContent=cur;if(cur>to)setTimeout(step,ms);})();
 }
 
-function drawFull(){
+function drawFull(maxDraw){
   var hm=handMax();
   var _c=currentConstraint();
   var cap=(_c==='c_draw3')?3:(hm-S.hand.length);
   var n=Math.min(hm-S.hand.length,cap);
+  if(maxDraw!==undefined)n=Math.min(n,maxDraw);
   if(n<=0)return;
   for(var i=0;i<n&&S.bag.length>0;i++){
     var _dt=null;
@@ -128,7 +168,8 @@ function drawFull(){
       }
     }catch(e){}
     if(!_dt)_dt=S.bag.pop();
-    S.hand.push({letter:_dt.letter,isBlank:_dt.isBlank,id:_dt.id,blankAs:null,sel:false,onBoard:false,variant:_dt.variant||null,blueBonus:_dt.blueBonus||0});
+    setTileState(_dt,'hand');
+    S.hand.push(_dt);
   }
   if(S.phase==='play')_scheduleRankSolve();
 }
@@ -170,8 +211,8 @@ function advanceRound(){
 
   var _pbBlanks=0;
   if(newStage){
-    // Count paint buckets while S.placed still has them
-    for(var _pbi=0;_pbi<S.placed.length;_pbi++){var _pb=S.placed[_pbi];if(_pb.id==='paint_bucket'&&_pb.sqIdx!=null&&S.bt[_pb.sqIdx])_pbBlanks++;}
+    // Paint bucket: blank the tile that was committed on its square (transforms pool entry in place)
+    for(var _pbi=0;_pbi<S.placed.length;_pbi++){var _pb=S.placed[_pbi];if(_pb.id==='paint_bucket'&&_pb.sqIdx!=null&&S.bt[_pb.sqIdx]&&S.bt[_pb.sqIdx].id){_pbBlanks++;transformTile(S.bt[_pb.sqIdx].id,{isBlank:true});}}
     // End-of-stage sticker effects (Bourgeois, etc.)
     _fireAllStickers('onEndStage',[]);
   }
@@ -192,10 +233,12 @@ function _clearBoardStickers(){
 function _doStageAnimation(newStage,pbBlanks){
   animBoardToShop(function(){
     if(newStage){
-      clearBoardLetters();S.bag=buildBag();
-      for(var k=0;k<(pbBlanks||0);k++)S.bag.push({letter:'_',isBlank:true,id:uid()});
-      if(pbBlanks)S.bag=shuffle(S.bag);
-      var _pbMsg=pbBlanks?' Paint Bucket: +'+pbBlanks+' blank'+(pbBlanks!==1?'s':'')+'.':'';
+      clearBoardLetters();
+      var _handIds=new Set((S.hand||[]).map(function(t){return t&&t.id;}).filter(Boolean));
+      var _reBag=(S.pool||[]).filter(function(pt){return !_handIds.has(pt.id);});
+      _reBag.forEach(function(pt){setTileState(pt,'stored',{storedIn:'bag'});});
+      S.bag=shuffle(_reBag);
+      var _pbMsg=pbBlanks?' Paint Bucket: '+pbBlanks+' tile'+(pbBlanks!==1?'s':'')+' blanked.':'';
       toast(S.endless?'Endless mode! Targets keep rising.':'New stage — board cleared!'+_pbMsg);
     }
     S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
@@ -1016,12 +1059,13 @@ function _fireAllStickers(hookName,args){
   }
 }
 
-function openBlankChooser(hi,cb2){
+function openBlankChooser(tileOrHi,cb2){
+  var t=(typeof tileOrHi==='number')?S.hand[tileOrHi]:tileOrHi;
   var grid=document.getElementById('blank-grid');grid.innerHTML='';
   'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(function(l){
     var btn=document.createElement('button');btn.className='blank-btn';btn.textContent=l;
     btn.onclick=function(){
-      var t=S.hand[hi];t.blankAs=l;
+      t.blankAs=l;
       if(t._devBlank)t._alchSc=LS[l]||0;
       document.getElementById('blank-modal').style.display='none';if(cb2)cb2();renderHand();
     };

@@ -45,7 +45,8 @@ function saveGame() {
       stickersSoldThisStage: S.stickersSoldThisStage||0,
       crossroadsCount: S.crossroadsCount||0,
       tileStickers: (S.tileStickers||[]).map(function(ts){return{id:ts.id};}),
-      stickerInventory: (S.stickerInventory||[]).map(function(p){return{id:p.id};})
+      stickerInventory: (S.stickerInventory||[]).map(function(p){return{id:p.id};}),
+      pool: (S.pool||[]).map(function(t){return{letter:t.letter,isBlank:!!t.isBlank,id:t.id,variant:t.variant||null};})
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch(e) {}
@@ -66,7 +67,7 @@ function loadGame() {
       bag:   d.bag || [],
       hand:  (d.hand || []).map(function(t) {
         if (!t) return null;
-        return Object.assign({sel:false,onBoard:false,_boardSq:undefined}, t);
+        return Object.assign({sel:false,onBoard:false,_boardSq:undefined,state:'hand'}, t);
       }),
       board: d.board || Array(B * B).fill(null),
       bt:    d.bt    || Array(B * B).fill(null),
@@ -101,7 +102,14 @@ function loadGame() {
       stickersSoldThisStage: d.stickersSoldThisStage||0,
       crossroadsCount: d.crossroadsCount||0,
       tileStickers: (d.tileStickers||[]).map(function(ts){return(ts&&ts.id)?{id:ts.id}:null;}).filter(Boolean),
-      devMode: false
+      devMode: false,
+      pool: d.pool || (function(){
+        var pm={};
+        (d.bag||[]).forEach(function(t){if(t&&t.id)pm[t.id]={letter:t.letter,isBlank:!!t.isBlank,id:t.id,variant:t.variant||null};});
+        (d.hand||[]).forEach(function(t){if(t&&t.id)pm[t.id]={letter:t.letter,isBlank:!!t.isBlank,id:t.id,variant:t.variant||null};});
+        (d.bt||[]).forEach(function(bt){if(bt&&bt.tileId&&!bt.isNew)pm[bt.tileId]={letter:bt.letter,isBlank:!!bt.isBlank,id:bt.tileId,variant:bt.variant||null};});
+        return Object.keys(pm).map(function(k){return pm[k];});
+      })()
     };
     return true;
   } catch(e) { clearSave(); return false; }
@@ -120,6 +128,7 @@ function resumeGame() {
   document.getElementById('play-controls').style.display = 'flex';
   document.getElementById('placing-controls').style.display = 'none';
   HP.x = []; HP.vx = []; HP.tiles = [];
+  if (typeof _resetArcQueue === 'function') _resetArcQueue();
   if (typeof _resetZoom === 'function') _resetZoom();
   drawFull();
   renderAll();

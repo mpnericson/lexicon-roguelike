@@ -60,11 +60,12 @@ async function playWord(){
   if(!scoreLocked){
     if(justUnlocked)toast('Palindrome! Scoring is now live.');
     var res=scorePlay(nt,dir,false);
+    _fireAllStickers('onWordPlayed',[main.word,main.tiles]);
     if(_hasDT)delete S._drunkValid;
     await runScoreAnim(res.events,res.total);
     S.score+=res.total;S.gold+=res.tgold;
     var _hasMT=false;for(var _mti=0;_mti<S.tileStickers.length;_mti++)if(S.tileStickers[_mti].id==='midas_touch'){_hasMT=true;break;}
-    if(_hasMT&&main.word.length>=5){for(var _mj=0;_mj<main.tiles.length;_mj++){if(S.bt[main.tiles[_mj].idx])S.bt[main.tiles[_mj].idx].variant='gold';}}
+    if(_hasMT&&main.word.length>=5){for(var _mj=0;_mj<main.tiles.length;_mj++){var _mIdx=main.tiles[_mj].idx;if(S.bt[_mIdx])transformTile(S.bt[_mIdx].id,{variant:'gold'});}}
     S.crossroadsCount=(S.crossroadsCount||0)+(res.crossWordCount||0);
     S._crossroadsLiveCount=null; // animation's display-only counter is now caught up — defer to the real one
     _proletariatSpread();
@@ -83,17 +84,14 @@ async function playWord(){
       if(!S.bt[_stIdx]||S.board[_stIdx]!=='spring_trap')continue;
       var _stTile=S.bt[_stIdx];
       var _stRoll=_rng();var _stVariant=_stRoll<0.25?'gold':_stRoll<0.5?'blue':_stRoll<0.75?'red':(_stTile.variant||null);
-      var _stBagTile={letter:_stTile.isBlank?'_':_stTile.letter,isBlank:!!_stTile.isBlank,id:uid(),variant:_stVariant,blueBonus:_stTile.blueBonus||0};
-      if(_stTile.isNew){
-        var _stHt=S.hand[_stTile.handIdx]||null;
-        if(!_stHt&&_stTile.tileId)for(var _shfi=0;_shfi<S.hand.length;_shfi++){if(S.hand[_shfi]&&S.hand[_shfi].id===_stTile.tileId){_stHt=S.hand[_shfi];break;}}
-        if(_stHt)_stHt._done=true;
-      }
+      var _stOrigId=_stTile.id||null;
+      if(_stOrigId)transformTile(_stOrigId,{destroy:true});
+      var _stBagTile=addTileToBag({letter:_stTile.isBlank?'_':_stTile.letter,isBlank:!!_stTile.isBlank,variant:_stVariant});
       var _stCell=document.querySelector('[data-sq-idx="'+_stIdx+'"]');
       var _stRect=_stCell?_stCell.getBoundingClientRect():null;
       S.bt[_stIdx]=null;S.board[_stIdx]=null;
       for(var _spi=S.placed.length-1;_spi>=0;_spi--){if(S.placed[_spi].id==='spring_trap'&&S.placed[_spi].sqIdx===_stIdx){S.placed.splice(_spi,1);break;}}
-      S.bag.push(_stBagTile);
+
       var _stVLabel=_stVariant?(' as '+_stVariant):'';
       toast('Spring Trap! '+(_stBagTile.isBlank?'?':_stBagTile.letter)+' returned to bag'+_stVLabel+'.');
       renderBoard();
@@ -144,19 +142,17 @@ async function playWord(){
   if(_con==='c_letters'){var _mts=main.tiles;for(var _li2=0;_li2<_mts.length;_li2++){if(!_mts[_li2].isBlank&&_mts[_li2].letter)(S.usedLetters=S.usedLetters||new Set()).add(_mts[_li2].letter);}}
   S.lastWordLen=main.word.length;
   var blueTiles=[];
-  for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){S.bt[i].isNew=false;S.bt[i].flying=false;var t=S.hand[S.bt[i].handIdx];if(!t&&S.bt[i].tileId){for(var _fi=0;_fi<S.hand.length;_fi++){if(S.hand[_fi]&&S.hand[_fi].id===S.bt[i].tileId){t=S.hand[_fi];break;}}}if(t){if(t.variant==='blue'){var nb=(t.blueBonus||0)+(t.isBlank?0:(LS[t.letter]||0));blueTiles.push({letter:t.letter,isBlank:t.isBlank,id:t.id,variant:'blue',blueBonus:nb});}t._done=true;}}}
+  for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){var _bt=S.bt[i];if(_bt.variant==='blue'){_bt.blueBonus=(_bt.blueBonus||0)+(_bt.isBlank?0:(LS[_bt.letter]||0));blueTiles.push(_bt);S.bt[i]=null;}else{setTileState(_bt,'board',{boardSq:i,isNew:false});}}}
   // Commit Jenga stacked tiles: btTop replaces bt at that square
-  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var tTop=S.hand[S.btTop[i].handIdx];if(!tTop&&S.btTop[i].tileId){for(var _fi2=0;_fi2<S.hand.length;_fi2++){if(S.hand[_fi2]&&S.hand[_fi2].id===S.btTop[i].tileId){tTop=S.hand[_fi2];break;}}}S.btTop[i].isNew=false;S.btTop[i].flying=false;S.btTop[i]._stackLevel=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;S.bt[i]=S.btTop[i];S.btTop[i]=null;if(tTop){if(tTop.variant==='blue'){var nb2=(tTop.blueBonus||0)+(tTop.isBlank?0:(LS[tTop.letter]||0));blueTiles.push({letter:tTop.letter,isBlank:tTop.isBlank,id:tTop.id,variant:'blue',blueBonus:nb2});}tTop._done=true;}}}}
-  // Safety: after all commit loops any hand tile still onBoard is a ghost (lookup failed) — mark done
-  for(var _gi=0;_gi<S.hand.length;_gi++){if(S.hand[_gi]&&S.hand[_gi].onBoard&&!S.hand[_gi]._done)S.hand[_gi]._done=true;}
-  // Save positions of kept (un-played) tiles before filtering
-  var pwKept={};var _pwvi=0;for(var _pwki=0;_pwki<S.hand.length;_pwki++){var _pwt=S.hand[_pwki];if(_pwt&&!_pwt.onBoard){if(!_pwt._done&&HP.x[_pwvi]!==undefined)pwKept[_pwt.id]=HP.x[_pwvi];_pwvi++;}}
-  S.hand=S.hand.filter(function(t){return!t._done;});
-  for(var i=0;i<blueTiles.length;i++)S.bag.push(blueTiles[i]);
+  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var _btt=S.btTop[i];if(_btt.variant==='blue'){_btt.blueBonus=(_btt.blueBonus||0)+(_btt.isBlank?0:(LS[_btt.letter]||0));blueTiles.push(_btt);S.btTop[i]=null;}else{setTileState(_btt,'board',{boardSq:i,isNew:false});_btt._stackLevel=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;S.bt[i]=_btt;S.btTop[i]=null;}}}}
+  for(var i=0;i<blueTiles.length;i++){setTileState(blueTiles[i],'stored',{storedIn:'bag'});S.bag.push(blueTiles[i]);}
   if(blueTiles.length){S.bag=shuffle(S.bag);toast('Blue tile'+(blueTiles.length>1?'s':'')+' returned to bag!');}
+  // Save positions of kept tiles before filtering
+  var pwKept={};var _pwvi=0;for(var _pwki=0;_pwki<S.hand.length;_pwki++){var _pwt=S.hand[_pwki];if(_pwt){if(HP.x[_pwvi]!==undefined)pwKept[_pwt.id]=HP.x[_pwvi];_pwvi++;}}
+  S.hand=S.hand.filter(function(t){return!t._done;});
   HP.x=[];HP.vx=[];window._easyHint=null;
   S.plays--;
-  var pwKeptN=S.hand.filter(function(t){return t&&!t.onBoard;}).length;
+  var pwKeptN=S.hand.filter(Boolean).length;
   // Predict final hand size so Phase 1 slides tiles to their true final positions.
   var _hm=handMax();var _drawCap=(_con==='c_draw3')?3:_hm;var _pwDrawN=S.devMode?Math.min(_hm-S.hand.length,_drawCap):Math.min(Math.min(_hm-S.hand.length,_drawCap),S.bag.length);
   var _pwTotalN=pwKeptN+Math.max(0,_pwDrawN);
@@ -196,23 +192,24 @@ async function playWord(){
 // Phase 2: burst new tiles from the bag in when phase 1 settles.
 // Returns a Promise that resolves when _burstNewTilesFromBag completes.
 // Callers that need to await (playWord) do so; callers that don't (discardTiles) ignore the Promise.
-function _animateDrawPhase(keptOldPos,keptCount,totalN){
+function _animateDrawPhase(keptOldPos,keptCount,totalN,maxDraw){
   renderAll();
   var vi=0;
   for(var ki=0;ki<S.hand.length;ki++){
     var t=S.hand[ki];
-    if(t&&!t.onBoard){
+    if(t){
       if(keptOldPos[t.id]!==undefined){HP.x[vi]=keptOldPos[t.id];HP.vx[vi]=0;}
       vi++;
     }
   }
+  hpDraw();
   hpBounds();HP.fromX=HP.x.slice();HP.toX=hpRest(totalN).slice(0,keptCount);
   HP.settleDur=200;HP.settleAt=performance.now();
   return new Promise(function(resolve){
     HP.settleCallback=function(){
       HP.settleDur=150;
       var _bagBefore=S.bag.length;
-      drawFull();renderHUD();renderBoard();
+      drawFull(maxDraw);renderHUD();renderBoard();
       _tickBagCount(_bagBefore,S.bag.length,130);
       _burstNewTilesFromBag(keptCount,totalN,document.getElementById('bag-btn'),resolve);
     };
@@ -227,7 +224,7 @@ function shuffleHand(){
   if(S.phase!=='play')return;
   _playTileClick('pick');
   var freeIdxs=[],freeTiles=[];
-  for(var i=0;i<S.hand.length;i++){if(S.hand[i]&&!S.hand[i].onBoard){freeIdxs.push(i);freeTiles.push(S.hand[i]);}}
+  for(var i=0;i<S.hand.length;i++){if(S.hand[i]){freeIdxs.push(i);freeTiles.push(S.hand[i]);}}
   if(freeTiles.length<2)return;
   for(var i=freeTiles.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var tmp=freeTiles[i];freeTiles[i]=freeTiles[j];freeTiles[j]=tmp;}
   for(var i=0;i<freeIdxs.length;i++)S.hand[freeIdxs[i]]=freeTiles[i];
@@ -238,24 +235,25 @@ function shuffleHand(){
 function discardTiles(){
   if(currentConstraint()==='c_nodisc'){toast('Constraint: no discards this round!');return;}
   if(S.disc<=0){toast('No discards remaining!');return;}
-  var sel=[];for(var i=0;i<S.hand.length;i++)if(S.hand[i]&&S.hand[i].sel&&!S.hand[i].onBoard)sel.push(i);
+  var sel=[];for(var i=0;i<S.hand.length;i++)if(S.hand[i]&&S.hand[i].sel)sel.push(i);
   if(!sel.length){toast('Click tiles to select them first.');return;}
   var selEls=Array.prototype.slice.call(document.getElementById('hand-area').querySelectorAll('.hand-tile.selected'));
   var N=selEls.length,done=0;
   var dur=180;
   function afterSnap(){
     var keptOldPos={};var _vi=0;
-    for(var _ki=0;_ki<S.hand.length;_ki++){var _t=S.hand[_ki];if(_t&&!_t.onBoard){if(!_t.sel&&HP.x[_vi]!==undefined)keptOldPos[_t.id]=HP.x[_vi];_vi++;}}
-    S.hand=S.hand.filter(function(t){return!t||!t.sel||t.onBoard;});HP.x=[];HP.vx=[];window._easyHint=null;S.disc--;
-    for(var bi=0;bi<B*B;bi++){if(S.bt[bi]&&S.bt[bi].isNew){for(var k=0;k<S.hand.length;k++){if(S.hand[k]&&S.hand[k].onBoard&&S.hand[k]._boardSq===bi){S.bt[bi].handIdx=k;break;}}}}
-    if(S.btTop){for(var bi=0;bi<B*B;bi++){if(S.btTop[bi]&&S.btTop[bi].isNew){for(var k=0;k<S.hand.length;k++){if(S.hand[k]&&S.hand[k].onBoard&&S.hand[k]._boardSq===bi){S.btTop[bi].handIdx=k;break;}}}}}
+    for(var _ki=0;_ki<S.hand.length;_ki++){var _t=S.hand[_ki];if(_t){if(!_t.sel&&HP.x[_vi]!==undefined)keptOldPos[_t.id]=HP.x[_vi];_vi++;}}
+    // Capture discard IDs before setTileState clears t.sel, then filter by ID.
+    var _discardIds={};
+    for(var _di=0;_di<S.hand.length;_di++){if(S.hand[_di]&&S.hand[_di].sel){_discardIds[S.hand[_di].id]=true;setTileState(S.hand[_di],'stored',{storedIn:'discard'});}}
+    S.hand=S.hand.filter(function(t){return!t||!_discardIds[t.id];});HP.x=[];HP.vx=[];window._easyHint=null;S.disc--;
     var hasCooker=false;for(var i=0;i<S.tileStickers.length;i++)if(S.tileStickers[i].id==='pressure_cooker'){hasCooker=true;break;}
     if(hasCooker)S.discPressure=(S.discPressure||0)+1;
     saveGame();
-    var keptCount=S.hand.filter(function(t){return t&&!t.onBoard;}).length;
-    var _hm2=handMax();var _drawCap2=(currentConstraint()==='c_draw3')?3:_hm2;var _dcDrawN=S.devMode?Math.min(_hm2-S.hand.length,_drawCap2):Math.min(Math.min(_hm2-S.hand.length,_drawCap2),S.bag.length);
+    var keptCount=S.hand.filter(Boolean).length;
+    var _hm2=handMax();var _drawCap2=(currentConstraint()==='c_draw3')?3:_hm2;var _dcDrawN=S.devMode?Math.min(sel.length,_drawCap2):Math.min(Math.min(sel.length,_drawCap2),S.bag.length);
     var _dcTotalN=keptCount+Math.max(0,_dcDrawN);
-    _animateDrawPhase(keptOldPos,keptCount,_dcTotalN);
+    _animateDrawPhase(keptOldPos,keptCount,_dcTotalN,_dcDrawN);
   }
   if(!N){afterSnap();return;}
   for(var si=0;si<N;si++){

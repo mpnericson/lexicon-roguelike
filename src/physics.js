@@ -14,13 +14,15 @@ function makePhysics(opts) {
     DAMP: 0.55, SPRING: 0.14,
     RAF: null, aL: 0, aR: 0, left: 0,
     fromX: [], toX: [], settleAt: 0, settleDur: 150,
-    settleCallback: null
+    settleCallback: null,
+    movingCount: 0   // tiles in 'moving' state heading back to hotbar (phantom slots)
   };
 
   ph.bounds = function() {
     var el = document.getElementById(_areaId); if (!el) return;
     var r = el.getBoundingClientRect();
-    var n = ph.tiles.length || 7;
+    // Include moving (in-flight) tiles so bounds stay wide enough for all phantom slots.
+    var n = Math.max(ph.tiles.length + ph.movingCount, ph.tiles.length || 7);
     var boxW = (n + 2.5) * ph.TILE_W;
     var cx = (r.left + r.right) / 2;
     ph.left = r.left;
@@ -39,8 +41,25 @@ function makePhysics(opts) {
   ph.rebuild = function(vis) {
     ph.bounds();
     var n = vis.length;
+    if (ph.x.length !== n) {
+      // Remap positions by item ID so tiles don't snap when count changes.
+      // Works for both hand-tile vis entries ({t,oi}) and raw sticker items ({id,...}).
+      var old = {};
+      for (var i = 0; i < ph.tiles.length; i++) {
+        var it = ph.tiles[i]; var tid = (it.t && it.t.id) || it.id || null;
+        if (tid) old[tid] = { x: ph.x[i] || 0, vx: ph.vx[i] || 0 };
+      }
+      var rest = ph.rest(n);
+      ph.x = []; ph.vx = [];
+      for (var i = 0; i < n; i++) {
+        var it = vis[i]; var tid = (it.t && it.t.id) || it.id || null;
+        var d = tid ? old[tid] : null;
+        if (d) { ph.x.push(d.x); ph.vx.push(d.vx); }
+        else { ph.x.push(rest[i]); ph.vx.push(0); }
+      }
+      ph.fromX = []; ph.toX = []; ph.settleAt = 0; ph.settleCallback = null;
+    }
     ph.tiles = vis.slice();
-    if (ph.x.length !== n) { ph.x = ph.rest(n); ph.vx = Array(n).fill(0); ph.fromX = []; ph.toX = []; ph.settleAt = 0; }
   };
 
   ph.inArea = function(x, y) {
@@ -63,23 +82,58 @@ function makePhysics(opts) {
     var n = ph.tiles.length;
     ph.bounds();
     var dragVi = activeDrag && activeDrag.src === _dragSrc ? activeDrag.vi : -1;
-    var dragOverArea = dragVi >= 0 && activeDrag && ph.inArea(activeDrag.cx, activeDrag.cy || 0);
+    // Multi-hand drag also creates a gap in the hand physics (same area, different activeDrag.src).
+    var isMultiDrag = activeDrag && activeDrag.src === 'multi-hand' && _dragSrc === 'hand';
+    var multiCount = isMultiDrag ? (activeDrag.multiCount || 1) : 0;
+    // Expand layout bounds so the drag gap doesn't get wall-clamped.
+    if (isMultiDrag && multiCount > 0) {
+      var _gapExtra = (multiCount + 0.5) * (ph.TILE_W + ph.GAP) / 2;
+      ph.aL -= _gapExtra; ph.aR += _gapExtra;
+    }
+    var dragOverArea = (dragVi >= 0 || isMultiDrag) && activeDrag && ph.inArea(activeDrag.cx || 0, activeDrag.cy || 0);
     var prevX = ph.x.slice();
     var active = [];
     for (var i = 0; i < n; i++) if (i !== dragVi) active.push(i);
     var restX = {};
     var midX = (ph.aL + ph.aR) / 2;
-    if (dragOverArea && dragVi >= 0 && activeDrag) {
+    if (dragOverArea && activeDrag) {
       var insertIdx = 0;
-      for (var j = 0; j < active.length; j++) { if (activeDrag.cx > ph.x[active[j]]) insertIdx = j + 1; }
-      var totalW = (active.length + 1) * ph.TILE_W + active.length * ph.GAP;
+      if (activeDrag.funnelInsertIdx !== undefined) {
+        // Funnel mode: insertIdx locked at threshold crossing — skip direction-aware detection
+        // so the gap always opens at exactly the committed slot regardless of _prevGapRef state.
+        insertIdx = activeDrag.funnelInsertIdx;
+      } else {
+        // Unified gap trigger for single and multi drag.
+        // The hotbar tile switches sides when the leading edge of the dragged group has gone
+        // halfway through its hitbox (TILE_W/2 past its centre).
+        // Moving right → leading edge is the right side of gapRight; moving left → left side of gapLeft.
+        var _grL = activeDrag.gapLeft !== undefined ? activeDrag.gapLeft : (activeDrag.cx || 0);
+        var _grR = activeDrag.gapRight !== undefined ? activeDrag.gapRight : (activeDrag.cx || 0);
+        var _prevGR = activeDrag._prevGapRef;
+        activeDrag._prevGapRef = _grR;
+        var _movingRight = _prevGR === undefined || _grR >= _prevGR;
+        var _ref = _movingRight ? _grR + ph.TILE_W / 2 : _grL - ph.TILE_W / 2;
+        for (var j = 0; j < active.length; j++) { if (_ref > ph.x[active[j]]) insertIdx = j + 1; }
+      }
+      // Gap sizes: n+0.5 for all hand drags (single tile = multiCount 1 → 1.5). Sticker drags stay at 1.
+      var gapCount = dragVi >= 0 ? 1 : multiCount + 0.5;
+      var totalW = (active.length + gapCount) * ph.TILE_W + (active.length + gapCount - 1) * ph.GAP;
       var startX = midX - totalW / 2; var col = 0;
       for (var j = 0; j < active.length; j++) {
-        if (j === insertIdx) col++;
+        if (j === insertIdx) col += gapCount;
         restX[active[j]] = startX + col * (ph.TILE_W + ph.GAP) + ph.TILE_W / 2; col++;
       }
+      // Expose the visual centre of the anchor tile's position inside the gap.
+      // Gap is gapCount wide; tiles centred inside it means anchor is at column + 0.75, not +0.5.
+      if (isMultiDrag && activeDrag) {
+        var _anchorSlot = insertIdx + (activeDrag.dragIdx !== undefined ? activeDrag.dragIdx : 0);
+        ph.gapCenterX = startX + (_anchorSlot + 0.75) * ph.TILE_W;
+      }
     } else {
-      var totalW = active.length * ph.TILE_W + (active.length > 1 ? (active.length - 1) * ph.GAP : 0);
+      // Phantom slots: reserve space on the right for tiles in 'moving' state.
+      // Total slot count = real tiles + moving tiles; real tiles occupy leftmost slots.
+      var _nSlots = active.length + (ph.movingCount > 0 ? ph.movingCount : 0);
+      var totalW = _nSlots > 0 ? _nSlots * ph.TILE_W + (_nSlots > 1 ? (_nSlots - 1) * ph.GAP : 0) : 0;
       var startX = midX - totalW / 2;
       for (var j = 0; j < active.length; j++) restX[active[j]] = startX + j * (ph.TILE_W + ph.GAP) + ph.TILE_W / 2;
     }
@@ -135,6 +189,19 @@ function makePhysics(opts) {
       el.style.opacity = '1';
       el.style.left = (ph.x[i] - ph.TILE_W / 2 - ph.left) + 'px';
     }
+  };
+
+  // Returns the x-centre of the next available phantom slot — the first slot to the right
+  // of all currently in-hand tiles, within the total (hand + moving) layout.
+  // Call BEFORE setTileState('hand') and HP.x.push so counts are still accurate.
+  ph.nextLandX = function() {
+    ph.bounds();
+    var n = ph.x.length;
+    var m = ph.movingCount > 0 ? ph.movingCount : 0;
+    var total = n + m;
+    if (!total) return (ph.aL + ph.aR) / 2;
+    var tw = total * ph.TILE_W + (total > 1 ? (total - 1) * ph.GAP : 0);
+    return (ph.aL + ph.aR) / 2 - tw / 2 + n * (ph.TILE_W + ph.GAP) + ph.TILE_W / 2;
   };
 
   return ph;

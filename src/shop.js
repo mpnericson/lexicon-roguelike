@@ -1002,16 +1002,14 @@ function _renderBagActions(sel,actDiv){
   }
   actDiv.appendChild(mkBtn('Enchant $2',shopPool.bagEnchantUsed,function(){_bagEnchantFlow(t,sel,actDiv);}));
   actDiv.appendChild(mkBtn('Destroy $2',shopPool.bagDestroyUsed,function(){
-    var idx=-1;for(var i=0;i<S.bag.length;i++)if(S.bag[i].id===t.id){idx=i;break;}
-    if(idx<0){toast('Tile not found.');return;}
     if(!spendGold(2))return;
-    S.bag.splice(idx,1);shopPool.bagDestroyUsed=true;shopPool.bagDisplay=null;
+    transformTile(t.id,{destroy:true});shopPool.bagDestroyUsed=true;shopPool.bagDisplay=null;
     renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
     toast((t.isBlank?'Blank':t.letter)+' destroyed!');closeShopBagUI();renderShop();
   }));
   actDiv.appendChild(mkBtn('Duplicate $2',shopPool.bagDupUsed,function(){
     if(!spendGold(2))return;
-    S.bag.push(Object.assign({},t,{id:uid()}));S.bag=shuffle(S.bag);shopPool.bagDupUsed=true;shopPool.bagDisplay=null;
+    addTileToBag({letter:t.letter,isBlank:t.isBlank,variant:t.variant});S.bag=shuffle(S.bag);shopPool.bagDupUsed=true;shopPool.bagDisplay=null;
     renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
     toast((t.isBlank?'Blank':t.letter)+' duplicated!');closeShopBagUI();renderShop();
   }));
@@ -1026,11 +1024,8 @@ function _bagEnchantFlow(t,sel,actDiv){
     b.style.cssText='background:#1a1a3a;border:1px solid '+vt.col+';color:'+vt.col+';font-family:\'Jersey 10\',Georgia;font-size:28px;cursor:pointer;padding:8px 16px;border-radius:4px';
     b.textContent=vt.label+' $2';
     b.onclick=function(){
-      var idx=-1;for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===t.id){idx=i;break;}}
-      if(idx<0){toast('Tile not found.');return;}
       if(!spendGold(2))return;
-      S.bag[idx].variant=vt.v;if(vt.v==='blue')S.bag[idx].blueBonus=0;
-      if(vt.v==='blue')_autoRegisterBlueAnchors();
+      transformTile(t.id,{variant:vt.v});
       shopPool.bagEnchantUsed=true;shopPool.bagDisplay=null;
       renderHUD();toast(vt.label+' '+t.letter+' enchanted!');closeShopBagUI();renderShop();
     };
@@ -1060,7 +1055,7 @@ function buyTileCard(i){
   var tc=shopPool.tileCards[i];if(!tc||tc.bought)return;
   if(!spendGold(tc.cost))return;
   tc.bought=true;
-  S.bag.push({letter:tc.letter,isBlank:false,id:uid(),variant:tc.variant,blueBonus:0});
+  addTileToBag({letter:tc.letter,isBlank:false,variant:tc.variant});
   S.bag=shuffle(S.bag);renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
   toast(tc.variant.charAt(0).toUpperCase()+tc.variant.slice(1)+' '+tc.letter+' added to bag!');
 }
@@ -1078,7 +1073,7 @@ function buyPack(i){
     for(var ti=0;ti<5;ti++){
       var l=packLetters[Math.floor(_rng()*packLetters.length)];
       var v=_rng()<0.25?varTypes[Math.floor(_rng()*varTypes.length)]:null;
-      S.bag.push({letter:l,isBlank:false,id:uid(),variant:v,blueBonus:0});
+      addTileToBag({letter:l,isBlank:false,variant:v});
       added.push((v?v[0].toUpperCase()+v.slice(1)+' ':'')+l);
     }
     S.bag=shuffle(S.bag);renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
@@ -1144,10 +1139,9 @@ function closeForgeStep(){if(forgeSelectedTile){forgeSelectedTile=null;renderFor
 
 function forgeUpgrade(tileId,variant,cost){
   var found=false;
-  for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===tileId&&!S.bag[i].variant){S.bag[i].variant=variant;if(variant==='blue')S.bag[i].blueBonus=0;found=true;break;}}
+  for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===tileId&&!S.bag[i].variant){transformTile(tileId,{variant:variant});found=true;break;}}
   if(!found){toast('Tile not found.');return;}
   if(!spendGold(cost))return;
-  if(variant==='blue')_autoRegisterBlueAnchors();
   renderShop();renderHUD();
   var n={gold:'Gold',blue:'Blue',red:'Red'};toast(n[variant]+' tile forged!');
 }
@@ -1160,6 +1154,7 @@ function addStickerFromShop(id){
     if(!S.tileStickers)S.tileStickers=[];
     if(S.tileStickers.length>=5){toast('Sticker bar is full! (max 5)');return false;}
     S.tileStickers.push({id:id});
+    if(d.onAcquire)d.onAcquire();
     if(typeof renderTileStickerBar==='function')renderTileStickerBar();
     return true;
   }
@@ -1207,7 +1202,7 @@ function hammerTile(tile){
   var idx=-1;for(var i=0;i<S.bag.length;i++)if(S.bag[i].id===tile.id){idx=i;break;}
   if(idx<0){toast('Tile not found.');return;}
   if(!spendGold(3))return;
-  S.bag.splice(idx,1);
+  transformTile(tile.id,{destroy:true});
   renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
   toast((tile.isBlank?'Blank':tile.letter)+' destroyed!');
 }

@@ -65,4 +65,5 @@ SQ.push({id:'slot_machine',name:'Slot Machine',
     var smr=S._slotMachineRoll;
     if(smr.wm_mult>1){ctx.xmults.push(smr.wm_mult);ctx.events.push({type:'x-mult',factor:smr.wm_mult,label:'Slot ×'+smr.wm_mult});}
     if(smr.gold>0){ctx.tgold+=smr.gold;ctx.events.push({type:'gold',delta:smr.gold,label:'Slot +$'+smr.gold});}
+    if(smr.variant){for(var _si=0;_si<wt.length;_si++){if(S.bt[wt[_si].idx]&&S.bt[wt[_si].idx].id)transformTile(S.bt[wt[_si].idx].id,{variant:smr.variant});}ctx.events.push({type:'letter',lettersAfter:ctx.letters,isTileLocal:true,label:'Slot: All '+smr.variant+'!'});}
   }});

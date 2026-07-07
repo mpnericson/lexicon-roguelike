@@ -38,6 +38,15 @@ function renderHUD(){
   if(_bl){if(S.endless){_bl.textContent='∞';}else{_bl.textContent=STAGES.length-S.ai;}}
   var _cb=document.getElementById('constraint-banner');
   if(_cb){var _cdef=constraintDef();if(_cdef){var _isPal=(currentConstraint()==='c_pal');var _cbTxt=_isPal?(S.palUnlocked?'Unlocked! '+_cdef.desc:'🔒 '+_cdef.desc):_cdef.desc;_cb.textContent='Constraint: '+_cbTxt;_cb.style.display='';}else{_cb.style.display='none';}}
+  var _ptSpr=document.getElementById('progress-tracker-sprite');
+  if(_ptSpr){var _ptF=(S.endless||S.ai>=STAGES.length)?13:(S.ai*3+S.bi+1);_ptSpr.src='Assets/animations/progress tracker/progress_tracker'+_ptF+'.png';}
+  var _scrb=document.getElementById('stat-rounds-box'),_scru=document.getElementById('stat-constraint-upcoming');
+  if(_scrb&&_scru){
+    var _ucdef=null;
+    if(!S.endless&&S.constraintOrder){var _ucid=S.constraintOrder[S.ai];if(_ucid){for(var _ui=0;_ui<CONSTRAINTS.length;_ui++){if(CONSTRAINTS[_ui].id===_ucid){_ucdef=CONSTRAINTS[_ui];break;}}}}
+    if(_ucdef){_scru.textContent=((S.bi===2)?'Constraint':'Upcoming Constraint')+': '+_ucdef.name+' — '+_ucdef.desc;_scrb.style.display='';}
+    else{_scrb.style.display='none';}
+  }
 }
 
 function sqStyle(id){
@@ -49,7 +58,7 @@ function sqStyle(id){
 function renderBoard(){
   if(typeof _clearStickerFloats==='function')_clearStickerFloats();
   var wrap=document.getElementById('board-wrap');
-  var sz=Math.max(30,Math.min(64,Math.floor(Math.min(window.innerWidth*0.52-80,window.innerHeight-250)/B)));
+  var sz=Math.max(30,Math.min(64,Math.floor(Math.min(window.innerWidth*0.52-80,window.innerHeight-250)/B)))+2;
   wrap.style.gridTemplateColumns='repeat('+B+','+sz+'px)';wrap.innerHTML='';
   var center=Math.floor(B/2)*B+Math.floor(B/2);
   var _bcon=currentConstraint();
@@ -68,9 +77,9 @@ function renderBoard(){
     } else {
       sq.style.background=ss.bg;sq.style.color=ss.fg;
     }
-    var bt=S.bt[i];var showTile=bt&&!bt.flying&&!viewingBoard;
+    var bt=S.bt[i];var showTile=bt&&bt.state!=='dragging'&&!viewingBoard;
     if(showTile){
-        var spr=(bt.isBlank&&bt.letter&&bt.letter>='A'&&bt.letter<='Z')?blankTileSpr(bt.letter,bt.variant||null,sz):tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,bt.variant||null,sz);
+        var spr=(bt.isBlank&&bt.blankAs)?blankTileSpr(bt.blankAs,bt.variant||null,sz):tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,bt.variant||null,sz);
       var _stkCls=(!bt.isNew&&bt._stackLevel>0)?(bt._stackLevel>=2?' jenga-stacked-2':' jenga-stacked'):'';
       var face=document.createElement('div');face.className='tile board-tile'+(bt.isNew?' is-new':'')+_stkCls+(bt.variant?' var-'+bt.variant:'')+' tile-spr';
       face.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+spr;
@@ -80,11 +89,11 @@ function renderBoard(){
       if(!bt.isNew&&!(S.btTop&&S.btTop[i])&&S.phase==='play'&&typeof hasJenga==='function'&&hasJenga()){
         (function(sqI){sq.addEventListener('click',function(ev){
           if(Date.now()-_dragEndTime<300)return;
-          var sel=[];for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel&&!S.hand[_si].onBoard)sel.push(_si);}
+          var sel=[];for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel)sel.push(_si);}
           if(!sel.length)return;
           if(sel.length===1){var oi=sel[0];var t=S.hand[oi];t.sel=false;
-            if(t.isBlank&&!t.blankAs){openBlankChooser(oi,function(){placeTile(oi,sqI);renderBoard();renderHand();});}
-            else{placeTile(oi,sqI);renderBoard();renderHand();}
+            if(t.isBlank&&!t.blankAs){openBlankChooser(t,function(){placeTile(t,sqI);renderBoard();renderHand();});}
+            else{placeTile(t,sqI);renderBoard();renderHand();}
           }
           ev.stopPropagation();
         });})(i);
@@ -104,12 +113,12 @@ function renderBoard(){
         (function(sqI){
           sq.addEventListener('click',function(ev){
             if(Date.now()-_dragEndTime<300)return;
-            var sel=[];for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel&&!S.hand[_si].onBoard)sel.push(_si);}
+            var sel=[];for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel)sel.push(_si);}
             if(sel.length===0)return;
             if(sel.length===1){
               var oi=sel[0];var t=S.hand[oi];t.sel=false;
-              if(t.isBlank&&!t.blankAs){openBlankChooser(oi,function(){placeTile(oi,sqI);renderBoard();renderHand();});}
-              else{placeTile(oi,sqI);renderBoard();renderHand();}
+              if(t.isBlank&&!t.blankAs){openBlankChooser(t,function(){placeTile(t,sqI);renderBoard();renderHand();});}
+              else{placeTile(t,sqI);renderBoard();renderHand();}
             } else {
               multiPlaceSelected(sel,sqI,'h');
             }
@@ -118,7 +127,7 @@ function renderBoard(){
           sq.addEventListener('contextmenu',function(ev){
             ev.preventDefault();ev.stopPropagation();
             if(Date.now()-_dragEndTime<300)return;
-            var sel=[];for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel&&!S.hand[_si].onBoard)sel.push(_si);}
+            var sel=[];for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel)sel.push(_si);}
             if(sel.length>1)multiPlaceSelected(sel,sqI,'v');
           });
         })(i);
@@ -138,9 +147,9 @@ function renderBoard(){
       }
     }
     // Jenga: render stacked top tile with elevation
-    if(S.btTop&&S.btTop[i]&&!S.btTop[i].flying&&!viewingBoard){
+    if(S.btTop&&S.btTop[i]&&S.btTop[i].state!=='dragging'&&!viewingBoard){
       var btt=S.btTop[i];
-      var sprT=(btt.isBlank&&btt.letter&&btt.letter>='A'&&btt.letter<='Z')?blankTileSpr(btt.letter,btt.variant||null,sz):tileSpr(btt.isBlank?null:btt.letter,btt.isBlank,btt.variant||null,sz);
+      var sprT=(btt.isBlank&&btt.blankAs)?blankTileSpr(btt.blankAs,btt.variant||null,sz):tileSpr(btt.isBlank?null:btt.letter,btt.isBlank,btt.variant||null,sz);
       var _btopLvl=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;
       var topFace=document.createElement('div');
       topFace.className='tile board-tile is-new'+(btt.variant?' var-'+btt.variant:'')+' tile-spr '+(_btopLvl>=2?'jenga-stacked-2':'jenga-stacked');
@@ -331,7 +340,7 @@ function renderHand(){
   hpBounds();
   var area=document.getElementById('hand-area');area.innerHTML='';
   var vis=[];
-  for(var i=0;i<S.hand.length;i++)if(S.hand[i]&&!S.hand[i].onBoard&&!S.hand[i].inFlight)vis.push({t:S.hand[i],oi:i});
+  for(var i=0;i<S.hand.length;i++)if(S.hand[i]&&S.hand[i].state==='hand')vis.push({t:S.hand[i],oi:i});
   hpRebuild(vis);
   for(var vi=0;vi<vis.length;vi++){
     var t=vis[vi].t,oi=vis[vi].oi;
@@ -478,6 +487,7 @@ function _openTileStickerModal(idx,id){
     sellBtn.onclick=(function(i,sv,dn,dd){return function(){
       S.tileStickers.splice(i,1);
       S.gold+=sv;
+      if(currentConstraint()==='c_stickers')S.stickersSoldThisStage=(S.stickersSoldThisStage||0)+1;
       document.getElementById('sq-modal').style.display='none';
       renderTileStickerBar();renderHUD();
       toast(dn+' sold for $'+sv+'!');

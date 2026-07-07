@@ -22,67 +22,18 @@ function sqAt(x,y){
 }
 
 function inHand(x,y){var r=document.getElementById('hand-area').getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top-20&&y<=r.bottom+20;}
+function inBoardBounds(x,y){var bw=document.getElementById('board-wrap');if(!bw)return false;var r=bw.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;}
 
-function attachHandTileDrag(face,oi,vi,tile,vis){
+function attachHandTileDrag(face,oi,vi,tile){
   face.dataset.handOi=String(oi);
   face.addEventListener('pointerdown',function(ev){
     ev.preventDefault();ev.stopPropagation();
     if(activeDrag)return;
     if(document.getElementById('live-score-row').classList.contains('scoring'))return;
-    _playTileClick('pick');
-    var sx=ev.clientX,sy=ev.clientY;var sr=face.getBoundingClientRect();
-    var moved=false,clone=null;HP.held=vi;
-    if(HP.settleDur>=9999){HP.settleAt=0;HP.settleCallback=null;HP.settleDur=150;}
-    function move(me){
-      var dx=me.clientX-sx,dy=me.clientY-sy;
-      if(!moved&&Math.sqrt(dx*dx+dy*dy)>8){
-        moved=true;HP.held=-1;
-        var sprCss=face.dataset.spr||'';
-        clone=makeDragClone(face.innerHTML,'width:68px;height:68px;left:'+sr.left+'px;top:'+sr.top+'px;box-shadow:0 12px 28px rgba(0,0,0,.7);transform:scale(1.12);'+(sprCss||'background:#f0e080;border-color:#a89000;')+'transition:transform 0.1s ease,box-shadow 0.1s ease;',sprCss?'tile-spr':'');
-        activeDrag={src:'hand',oi:oi,vi:vi,clone:clone,sx:sx,sy:sy,sr:sr,cx:sr.left+34};renderHand();
-      }
-      if(moved&&clone){
-        var dx2=me.clientX-sx,dy2=me.clientY-sy;
-        clone.style.left=(sr.left+dx2)+'px';clone.style.top=(sr.top+dy2)+'px';
-        activeDrag.cx=sr.left+34+dx2;activeDrag.cy=sr.top+34+dy2;
-        var sq=sqAt(me.clientX,me.clientY);
-        if(sq>=0&&(!S.bt[sq]||_jengaCanStack(sq))){setHL(sq);clone.style.transform='scale(0.75)';clone.style.boxShadow='0 4px 12px rgba(0,0,0,.5)';}
-        else{clearHL();clone.style.transform='scale(1.08)';clone.style.boxShadow='0 12px 28px rgba(0,0,0,.7)';}
-      }
-    }
-    function up(me){
-      document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
-      HP.held=-1;
-      if(!moved){
-        if(vi>0)HP.vx[vi-1]-=3;
-        if(vi<HP.tiles.length-1)HP.vx[vi+1]+=3;
-        toggleSel(oi);
-        return;
-      }
-      _dragEndTime=Date.now();
-      if(!clone)return;clearHL();
-      var sq=sqAt(me.clientX,me.clientY);var ih=inHand(me.clientX,me.clientY);
-      if(sq>=0&&(!S.bt[sq]||_jengaCanStack(sq))){
-        activeDrag.cx=-9999;
-        var sqEl=document.querySelector('[data-sq-idx="'+sq+'"]');var tr=sqEl?sqEl.getBoundingClientRect():null;
-        if(tr){clone.style.transition='left .13s,top .13s,transform .13s';clone.style.left=(tr.left+tr.width/2-28)+'px';clone.style.top=(tr.top+tr.height/2-32)+'px';clone.style.transform='scale(0.85)';}
-        if(tile.isBlank&&!tile.blankAs){
-          setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);activeDrag=null;
-            openBlankChooser(oi,function(){placeTile(oi,sq);renderBoard();renderHand();});
-          },140);
-        } else {
-          setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);placeTile(oi,sq);activeDrag=null;renderBoard();renderHand();},140);
-        }
-      } else if(ih){
-        var ins=computeInsert(me.clientX,vi);var dropX=me.clientX;
-        setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);reorderHand(oi,ins,vis,dropX);activeDrag=null;renderHand();},120);
-      } else {
-        activeDrag.cx=-9999;
-        clone.style.transition='left .14s,top .14s,transform .14s';clone.style.left=sr.left+'px';clone.style.top=sr.top+'px';clone.style.transform='scale(1)';
-        setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);activeDrag=null;renderHand();},140);
-      }
-    }
-    document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);
+    var _selGroup=[];
+    if(tile.sel){for(var _msi=0;_msi<S.hand.length;_msi++){if(S.hand[_msi]&&S.hand[_msi].sel&&S.hand[_msi].state==='hand')_selGroup.push({t:S.hand[_msi],oi:_msi});}}
+    if(_selGroup.length<=1)_selGroup=[{t:tile,oi:oi}];
+    _startMultiDrag(ev,oi,vi,_selGroup);
   });
 }
 
@@ -93,17 +44,16 @@ function computeInsert(mouseX,dragVi){
 
 function reorderHand(fromOi,insertAt,vis,dropX){
   hpBounds();
+  // Map positions by tile ID from HP.tiles (n-1 elements, dragging tile excluded) not vis (n elements).
+  // Using vis[k]->HP.x[k] would misalign after the dragging tile's slot, making the last tile snap to x=0.
   var oldX={};
-  for(var k=0;k<vis.length;k++)oldX[vis[k].t.id]=HP.x[k]||0;
+  for(var k=0;k<HP.tiles.length;k++){var _rtid=(HP.tiles[k].t&&HP.tiles[k].t.id)||null;if(_rtid)oldX[_rtid]=HP.x[k]||0;}
   var fv=-1;for(var k=0;k<vis.length;k++)if(vis[k].oi===fromOi){fv=k;break;}
   if(fv<0)return;
   oldX[vis[fv].t.id]=dropX!==undefined?dropX:((HP.aL+HP.aR)/2);
   var rem=vis.splice(fv,1)[0];
   var adj=insertAt>fv?insertAt-1:insertAt;adj=Math.max(0,Math.min(vis.length,adj));vis.splice(adj,0,rem);
-  var ob=[];for(var k=0;k<S.hand.length;k++)if(S.hand[k]&&S.hand[k].onBoard)ob.push(S.hand[k]);
-  var nh=vis.map(function(e){return e.t;});for(var k=0;k<ob.length;k++)nh.push(ob[k]);
-  for(var bi=0;bi<B*B;bi++){if(S.bt[bi]&&S.bt[bi].handIdx!==undefined){for(var k=0;k<nh.length;k++){if(nh[k]&&nh[k].onBoard&&nh[k]._boardSq===bi){S.bt[bi].handIdx=k;break;}}}}
-  if(S.btTop){for(var bi=0;bi<B*B;bi++){if(S.btTop[bi]&&S.btTop[bi].handIdx!==undefined){for(var k=0;k<nh.length;k++){if(nh[k]&&nh[k].onBoard&&nh[k]._boardSq===bi){S.btTop[bi].handIdx=k;break;}}}}}
+  var nh=vis.map(function(e){return e.t;});
   HP.fromX=vis.map(function(e){return oldX[e.t.id]!==undefined?oldX[e.t.id]:((HP.aL+HP.aR)/2);});
   HP.toX=hpRest(vis.length);
   HP.settleDur=150;HP.settleAt=performance.now();
@@ -122,7 +72,7 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
         moved=true;_playTileClick('pick');
         var sprCss=face.dataset.spr||'';var tsz=parseInt(face.dataset.tsz)||sz;
         clone=makeDragClone(face.innerHTML,'width:'+tsz+'px;height:'+tsz+'px;left:'+sr.left+'px;top:'+sr.top+'px;box-shadow:0 8px 20px rgba(0,0,0,.6);transform:scale(1.2);'+(sprCss||'background:#f0e080;border-color:#a89000;'),sprCss?'tile-spr':'');
-        var btRef=_getBtRef();if(btRef)btRef.flying=true;
+        var btRef=_getBtRef();if(btRef)setTileState(btRef,'dragging');
         activeDrag={src:'board',sqIdx:sqIdx,isTop:!!isTop,clone:clone,sr:sr};renderBoard();
       }
       if(moved&&clone){
@@ -135,31 +85,24 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
       if(!moved){recallTile(sqIdx);return;}
       _dragEndTime=Date.now();
       if(!clone)return;clearHL();
-      var btRef=_getBtRef();if(btRef)btRef.flying=false;
+      var btRef=_getBtRef();if(btRef)setTileState(btRef,'board',{boardSq:sqIdx,isNew:true});
       var over=sqAt(me.clientX,me.clientY);var ih=inHand(me.clientX,me.clientY);
       if(ih){
-        var _nBf=S.hand.filter(function(t){return t&&!t.onBoard;}).length;
-        var _dBt=_getBtRef();var _dT=_dBt?_btFindTile(_dBt):null;
-        if(_dT){_dT.onBoard=false;_dT._boardSq=undefined;if(_dT.isBlank)_dT.blankAs=null;_moveToEndOfHand(_dT);}
-        if(isTop){if(S.btTop)S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
+        var _dBt=_getBtRef();
+        if(_dBt){
+          if(isTop){if(S.btTop)S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
+          setTileState(_dBt,'hand');S.hand.push(_dBt);
+        }
         activeDrag=null;renderBoard();
-        if(_nBf>0&&HP.x.length===_nBf){HP.fromX=HP.x.slice();HP.toX=hpRest(_nBf+1).slice(0,_nBf);HP.settleDur=280;HP.settleAt=performance.now();}
-        var _lp=_handLandingParams(_nBf,_nBf+1,0);
-        var _cR=clone.getBoundingClientRect();var _cSz=parseInt(clone.style.width)||sz;
-        var _cCx=_cR.left+_cSz/2,_cCy=_cR.top+_cSz/2,_cEs=68/_cSz,_cFS=performance.now();
-        clone.style.transition='';clone.style.transformOrigin='center center';
-        (function(_c,_cs,_cx,_cy,_es){
-          function _ft(now){
-            var t=Math.min(1,(now-_cFS)/320);var e=1-Math.pow(1-t,3),u=1-e;
-            var cx=u*u*_cx+2*u*e*_lp.cpX+e*e*_lp.destX;
-            var cy=u*u*_cy+2*u*e*_lp.cpY+e*e*_lp.destY;
-            _c.style.left=(cx-_cs/2)+'px';_c.style.top=(cy-_cs/2)+'px';
-            _c.style.transform='scale('+(1+(_es-1)*e)+')';
-            if(t<1){requestAnimationFrame(_ft);return;}
-            if(_c.parentNode)_c.parentNode.removeChild(_c);_playTileClick('land');renderHand();
-          }
-          requestAnimationFrame(_ft);
-        })(clone,_cSz,_cCx,_cCy,_cEs);
+        var _dropX=me.clientX;
+        setTimeout(function(){
+          if(clone.parentNode)clone.parentNode.removeChild(clone);
+          _playTileClick('land');
+          hpBounds();
+          // Seed tile at drop x so spring physics carries it to its natural rest slot.
+          HP.x.push(_dropX);HP.vx.push(0);
+          renderHand();
+        },120);
       } else if(over>=0&&over!==sqIdx&&!S.bt[over]){
         var sqEl=document.querySelector('[data-sq-idx="'+over+'"]');var tr=sqEl?sqEl.getBoundingClientRect():null;
         if(tr){clone.style.transition='left .13s,top .13s,transform .13s';clone.style.left=(tr.left+tr.width/2-(sz/2))+'px';clone.style.top=(tr.top+tr.height/2-(sz/2))+'px';clone.style.transform='scale(0.9)';}
@@ -167,9 +110,9 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
           if(clone.parentNode)clone.parentNode.removeChild(clone);
           var src=_getBtRef();
           if(src){
-            S.bt[over]={letter:src.letter,isNew:src.isNew,isBlank:src.isBlank,handIdx:src.handIdx,tileId:src.tileId,variant:src.variant||null,blueBonus:src.blueBonus||0};
-            if(src.handIdx!==undefined&&S.hand[src.handIdx])S.hand[src.handIdx]._boardSq=over;
             if(isTop){if(S.btTop)S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
+            setTileState(src,'board',{boardSq:over,isNew:true});
+            S.bt[over]=src;
           }
           activeDrag=null;renderBoard();renderHand();
         },140);
@@ -291,23 +234,352 @@ function attachStickerDrag(face,vi,ts,ph,dragSrc){
   });
 }
 
-function placeTile(handIdx,sqIdx){
-  var t=S.hand[handIdx];t.onBoard=true;t._boardSq=sqIdx;
-  var td={letter:t.isBlank?(t.blankAs||'?'):t.letter,isNew:true,isBlank:t.isBlank,handIdx:handIdx,tileId:t.id,variant:t.variant||null,blueBonus:t.blueBonus||0,alchSc:t._alchSc||0};
+// Multi-tile drag: all selected tiles physically leave the hotbar together.
+//
+// Phase 1 (position-based):
+//   All tiles rise together at cursor speed (y = cursor y). Anchor x tracks cursor; other
+//   tiles hold their original hotbar x positions. Hotbar opens a gap of (group+2) tile-widths
+//   at the anchor's old position and holds it frozen.
+//
+// Phase 2 (triggers when tile bottoms clear hand-area top, same threshold as ph.inArea):
+//   Hotbar gap closes to rest positions. Dragging tiles sweep laterally to form a cluster
+//   around the anchor. Both animate simultaneously.
+//
+// After _animUntil (~300ms post-Phase-2): all tiles follow cursor instantly as one group.
+//
+// Shift or right-click: pivot h↔v around the anchor at any time.
+// Space: disperse all tiles back into the hand via arcing animations.
+function _startMultiDrag(ev,dragOi,dragVi,selTiles){
+  var sx=ev.clientX,sy=ev.clientY;
+  var moved=false,dragEls=[],initRects=[];
+  var dir='h';
+  var _mHL=[];
+  var _overBoard=false;
+  var _animUntil=0;
+  var _phase2Fired=false;
+  var _lastCx=sx,_lastCy=sy,_lastSq=-1;
+  var _committedSlotX=null; // locked slot centre when cursor crosses funnel threshold
+  var dragIdx=0;
+  for(var _di=0;_di<selTiles.length;_di++){if(selTiles[_di].oi===dragOi){dragIdx=_di;break;}}
+
+  HP.held=dragVi;
+  if(HP.settleDur>=9999){HP.settleAt=0;HP.settleCallback=null;HP.settleDur=150;}
+
+
+  function _clearMHL(){
+    for(var i=0;i<_mHL.length;i++){var e=document.querySelector('[data-sq-idx="'+_mHL[i]+'"]');if(e)e.classList.remove('drop-target');}
+    _mHL=[];
+  }
+  // Convert anchor square (square under cursor) to the start square for the group.
+  // Anchor tile is at dragIdx in the group, so leftmost/topmost tile is dragIdx steps back.
+  function _startSq(anchorSq){
+    var r=Math.floor(anchorSq/B),c=anchorSq%B;
+    if(dir==='h')return r*B+Math.max(0,c-dragIdx);
+    else return Math.max(0,r-dragIdx)*B+c;
+  }
+  function _computeFree(startSq){
+    var r=Math.floor(startSq/B),c=startSq%B,free=[],n=selTiles.length;
+    if(dir==='h'){for(var cc=c;cc<B&&free.length<n;cc++){var idx=r*B+cc;if(!S.bt[idx])free.push(idx);}}
+    else{for(var rr=r;rr<B&&free.length<n;rr++){var idx=rr*B+c;if(!S.bt[idx])free.push(idx);}}
+    return free.length>=n?free:null;
+  }
+  function _updateHL(anchorSq){
+    _clearMHL();var targets=_computeFree(_startSq(anchorSq));if(!targets)return;
+    for(var i=0;i<targets.length;i++){_mHL.push(targets[i]);var e=document.querySelector('[data-sq-idx="'+targets[i]+'"]');if(e)e.classList.add('drop-target');}
+  }
+
+  // Positions, scales, and shadows all dragging tiles as a single cluster around cursor.
+  // Over board: step shrinks so tiles stay visually tight when scaled to 0.75.
+  // posTr: CSS duration for left/top (e.g. '0.14s ease'); omit for instant.
+  function _updateAll(cx,cy,overBoard,posTr){
+    var sc=overBoard?0.75:1.08;
+    var step=overBoard?Math.ceil(68*0.75)+2:72;
+    var sh=overBoard?'0 4px 12px rgba(0,0,0,.5)':'0 12px 28px rgba(0,0,0,.7)';
+    var tr=posTr?('left '+posTr+',transform 0.1s ease,box-shadow 0.1s ease'):'transform 0.1s ease,box-shadow 0.1s ease';
+    for(var i=0;i<dragEls.length;i++){
+      if(!dragEls[i])continue;
+      var off=i-dragIdx;
+      dragEls[i].style.transition=tr;
+      dragEls[i].style.left=(dir==='h'?cx-34+off*step:cx-34)+'px';
+      dragEls[i].style.top=(dir==='h'?cy-39:cy-39+off*step)+'px';
+      dragEls[i].style.transform='scale('+sc+')';
+      dragEls[i].style.boxShadow=sh;
+    }
+  }
+
+  // Phase 2: hotbar closes gap + dragging tiles sweep to cluster. Guarded by _phase2Fired.
+  function _firePhase2(){
+    if(_phase2Fired)return;
+    _phase2Fired=true;
+    _animUntil=0;
+    hpBounds();
+    HP.fromX=HP.x.slice();HP.toX=hpRest(HP.tiles.length);
+    HP.settleDur=220;HP.settleAt=performance.now();HP.settleCallback=null;
+    _updateAll(_lastCx,_lastCy,_overBoard,'0.18s ease');
+  }
+
+  // Toggle h↔v direction; fires Phase 2 if it hasn't started yet.
+  function _toggleDir(){
+    dir=dir==='h'?'v':'h';
+    _firePhase2();
+    _animUntil=0;
+    if(dragEls.length)_updateAll(_lastCx,_lastCy,_overBoard,'0.12s ease');
+    if(_lastSq>=0)_updateHL(_lastSq);
+  }
+
+  // Space: arc all tiles back to the hand from their current positions.
+  function _disperse(){
+    document.removeEventListener('pointermove',move);
+    document.removeEventListener('pointerup',up);
+    document.removeEventListener('pointerdown',_onRightPD);
+    document.removeEventListener('contextmenu',_preventCM);
+    document.removeEventListener('keydown',_onMultiDragKey);
+    HP.held=-1;_clearMHL();activeDrag=null;_dragEndTime=Date.now();
+    var nSel=selTiles.length;
+    HP.movingCount+=nSel;
+    for(var i=0;i<selTiles.length;i++)setTileState(selTiles[i].t,'moving',{movingFrom:'hand',movingTo:'hand'});
+    renderHand();
+    hpBounds();
+    var nHand=HP.x.length;
+    var allSlots=hpRest(nHand+nSel);
+    var ha=document.getElementById('hand-area');var hr=ha?ha.getBoundingClientRect():null;
+    var destY=hr?(hr.top+34):(window.innerHeight-60);
+    for(var i=0;i<selTiles.length;i++){
+      (function(el,t,idx){
+        if(!el){_landTile(t);return;}
+        var spread=((idx-dragIdx)/(Math.max(1,nSel-1))-0.5)*160;
+        var cpX=_lastCx+spread,cpY=_lastCy-200;
+        var r=el.getBoundingClientRect();
+        var preRect={left:r.left+(r.width-68)/2,top:r.top+(r.height-68)/2,width:68,height:68};
+        var destX=allSlots[nHand+idx];
+        setTimeout(function(){
+          _flyTileToHand(el,320,destX,destY,cpX,cpY,function(){
+            _landTile(t);_playTileClick('land');
+          },preRect);
+        },idx*80);
+      })(dragEls[i],selTiles[i].t,i);
+    }
+    if(nSel===0)renderHand();
+  }
+
+  function _onRightPD(e){if(e.button!==2)return;e.preventDefault();_toggleDir();}
+  function _preventCM(e){e.preventDefault();}
+  function _onMultiDragKey(e){
+    if(e.key==='Shift'){e.preventDefault();_toggleDir();}
+    else if(e.key===' '){e.preventDefault();_disperse();}
+    else if(e.key==='Escape'||e.key==='Backspace'){
+      document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
+      document.removeEventListener('pointerdown',_onRightPD);document.removeEventListener('contextmenu',_preventCM);
+      document.removeEventListener('keydown',_onMultiDragKey);
+      HP.held=-1;_clearMHL();
+      for(var i=0;i<dragEls.length;i++){if(dragEls[i]&&dragEls[i].parentNode)dragEls[i].parentNode.removeChild(dragEls[i]);}
+      for(var i=0;i<selTiles.length;i++){setTileState(selTiles[i].t,'hand');}
+      activeDrag=null;renderHand();
+    }
+  }
+
+  function move(me){
+    var dx=me.clientX-sx,dy=me.clientY-sy;
+    if(!moved&&Math.sqrt(dx*dx+dy*dy)>8){
+      moved=true;HP.held=-1;
+      _playTileClick('pick');
+
+      // Capture hotbar rects, detach selected tiles, parent them to body.
+      for(var i=0;i<selTiles.length;i++){
+        var face=document.querySelector('.hand-tile[data-hand-oi="'+selTiles[i].oi+'"]');
+        initRects.push(face?face.getBoundingClientRect():null);
+        dragEls.push(face||null);
+      }
+      for(var i=0;i<dragEls.length;i++){
+        var el=dragEls[i];var ir=initRects[i];if(!el)continue;
+        if(el.parentNode)el.parentNode.removeChild(el);
+        el.style.cssText='position:fixed;z-index:9999;pointer-events:none;width:68px;height:68px;transform:scale(1.08);box-shadow:0 12px 28px rgba(0,0,0,.7);transition:none;'+(el.dataset.spr||'background:#f0e080;border-color:#a89000;');
+        if(ir){el.style.left=ir.left+'px';el.style.top=ir.top+'px';}
+        document.body.appendChild(el);
+        setTileState(selTiles[i].t,'dragging');
+      }
+      activeDrag={src:'multi-hand',selTiles:selTiles,cx:me.clientX,cy:me.clientY,multiCount:selTiles.length,dragIdx:dragIdx};
+      document.addEventListener('pointerdown',_onRightPD);
+      document.addEventListener('contextmenu',_preventCM);
+      document.addEventListener('keydown',_onMultiDragKey);
+
+      // Rebuild HP without dragging tiles.
+      renderHand();
+
+      // Freeze hotbar tiles — solid objects until dragged tiles clear vertically (Phase 2).
+      HP.fromX=HP.x.slice();HP.toX=HP.x.slice();HP.settleDur=9999;HP.settleAt=performance.now();HP.settleCallback=null;
+      var _meCy=me.clientY;
+      requestAnimationFrame(function(){
+        for(var i=0;i<dragEls.length;i++){
+          if(!dragEls[i])continue;
+          dragEls[i].style.transition='transform 0.1s ease,box-shadow 0.1s ease';
+          if(initRects[i])dragEls[i].style.left=initRects[i].left+'px';
+          dragEls[i].style.top=(_meCy-39)+'px';
+        }
+      });
+    }
+
+    if(moved&&dragEls.length){
+      _lastCx=me.clientX;_lastCy=me.clientY;
+      var sq=sqAt(me.clientX,me.clientY);
+      _overBoard=sq>=0||inBoardBounds(me.clientX,me.clientY);
+      // Funnel corridor: when cursor descends past a threshold 150px above the hotbar, commit
+      // to the nearest slot (computed directly from HP.x — no gap open yet at that height).
+      // A corridor then constrains tile X: 400px wide at threshold, collapses to exactly the
+      // slot centre at hotbar level. Cursor can roam freely inside the corridor; bumpers push
+      // it back if it tries to leave. Gap locked at committed slot so hotbar tiles stay still.
+      // Dragging back above threshold + 20px hysteresis releases the commit.
+      var _haElF=document.getElementById('hand-area');
+      var _haRF=_haElF?_haElF.getBoundingClientRect():null;
+      var _threshY=_haRF?_haRF.top-250:-Infinity;
+      if(_phase2Fired&&!_overBoard&&_haRF&&me.clientY>_threshY){
+        if(_committedSlotX===null){
+          // Tiles are at natural rest (no gap yet). Count how many are left of cursor.
+          var _insIdx=0;
+          for(var _ki=0;_ki<HP.tiles.length;_ki++){if(me.clientX>HP.x[_ki])_insIdx=_ki+1;}
+          var _gapCntC=selTiles.length+0.5;
+          var _midXC=(HP.aL+HP.aR)/2;
+          _committedSlotX=_midXC-(HP.tiles.length+_gapCntC)*HP.TILE_W/2+(_insIdx+dragIdx+0.75)*HP.TILE_W;
+          // Store exact insertIdx on activeDrag so physics uses it directly, bypassing the
+          // direction-aware heuristic that can open the gap at the wrong slot on commitment.
+          if(activeDrag){activeDrag.funnelInsertIdx=_insIdx;activeDrag._prevGapRef=undefined;}
+        }
+      } else if(me.clientY<_threshY-20||_overBoard){
+        if(_committedSlotX!==null){
+          _committedSlotX=null;
+          if(activeDrag){activeDrag.funnelInsertIdx=undefined;activeDrag._prevGapRef=undefined;}
+        }
+      }
+      var _inFunnel=_committedSlotX!==null;
+      var _ecx,_ecy;
+      if(_inFunnel&&_haRF){
+        // Corridor half-width: 400px at threshold, 0 at hotbar level — more gradual now.
+        var _ft=Math.max(0,Math.min(1,(me.clientY-_threshY)/250));
+        var _halfW=400*(1-_ft);
+        _ecx=Math.max(_committedSlotX-_halfW,Math.min(_committedSlotX+_halfW,me.clientX));
+        _ecy=Math.min(me.clientY,_haRF.top+39); // tile stops flush with hotbar tile centres
+      } else {
+        _ecx=me.clientX; _ecy=me.clientY;
+      }
+      // Gap locked at committed slot; activeDrag.cy=haRF.top keeps ph.inArea true in funnel.
+      var _gapCx=_inFunnel?_committedSlotX:me.clientX;
+      activeDrag.cx=_gapCx; activeDrag.cy=_inFunnel&&_haRF?_haRF.top:_ecy;
+      // Track full group extent for the hotbar spring gap (both edges push hotbar tiles).
+      var _gapStep=_overBoard?(Math.ceil(68*0.75)+2):72;
+      if(dir==='h'){
+        activeDrag.gapLeft=_gapCx-dragIdx*_gapStep;
+        activeDrag.gapRight=_gapCx+(selTiles.length-1-dragIdx)*_gapStep;
+      } else {
+        activeDrag.gapLeft=_gapCx;
+        activeDrag.gapRight=_gapCx;
+      }
+      if(!_phase2Fired){
+        // Phase 1: all tiles (including anchor) locked to original hotbar x. Only y follows cursor.
+        // No lateral movement until vertical clearance is confirmed. Y clamped so tile can't
+        // descend back below hotbar tile line before Phase 2 fires.
+        var _p1cy=_haRF?Math.min(me.clientY,_haRF.top+39):me.clientY;
+        var _ty=(_p1cy-39)+'px';
+        for(var i=0;i<dragEls.length;i++){
+          if(!dragEls[i])continue;
+          dragEls[i].style.top=_ty;
+          if(initRects[i])dragEls[i].style.left=initRects[i].left+'px';
+        }
+        // Phase 2 fires only when dragged tiles have fully cleared the hotbar vertically.
+        var _haEl=document.getElementById('hand-area');
+        var _haR=_haEl?_haEl.getBoundingClientRect():null;
+        if(_haR&&me.clientY<_haR.top-34){_firePhase2();}
+      } else if(Date.now()<_animUntil){
+        // Phase 2: y follows cursor for all tiles; non-anchor x eases to cluster (CSS transition
+        // for left is undisturbed since we only set top here). Y clamped same as Phase 1.
+        var _p2cy=_haRF?Math.min(me.clientY,_haRF.top+39):me.clientY;
+        var _ty=(_p2cy-39)+'px';
+        for(var i=0;i<dragEls.length;i++){if(dragEls[i])dragEls[i].style.top=_ty;}
+        if(dragEls[dragIdx])dragEls[dragIdx].style.left=(me.clientX-34)+'px';
+      } else {
+        _updateAll(_ecx,_ecy,_overBoard);
+      }
+      if(_overBoard){_lastSq=sq;_updateHL(sq);}
+      else{_clearMHL();_lastSq=-1;}
+    }
+  }
+
+  function up(me){
+    if(me.button!==0)return;
+    document.removeEventListener('pointermove',move);
+    document.removeEventListener('pointerup',up);
+    document.removeEventListener('pointerdown',_onRightPD);
+    document.removeEventListener('contextmenu',_preventCM);
+    document.removeEventListener('keydown',_onMultiDragKey);
+    HP.held=-1;_clearMHL();
+    if(!moved){
+      activeDrag=null;
+      if(dragVi>0)HP.vx[dragVi-1]-=3;
+      if(dragVi<HP.tiles.length-1)HP.vx[dragVi+1]+=3;
+      toggleSel(dragOi);
+      return;
+    }
+    _dragEndTime=Date.now();
+    for(var i=0;i<dragEls.length;i++){if(dragEls[i]&&dragEls[i].parentNode)dragEls[i].parentNode.removeChild(dragEls[i]);}
+    activeDrag=null;
+    var sq=sqAt(me.clientX,me.clientY);
+    if(sq>=0&&_computeFree(_startSq(sq))){
+      for(var i=0;i<selTiles.length;i++){setTileState(selTiles[i].t,'hand');}
+      var selOis=selTiles.map(function(s){return s.oi;});
+      multiPlaceSelected(selOis,_startSq(sq),dir);
+    } else if(inHand(me.clientX,me.clientY)){
+      // Dropped in hotbar — reorder tiles at cursor position.
+      // Compute insert position in HP.tiles (dragging tiles already excluded).
+      var _ins=Math.max(0,Math.min(computeInsert(me.clientX,-1),S.hand.length));
+      // Restore tile states so renderHand includes them in vis.
+      for(var i=0;i<selTiles.length;i++) setTileState(selTiles[i].t,'hand');
+      // Build new S.hand order: existing (non-dragged) tiles with dragged group inserted at _ins.
+      var _keep=[];
+      for(var k=0;k<S.hand.length;k++){
+        var _fnd=false;for(var i=0;i<selTiles.length;i++){if(selTiles[i].t===S.hand[k]){_fnd=true;break;}}
+        if(!_fnd)_keep.push(S.hand[k]);
+      }
+      var _safeIns=Math.max(0,Math.min(_ins,_keep.length));
+      S.hand=_keep.slice(0,_safeIns).concat(selTiles.map(function(s){return s.t;})).concat(_keep.slice(_safeIns));
+      // renderHand rebuilds HP.x by tile-id remapping; returning tiles get rest positions.
+      renderHand();
+      // Override returning tiles to spring from their actual visual positions at release.
+      HP.fromX=HP.x.slice();
+      for(var k=0;k<S.hand.length;k++){
+        for(var i=0;i<selTiles.length;i++){
+          if(S.hand[k]===selTiles[i].t){
+            var _rel=dragEls[i];
+            HP.fromX[k]=(_rel&&_rel.style.left)?parseFloat(_rel.style.left)+34:me.clientX;
+            break;
+          }
+        }
+      }
+      HP.toX=hpRest(S.hand.length);
+      HP.settleDur=180;HP.settleAt=performance.now();
+      HP.x=HP.fromX.slice();HP.vx=Array(S.hand.length).fill(0);
+      hpDraw();
+    } else {
+      for(var i=0;i<selTiles.length;i++){setTileState(selTiles[i].t,'hand');}
+      renderHand();
+    }
+  }
+
+  document.addEventListener('pointermove',move);
+  document.addEventListener('pointerup',up);
+}
+
+function placeTile(t,sqIdx){
+  var idx=S.hand.indexOf(t);if(idx>=0)S.hand.splice(idx,1);
+  setTileState(t,'board',{boardSq:sqIdx,isNew:true});
   if(S.bt[sqIdx]&&!S.bt[sqIdx].isNew&&!(S.btTop&&S.btTop[sqIdx])){
     if(!S.btTop)S.btTop=Array(B*B).fill(null);
-    S.btTop[sqIdx]=td;
+    S.btTop[sqIdx]=t;
   } else {
-    S.bt[sqIdx]=td;
+    S.bt[sqIdx]=t;
   }
   _playTileClick('place');
 }
 
-function _btFindTile(bt){
-  var t=S.hand[bt.handIdx];
-  if(!t&&bt.tileId){for(var _i=0;_i<S.hand.length;_i++){if(S.hand[_i]&&S.hand[_i].id===bt.tileId){t=S.hand[_i];break;}}}
-  return t||null;
-}
+function _btFindTile(bt){return bt;}
 
 // Computes the destination screen coords and bezier control point for a tile
 // that will land at slot (nBefore+idx) in a hand of nTotal tiles.
@@ -354,97 +626,143 @@ function _flyTileToHand(tEl,dur,destX,destY,cpX,cpY,onDone,preCapRect){
   requestAnimationFrame(flyTick);
 }
 
-// Advancing timestamp for sequential one-by-one slotting during sweep recall.
-var _nextSweepPhase3At=0;
+// Arc-start queue: tiles enter the hand one at a time, 350ms apart.
+// Rightmost source tile goes first within a simultaneous batch.
+var _nextArcAt=0;
+var _ARC_STAGGER=350;
+var _SPIRAL_ARC_DUR=1100;
 
-// Two-phase wind animation:
-// Phase 1 — Float (650ms): tile drifts in push/swipe direction with ease-out deceleration
-//   and a gentle sinusoidal wobble (idle floating feel). The ice momentum carries it.
-// Phase 2 — Arc (800ms): pure exponential ease-in (bezT near-zero at start → intense rush).
-//   The wind starts imperceptibly and builds, whipping the tile around a wide arc that swings
-//   off-screen right then fires horizontally left into the hotbar.
-// holdUntil: minimum timestamp for arc phase start (used for sequential stagger).
-// pauseX/Y: push direction indicator only (swipe direction or 50px lift for taps).
-var _FLY_FLOAT_DUR=650;
-function _flyTileIce(tEl,holdUntil,pauseX,pauseY,destX,destY,onDone,preCapRect,elevPx,sqRect){
+// Returns a holdUntil timestamp for the next arc slot.
+// Returns a holdUntil timestamp for the next arc slot (stagger landing times across a batch).
+function _allocArcSlot(){
+  var now=performance.now();
+  var slot=Math.max(now+650,_nextArcAt);
+  _nextArcAt=slot+_ARC_STAGGER;
+  return slot;
+}
+
+// Golden-ratio spiral arc back to the hotbar.
+// Phase 1 — drift: tile moves in driftDx/driftDy direction (ease-out, 450ms) while waiting for its arc slot.
+// Phase 2 — spiral: quintic Bezier sweeps UP-RIGHT past the board, loops off-screen right,
+//   swoops down past the tile bag, and enters the hand from the right.
+// Arc height scales with horizontal distance from right edge — left-side tiles fly higher.
+// destX: fixed x coordinate for the arc's landing target (pre-computed phantom slot position).
+// driftDx/driftDy: directional momentum offset for phase 1 (default: straight up 60px).
+// physicsV0: if provided, replaces ease-out with initial-velocity + constant-decel physics (px/ms).
+function _flyTileSpiral(tEl,holdUntil,srcX,srcY,destX,destY,onDone,preCapRect,driftDx,driftDy,physicsV0){
   if(!tEl){if(onDone)onDone();return;}
   var sr=preCapRect||tEl.getBoundingClientRect();
   if(tEl.parentNode)tEl.parentNode.removeChild(tEl);
   var boardSz=sr.width,endScale=68/boardSz;
   var sprCss=tEl.dataset.spr||'';
   tEl.className='tile tile-spr';
-  var _elev=elevPx||0;
-  tEl.style.cssText='position:fixed;z-index:9999;pointer-events:none;width:'+boardSz+'px;height:'+boardSz+'px;left:'+sr.left+'px;top:'+(sr.top-_elev)+'px;transform:scale(1);transform-origin:center center;'+(sprCss||'background:#f0e080;border-color:#a89000;');
+  tEl.style.cssText='position:fixed;z-index:9999;pointer-events:none;width:'+boardSz+'px;height:'+boardSz+'px;left:'+(srcX-boardSz/2)+'px;top:'+(srcY-boardSz/2)+'px;transform:scale(1);transform-origin:center center;'+(sprCss||'background:#f0e080;border-color:#a89000;');
   document.body.appendChild(tEl);
-  var scx=sr.left+boardSz/2,scy=sr.top+boardSz/2;
-  var inDx=pauseX-scx,inDy=pauseY-scy;
-  var inLen=Math.sqrt(inDx*inDx+inDy*inDy)||1;
-  var fDx=inDx/inLen,fDy=inDy/inLen;
-  var perpX=-fDy,perpY=fDx; // perpendicular for sideways wobble
-  var floatDist=Math.max(35,Math.min(70,inLen*0.55));
-  var wobbleAmp=6,rotAmp=5;
-  // Elevation fall state — tracked in top offset, cleared once tile leaves sqRect
-  var curElev=_elev,fallDone=(_elev===0),fallTrig=false,fallStart=0,fallFrom=_elev;
-  var _ELEV_FALL_DUR=80;
-  var floatStart=performance.now();
-  // Phase 1: float — ease-out drift with sinusoidal wobble and gentle rocking
-  function floatTick(now){
-    var t=Math.min(1,(now-floatStart)/_FLY_FLOAT_DUR);
-    var e=1-Math.pow(1-t,2); // ease-out quad
-    var osc=Math.sin(t*Math.PI*2.5)*(1-t); // oscillation that fades to 0 at t=1
-    var fx=scx+fDx*floatDist*e+perpX*wobbleAmp*osc;
-    var fy=scy+fDy*floatDist*e+perpY*wobbleAmp*osc;
-    // Detect when tile fully leaves the source square, then drop elevation
-    if(!fallDone){
-      if(!fallTrig&&sqRect){
-        var tl=fx-boardSz/2,tt=fy-boardSz/2;
-        var off=(tl+boardSz<=sqRect.left)||(tl>=sqRect.right)||(tt+boardSz<=sqRect.top)||(tt>=sqRect.bottom);
-        if(off||t>=0.85){fallTrig=true;fallStart=now;fallFrom=curElev;}
-      }
-      if(fallTrig){
-        var ft=Math.min(1,(now-fallStart)/_ELEV_FALL_DUR);
-        curElev=fallFrom*(1-ft*ft*(3-2*ft));
-        if(ft>=1)fallDone=true;
-      }
+  // Phase 1: drift — ease-out (default) or initial-velocity + constant-decel (physicsV0 provided)
+  var _dDx=driftDx||0,_dDy=driftDy||-60;
+  var _dStart=performance.now(),_dDur=450;
+  var _GRAV=0.00070; // px/ms²  (constant deceleration during launch phase)
+  function _driftPos(now){
+    var dt=now-_dStart;
+    if(physicsV0!==undefined){
+      // clamp dt at peak (when vy = 0) so tile holds position instead of falling back
+      var dtC=Math.min(dt,physicsV0/_GRAV);
+      return{x:srcX+_dDx*Math.min(1,dt/_dDur),y:srcY-physicsV0*dtC+0.5*_GRAV*dtC*dtC};
     }
-    tEl.style.left=(fx-boardSz/2)+'px';
-    tEl.style.top=(fy-boardSz/2-curElev)+'px';
-    tEl.style.transform='rotate('+(rotAmp*osc)+'deg)';
-    if(t<1){requestAnimationFrame(floatTick);return;}
-    // Float done — hold at endpoint until holdUntil, then launch arc
-    var fex=scx+fDx*floatDist,fey=scy+fDy*floatDist;
-    tEl.style.left=(fex-boardSz/2)+'px';tEl.style.top=(fey-boardSz/2)+'px';
-    tEl.style.transform='rotate(0deg)';
-    function waitTick(now2){
-      if(now2<holdUntil){requestAnimationFrame(waitTick);return;}
-      // Phase 2: arc — CP1 continues float direction, CP2 off-screen right at hotbar height
-      var tangentLen=Math.max(120,Math.min(300,inLen*1.2));
-      var cp1X=fex+fDx*tangentLen,cp1Y=fey+fDy*tangentLen;
-      var cp2X=window.innerWidth*1.1,cp2Y=destY;
-      var arcDur=800;var expK=5;var expDenom=Math.exp(expK)-1;
-      var arcStart=performance.now();
-      function arcTick(now3){
-        var rawT=Math.min(1,(now3-arcStart)/arcDur);
-        // Pure exponential: near-zero start (barely felt) → intense rush (wind fully in control)
-        var bezT=(Math.exp(expK*rawT)-1)/expDenom;
-        var u=1-bezT;
-        tEl.style.left=(u*u*u*fex+3*u*u*bezT*cp1X+3*u*bezT*bezT*cp2X+bezT*bezT*bezT*destX-boardSz/2)+'px';
-        tEl.style.top=(u*u*u*fey+3*u*u*bezT*cp1Y+3*u*bezT*bezT*cp2Y+bezT*bezT*bezT*destY-boardSz/2)+'px';
-        var scaleT=Math.max(0,Math.min(1,(bezT-0.6)/0.4));
-        tEl.style.transform='scale('+(1+(endScale-1)*scaleT*scaleT)+')';
-        if(rawT<1){requestAnimationFrame(arcTick);return;}
-        if(tEl.parentNode)tEl.parentNode.removeChild(tEl);
-        if(onDone)onDone();
-      }
-      requestAnimationFrame(arcTick);
-    }
-    requestAnimationFrame(waitTick);
+    var e=1-Math.pow(1-Math.min(1,dt/_dDur),2);
+    return{x:srcX+_dDx*e,y:srcY+_dDy*e};
   }
-  requestAnimationFrame(floatTick);
+  // Launch-phase visual state shared between hover and arc
+  var _currentScale=1.0,_wobblePhase=0,_hoverWF=0,_lastHoverT=null;
+  var _boardRect=(function(){var e=document.getElementById('board-wrap');return e?e.getBoundingClientRect():null;})();
+  function hoverTick(now){
+    var p=_driftPos(now);
+    tEl.style.left=(p.x-boardSz/2)+'px';tEl.style.top=(p.y-boardSz/2)+'px';
+    var dt=now-_dStart;
+    var fDt=_lastHoverT!==null?now-_lastHoverT:0; _lastHoverT=now;
+    var wobbleFrac;
+    if(physicsV0!==undefined){
+      var curSpd=Math.max(0,physicsV0-_GRAV*Math.min(dt,physicsV0/_GRAV));
+      var normSpd=Math.min(1,curSpd/physicsV0); // 1 at launch, 0 at peak
+      wobbleFrac=1-normSpd;
+      // Smooth scale: lerp toward board size (0.75) when over board, full (1.0) otherwise
+      var overBoard=_boardRect&&p.y>=_boardRect.top&&p.y<=_boardRect.bottom;
+      _currentScale+=((overBoard?0.75:1.0)-_currentScale)*Math.min(1,fDt*0.007);
+    } else {
+      // Ease-out drift: wobble ramps in over the last 100ms of drift, holds at 1 during hold phase.
+      wobbleFrac=Math.max(0,Math.min(1,(dt-(_dDur-100))/100));
+    }
+    _hoverWF=wobbleFrac;
+    if(wobbleFrac>0){
+      _wobblePhase+=fDt/2700*Math.PI*2*wobbleFrac;
+      var floatY=-Math.sin(_wobblePhase)*6*wobbleFrac;
+      var floatRot=Math.sin(_wobblePhase+0.4)*1.2*wobbleFrac;
+      tEl.style.transform='scale('+_currentScale.toFixed(3)+') translateY('+floatY.toFixed(2)+'px) rotate('+floatRot.toFixed(2)+'deg)';
+    }
+    if(now<holdUntil){requestAnimationFrame(hoverTick);}else{var q=_driftPos(now);launchArc(now,q.x,q.y);}
+  }
+  requestAnimationFrame(hoverTick);
+  function launchArc(arcStart,curSrcX,curSrcY){
+    var _arcStartScale=_currentScale,_arcStartWF=_hoverWF,_lastArcT=arcStart;
+    var W=window.innerWidth,H=window.innerHeight;
+    // arcFrac: 0 = source near right edge (flat arc), 1 = source at far left (tall arc)
+    var arcFrac=Math.max(0,Math.min(1,(W*0.72-srcX)/(W*0.72)));
+    // Quintic Bezier (6 control points). P0 = drift endpoint; P5 = hand slot (mutable each frame).
+    // P1-P4: rise to upper-right → off-screen right → loop around bag → hand entry from right.
+    var P0x=curSrcX, P0y=curSrcY;
+    var P1x=W*(0.70+arcFrac*0.06), P1y=H*(0.06-arcFrac*0.28);
+    var P2x=W*0.94,                P2y=H*(-0.04-arcFrac*0.14);
+    var P3x=W*1.14,                P3y=H*0.34;
+    var P4x=W*1.04,                P4y=H*0.82;
+    var expK=5,expDenom=Math.exp(expK)-1;
+    function arcTick(now){
+      var rawT=Math.min(1,(now-arcStart)/_SPIRAL_ARC_DUR);
+      var t=(Math.exp(expK*rawT)-1)/expDenom;
+      var u=1-t;
+      var dx=(destX&&typeof destX==='object'&&'x' in destX)?destX.x:destX;
+      var b0=u*u*u*u*u,b1=5*u*u*u*u*t,b2=10*u*u*u*t*t,b3=10*u*u*t*t*t,b4=5*u*t*t*t*t,b5=t*t*t*t*t;
+      tEl.style.left=(b0*P0x+b1*P1x+b2*P2x+b3*P3x+b4*P4x+b5*dx-boardSz/2)+'px';
+      tEl.style.top =(b0*P0y+b1*P1y+b2*P2y+b3*P3y+b4*P4y+b5*destY-boardSz/2)+'px';
+      // Float continues from hover, fading over the first half of the arc
+      var arcWF=Math.max(0,_arcStartWF*(1-rawT*2));
+      var fDt=now-_lastArcT; _lastArcT=now;
+      _wobblePhase+=fDt/2700*Math.PI*2*arcWF;
+      var arcFloatY=-Math.sin(_wobblePhase)*6*arcWF;
+      var arcFloatRot=Math.sin(_wobblePhase+0.4)*1.2*arcWF;
+      // Scale: smooth from arc-start scale to endScale over the last 40%
+      var st=Math.max(0,Math.min(1,(rawT-0.6)/0.4));
+      var arcSc=_arcStartScale+(endScale-_arcStartScale)*(st*st);
+      tEl.style.transform='scale('+arcSc.toFixed(3)+') translateY('+arcFloatY.toFixed(2)+'px) rotate('+arcFloatRot.toFixed(2)+'deg)';
+      if(rawT<1){requestAnimationFrame(arcTick);return;}
+      if(tEl.parentNode)tEl.parentNode.removeChild(tEl);
+      if(onDone)onDone();
+    }
+    requestAnimationFrame(arcTick);
+  }
+}
+
+// Universal landing handler for tiles in 'moving' state returning to the hotbar.
+// Places the tile at the next phantom slot (first slot to the right of current hand tiles).
+// As each tile lands, movingCount decreases and HP.x grows by one — total stays constant,
+// so existing hotbar tiles never move.
+function _landTile(tile){
+  if(!tile||tile.state!=='moving')return;
+  hpBounds();
+  var landX=HP.nextLandX();
+  // Ensure tile is last in S.hand so HP.x.push aligns with vis order in renderHand.
+  var idx=S.hand.indexOf(tile);
+  if(idx>=0&&idx<S.hand.length-1){S.hand.splice(idx,1);S.hand.push(tile);}
+  HP.movingCount=Math.max(0,HP.movingCount-1);
+  if(HP.movingCount===0)_nextArcAt=0;
+  setTileState(tile,'hand');
+  HP.x.push(landX);HP.vx.push(0);
+  renderHand();
 }
 
 function recallTile(sqIdx){
   _playTileClick('pick');
+  var ha=document.getElementById('hand-area');var hr=ha?ha.getBoundingClientRect():null;
+  var destY=hr?(hr.top+34):(window.innerHeight-60);
   // Jenga: recall top stacked tile first
   if(S.btTop&&S.btTop[sqIdx]&&S.btTop[sqIdx].isNew){
     var btt=S.btTop[sqIdx];
@@ -452,125 +770,92 @@ function recallTile(sqIdx){
     var tEl0=sqEl0?sqEl0.querySelector('.board-tile.is-new'):null;
     var savedSr0=tEl0?tEl0.getBoundingClientRect():null;
     if(tEl0&&tEl0.parentNode)tEl0.parentNode.removeChild(tEl0);
-    var nBefore0=S.hand.filter(function(t){return t&&!t.onBoard;}).length;
-    var t0=_btFindTile(btt);if(t0){t0.onBoard=false;t0._boardSq=undefined;if(t0.isBlank)t0.blankAs=null;_moveToEndOfHand(t0);}
-    if(t0)t0.inFlight=true;
     S.btTop[sqIdx]=null;
+    S.hand.push(btt);setTileState(btt,'moving',{movingFrom:'board',movingTo:'hand'});
+    HP.movingCount++;
     renderBoard();
-    if(!tEl0||!savedSr0||savedSr0.width===0){if(t0)t0.inFlight=false;renderHand();return;}
-    var p0=_handLandingParams(nBefore0,nBefore0+1,0);
-    if(nBefore0>0&&HP.x.length===nBefore0){HP.fromX=HP.x.slice();HP.toX=hpRest(nBefore0+1).slice(0,nBefore0);HP.settleDur=380;HP.settleAt=performance.now();HP.settleCallback=function(){HP.fromX=HP.x.slice();HP.toX=HP.x.slice();HP.settleDur=9999;HP.settleAt=performance.now();HP.settleCallback=null;};}
+    if(!tEl0||!savedSr0||savedSr0.width===0){_landTile(btt);return;}
+    var _hu0=_allocArcSlot();
+    var _destX0=HP.nextLandX();
     var _c0x=savedSr0.left+savedSr0.width/2,_c0y=savedSr0.top+savedSr0.height/2;
-    _flyTileIce(tEl0,performance.now()+_FLY_FLOAT_DUR,_c0x,_c0y-50,p0.destX,p0.destY,function(){if(t0)t0.inFlight=false;_playTileClick('land');renderHand();},savedSr0);
+    var _recallS0=S;
+    _flyTileSpiral(tEl0,_hu0,_c0x,_c0y,_destX0,destY,function(){
+      if(S!==_recallS0){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;return;}
+      _landTile(btt);_playTileClick('land');
+    },savedSr0,0,-50);
     return;
   }
   var bt=S.bt[sqIdx];if(!bt||!bt.isNew)return;
   var sqEl=document.querySelector('[data-sq-idx="'+sqIdx+'"]');
   var tEl=sqEl?sqEl.querySelector('.board-tile'):null;
-  // Capture rect and detach BEFORE renderBoard destroys the element.
   var savedSr=tEl?tEl.getBoundingClientRect():null;
   if(tEl&&tEl.parentNode)tEl.parentNode.removeChild(tEl);
-  var nBefore=S.hand.filter(function(t){return t&&!t.onBoard;}).length;
-  var t=_btFindTile(bt);if(t){t.onBoard=false;t._boardSq=undefined;if(t.isBlank)t.blankAs=null;_moveToEndOfHand(t);}
-  if(t)t.inFlight=true;
   S.bt[sqIdx]=null;
+  S.hand.push(bt);setTileState(bt,'moving',{movingFrom:'board',movingTo:'hand'});
+  HP.movingCount++;
   renderBoard();
-  if(!tEl||!savedSr||savedSr.width===0){if(t)t.inFlight=false;renderHand();return;}
-  var p=_handLandingParams(nBefore,nBefore+1,0);
-  if(nBefore>0&&HP.x.length===nBefore){
-    HP.fromX=HP.x.slice();HP.toX=hpRest(nBefore+1).slice(0,nBefore);
-    HP.settleDur=380;HP.settleAt=performance.now();
-    // Hold existing tiles at settled positions until the flying tile lands (prevents spring snap-back).
-    HP.settleCallback=function(){
-      HP.fromX=HP.x.slice();HP.toX=HP.x.slice();
-      HP.settleDur=9999;HP.settleAt=performance.now();
-      HP.settleCallback=null;
-    };
-  }
+  if(!tEl||!savedSr||savedSr.width===0){_landTile(bt);return;}
+  var _hu=_allocArcSlot();
+  var _destX=HP.nextLandX();
   var _pCx=savedSr.left+savedSr.width/2,_pCy=savedSr.top+savedSr.height/2;
-  _flyTileIce(tEl,performance.now()+_FLY_FLOAT_DUR,_pCx,_pCy-50,p.destX,p.destY,function(){if(t)t.inFlight=false;_playTileClick('land');renderHand();},savedSr);
+  var _recallS=S;
+  _flyTileSpiral(tEl,_hu,_pCx,_pCy,_destX,destY,function(){
+    if(S!==_recallS){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;return;}
+    _landTile(bt);_playTileClick('land');
+  },savedSr,0,-50);
 }
-
-// Counts tiles currently flying from a shift-drag sweep; _onUp defers renderHand until this hits 0.
-var _sweepFlyCount=0;
 
 function _recallTileSweep(sqIdx,swipeVx,swipeVy){
   _playTileClick('pick');
-  var _JENGA_ELEV=6; // elevation per stack level, matches CSS jenga-stacked translateY
+  var _JENGA_ELEV=6;
   var useTop=!!(S.btTop&&S.btTop[sqIdx]&&S.btTop[sqIdx].isNew);
-  // Elevation of this btTop: one level above the committed tile below
   var _btopElev=useTop?((S.bt[sqIdx]&&S.bt[sqIdx]._stackLevel||0)+1)*_JENGA_ELEV:0;
   var bt=useTop?S.btTop[sqIdx]:S.bt[sqIdx];if(!bt||!bt.isNew)return;
-  var t=_btFindTile(bt);if(t){t.onBoard=false;t._boardSq=undefined;if(t.isBlank)t.blankAs=null;_moveToEndOfHand(t);}
-  if(t)t.inFlight=true;
   if(useTop){S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
+  S.hand.push(bt);setTileState(bt,'moving',{movingFrom:'board',movingTo:'hand'});
+  HP.movingCount++;
+  var t=bt;
   var sqEl=document.querySelector('[data-sq-idx="'+sqIdx+'"]');
-  if(!sqEl)return;
-  // Capture square rect for fall detection before DOM changes
-  var _sqRectFall=useTop?sqEl.getBoundingClientRect():null;
+  if(!sqEl){_landTile(bt);return;}
   var tEl=sqEl.querySelector('.board-tile.is-new');
-  if(!tEl)return;
-  // Capture rect before tEl is detached by _flyTileIce
+  if(!tEl){_landTile(bt);return;}
   var savedSr=tEl.getBoundingClientRect();
-  // effectiveSr: base-level position (strip elevation offset)
   var effectiveSr=_btopElev>0?{left:savedSr.left,top:savedSr.top+_btopElev,width:savedSr.width,height:savedSr.height}:savedSr;
-  var nCur=S.hand.filter(function(t2){return t2&&!t2.onBoard;}).length;
-  var p=_handLandingParams(nCur-1,nCur,0);
-  // Slide existing hand tiles LEFT immediately to make room, re-targeting on each additional sweep.
-  var nHand=HP.x.length;
-  if(nHand>0){
-    HP.fromX=HP.x.slice();
-    HP.toX=hpRest(nCur).slice(0,nHand);
-    HP.settleDur=380;HP.settleAt=performance.now();
-    // Hold until all swept tiles land — prevents spring pulling tiles back between sweep events.
-    HP.settleCallback=function(){
-      HP.fromX=HP.x.slice();HP.toX=HP.x.slice();
-      HP.settleDur=9999;HP.settleAt=performance.now();
-      HP.settleCallback=null;
-    };
-  }
-  // Pause point from base position
   var tileCx=effectiveSr.left+effectiveSr.width/2,tileCy=effectiveSr.top+effectiveSr.height/2;
-  var speed=Math.sqrt((swipeVx||0)*(swipeVx||0)+(swipeVy||0)*(swipeVy||0));
-  var dist=Math.max(50,Math.min(180,speed*8));
-  var dlen=speed>0.1?speed:1;
-  var pauseX=tileCx+(swipeVx||0)/dlen*dist;
-  var pauseY=tileCy+(swipeVy||0)/dlen*dist;
-  // Queue phase 3 starts sequentially so tiles slot in one-by-one.
-  var earliest=performance.now()+_FLY_FLOAT_DUR;
-  if(_nextSweepPhase3At===0)_nextSweepPhase3At=earliest;
-  var holdUntil=Math.max(earliest,_nextSweepPhase3At);
-  _nextSweepPhase3At=holdUntil+300;
-  _sweepFlyCount++;
-  _flyTileIce(tEl,holdUntil,pauseX,pauseY,p.destX,p.destY,function(){
-    _sweepFlyCount--;
-    if(t)t.inFlight=false;
-    _playTileClick('land');renderHand();
-    if(_sweepFlyCount===0)_nextSweepPhase3At=0;
-    else{HP.fromX=HP.x.slice();HP.toX=HP.x.slice();HP.settleDur=9999;HP.settleAt=performance.now();}
-  },effectiveSr,_btopElev,_sqRectFall);
+  var holdUntil=_allocArcSlot();
+  var ha=document.getElementById('hand-area');var hr=ha?ha.getBoundingClientRect():null;
+  var destY=hr?(hr.top+34):(window.innerHeight-60);
+  var _destX=HP.nextLandX();
+  var _swSpeed=Math.sqrt((swipeVx||0)*(swipeVx||0)+(swipeVy||0)*(swipeVy||0));
+  var _swDx,_swDy;
+  if(_swSpeed<0.3){_swDx=0;_swDy=-60;}
+  else{var _sd=Math.max(60,Math.min(180,_swSpeed*30));_swDx=((swipeVx||0)/_swSpeed)*_sd;_swDy=((swipeVy||0)/_swSpeed)*_sd;}
+  var _sweepS=S;
+  _flyTileSpiral(tEl,holdUntil,tileCx,tileCy,_destX,destY,function(){
+    if(S!==_sweepS){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;return;}
+    _landTile(t);_playTileClick('land');
+  },effectiveSr,_swDx,_swDy);
 }
 
 function recallAll(){
-  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var t2=_btFindTile(S.btTop[i]);if(t2){t2.onBoard=false;t2._boardSq=undefined;}S.btTop[i]=null;}}}
-  for(var i=0;i<B*B;i++){var bt=S.bt[i];if(bt&&bt.isNew){var t=_btFindTile(bt);if(t){t.onBoard=false;t._boardSq=undefined;}S.bt[i]=null;}}
-  // Safety: clear any hand tile whose board square is no longer occupied by a new tile
-  for(var _hi=0;_hi<S.hand.length;_hi++){var _ht=S.hand[_hi];if(_ht&&_ht.onBoard){var _sq=_ht._boardSq;var _hasNew=_sq!==undefined&&((S.bt[_sq]&&S.bt[_sq].isNew)||(S.btTop&&S.btTop[_sq]&&S.btTop[_sq].isNew));if(!_hasNew){_ht.onBoard=false;_ht._boardSq=undefined;}}}
+  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){setTileState(S.btTop[i],'hand');S.hand.push(S.btTop[i]);S.btTop[i]=null;}}}
+  for(var i=0;i<B*B;i++){var bt=S.bt[i];if(bt&&bt.isNew){setTileState(bt,'hand');S.hand.push(bt);S.bt[i]=null;}}
 }
 
-// Animated recallAll: existing tiles slide left, recalled tiles arc in from the right in staggered order.
+// Animated recallAll: recalled tiles arc in staggered from left to right.
+// Phantom slots keep remaining hand tiles stationary throughout.
 function _recallAllAnimated(){
-  var nBefore=S.hand.filter(function(t){return t&&!t.onBoard;}).length;
-  var tEls=[],tRects=[],tRefs=[];
-  // Handle Jenga btTop tiles first
+  var _recallAllS=S;
+  var tEls=[],tRects=[],tTiles=[];
   if(S.btTop){
     for(var i=0;i<B*B;i++){
       if(S.btTop[i]&&S.btTop[i].isNew){
         var sqEl2=document.querySelector('[data-sq-idx="'+i+'"]');
         var tEl2=sqEl2?sqEl2.querySelector('.board-tile.is-new'):null;
-        var t2=_btFindTile(S.btTop[i]);if(t2){t2.onBoard=false;t2._boardSq=undefined;_moveToEndOfHand(t2);}
-        if(tEl2){tRects.push(tEl2.getBoundingClientRect());if(tEl2.parentNode)tEl2.parentNode.removeChild(tEl2);tEls.push(tEl2);if(t2)t2.inFlight=true;tRefs.push(t2||null);}
-        S.btTop[i]=null;
+        var t2=S.btTop[i];S.btTop[i]=null;
+        S.hand.push(t2);
+        if(tEl2){tRects.push(tEl2.getBoundingClientRect());if(tEl2.parentNode)tEl2.parentNode.removeChild(tEl2);tEls.push(tEl2);setTileState(t2,'moving',{movingFrom:'board',movingTo:'hand'});tTiles.push(t2);}
+        else{setTileState(t2,'hand');}
       }
     }
   }
@@ -579,55 +864,49 @@ function _recallAllAnimated(){
     if(bt&&bt.isNew){
       var sqEl=document.querySelector('[data-sq-idx="'+i+'"]');
       var tEl=sqEl?sqEl.querySelector('.board-tile'):null;
-      var t=_btFindTile(bt);if(t){t.onBoard=false;t._boardSq=undefined;_moveToEndOfHand(t);}
+      S.bt[i]=null;S.hand.push(bt);
       if(tEl){
-        // Capture rect and detach BEFORE renderBoard destroys elements.
         tRects.push(tEl.getBoundingClientRect());
         if(tEl.parentNode)tEl.parentNode.removeChild(tEl);
-        tEls.push(tEl);
-        if(t)t.inFlight=true;
-        tRefs.push(t||null);
-      }
-      S.bt[i]=null;
+        tEls.push(tEl);setTileState(bt,'moving',{movingFrom:'board',movingTo:'hand'});tTiles.push(bt);
+      }else{setTileState(bt,'hand');}
     }
   }
   renderBoard();
   var nNew=tEls.length;
   if(nNew===0){renderHand();return;}
-  var nAfter=nBefore+nNew;
-  // Slide existing tiles left; hold position via settleCallback until last tile arrives
-  if(nBefore>0&&HP.x.length===nBefore){
-    HP.fromX=HP.x.slice();HP.toX=hpRest(nAfter).slice(0,nBefore);
-    HP.settleDur=380;HP.settleAt=performance.now();
-    // Hold existing tiles in place until all recalled tiles have landed.
-    HP.settleCallback=function(){
-      HP.fromX=HP.x.slice();HP.toX=HP.x.slice();
-      HP.settleDur=9999;HP.settleAt=performance.now();
-      HP.settleCallback=null;
-    };
-  }
-  // All tiles decelerate to the same pause point simultaneously, then slot in one-by-one.
-  // Pre-set HP.x to nAfter positions so renderHand after each landing doesn't snap positions.
-  var _now=performance.now();
-  var phase3Base=_now+_FLY_FLOAT_DUR; // tile 0 arc starts after its float
-  var p3Stagger=300;                  // 300ms between consecutive arc starts
-  var doneCount=0;
+
+  HP.movingCount+=nNew;
+  hpBounds();
+  var nHand=HP.x.length;
+  var allSlots=hpRest(nHand+nNew); // fixed slot positions for entire batch
+
+  var ha=document.getElementById('hand-area');var hr=ha?ha.getBoundingClientRect():null;
+  var destY=hr?(hr.top+34):(window.innerHeight-60);
+
+  // Sort by source x so leftmost tile arrives first and lands in leftmost phantom slot.
+  var _sortRA=[];
   for(var j=0;j<nNew;j++){
-    (function(el,sr,idx,tRef){
-      var p=_handLandingParams(nBefore,nAfter,idx);
-      var _kx=sr.left+sr.width/2,_ky=sr.top+sr.height/2-50;
-      _flyTileIce(el,phase3Base+idx*p3Stagger,_kx,_ky,p.destX,p.destY,function(){
-        doneCount++;
-        if(tRef)tRef.inFlight=false;
-        hpBounds();
-        var tr=hpRest(nAfter);
-        HP.x=tr.slice(0,nBefore+doneCount);
-        HP.vx=Array(nBefore+doneCount).fill(0);
-        HP.fromX=[];HP.toX=[];HP.settleAt=0;HP.settleCallback=null;
-        renderHand();
-        if(doneCount<nNew){HP.fromX=HP.x.slice();HP.toX=HP.x.slice();HP.settleDur=9999;HP.settleAt=performance.now();}
-      },sr);
-    })(tEls[j],tRects[j],j,tRefs[j]);
+    var _srj=tRects[j];
+    _sortRA.push({el:tEls[j],sr:_srj,t:tTiles[j],srcX:_srj?(_srj.left+_srj.width/2):0});
+  }
+  _sortRA.sort(function(a,b){return a.srcX-b.srcX;});
+  for(var j=0;j<nNew;j++){
+    _sortRA[j].holdUntil=_allocArcSlot();
+    _sortRA[j].destX=allSlots[nHand+j];
+  }
+
+  for(var j=0;j<nNew;j++){
+    (function(entry){
+      if(!entry.el||!entry.sr){
+        _landTile(entry.t);return;
+      }
+      var _kx=entry.sr.left+entry.sr.width/2,_ky=entry.sr.top+entry.sr.height/2;
+      _flyTileSpiral(entry.el,entry.holdUntil,_kx,_ky,entry.destX,destY,function(){
+        if(S!==_recallAllS){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;return;}
+        _landTile(entry.t);_playTileClick('land');
+      },entry.sr,0,-50);
+    })(_sortRA[j]);
   }
 }
 
@@ -637,7 +916,7 @@ function _recallAllAnimated(){
 // onDone: called after last tile lands and renderHand() has run.
 function _burstNewTilesFromBag(nKept,nTotal,bagEl,onDone){
   var afterVis=[];
-  for(var _k=0;_k<S.hand.length;_k++)if(S.hand[_k]&&!S.hand[_k].onBoard)afterVis.push(S.hand[_k]);
+  for(var _k=0;_k<S.hand.length;_k++)if(S.hand[_k])afterVis.push(S.hand[_k]);
   var nNew=afterVis.length-nKept;
   // Extend HP to nTotal so spring physics uses correct rest positions during flight.
   HP.tiles=afterVis.slice();
@@ -688,26 +967,26 @@ function _moveToEndOfHand(t){
   var oldIdx=S.hand.indexOf(t);
   if(oldIdx<0||oldIdx===S.hand.length-1)return;
   S.hand.splice(oldIdx,1);S.hand.push(t);
-  for(var _bi=0;_bi<B*B;_bi++){
-    if(S.bt[_bi]&&S.bt[_bi].handIdx!==undefined&&S.bt[_bi].handIdx>oldIdx)
-      S.bt[_bi].handIdx--;
-    if(S.btTop&&S.btTop[_bi]&&S.btTop[_bi].handIdx!==undefined&&S.btTop[_bi].handIdx>oldIdx)
-      S.btTop[_bi].handIdx--;
-  }
 }
 
 function clearBoardLetters(){
+  for(var i=0;i<B*B;i++){
+    if(S.bt[i])setTileState(S.bt[i],'stored',{storedIn:'bag'});
+    if(S.btTop&&S.btTop[i])setTileState(S.btTop[i],'stored',{storedIn:'bag'});
+  }
   S.bt=Array(B*B).fill(null);
   if(S.btTop)S.btTop=Array(B*B).fill(null);
-  for(var i=0;i<S.hand.length;i++){if(S.hand[i]&&S.hand[i].onBoard){S.hand[i].onBoard=false;S.hand[i]._boardSq=undefined;}}
   if(S.localCooldowns)S.localCooldowns.clear();
 }
 
-function toggleSel(idx){if(Date.now()-_dragEndTime<300)return;if(S.hand[idx]&&!S.hand[idx].onBoard){S.hand[idx].sel=!S.hand[idx].sel;_playTileClick('select');renderHand();}}
+function toggleSel(idx){if(Date.now()-_dragEndTime<300)return;if(S.hand[idx]){S.hand[idx].sel=!S.hand[idx].sel;_playTileClick('select');renderHand();}}
 
 // Global shift-drag: capture phase intercepts before any tile handler fires.
-// Shift+drag over hand tiles toggles selection; shift+drag over board recalls new tiles.
-// Works even when cursor starts on empty space.
+// Selection rules:
+//   shift-click unselected tile → select all tiles
+//   shift-click selected tile   → deselect all tiles
+//   shift-drag right            → select tiles as cursor passes through them
+//   shift-drag left             → deselect tiles as cursor passes through them
 document.addEventListener('pointerdown',function(ev){
   if(!ev.shiftKey||ev.button!==0)return;
   if(typeof S==='undefined'||S.phase!=='play')return;
@@ -716,8 +995,10 @@ document.addEventListener('pointerdown',function(ev){
   var _t=ev.target;while(_t&&_t!==document){var _tn=_t.tagName;if(_tn==='BUTTON'||_tn==='INPUT'||_tn==='SELECT'||_tn==='A'||_tn==='TEXTAREA'){return;}_t=_t.parentElement;}
   ev.preventDefault();ev.stopPropagation();
   var _sx=ev.clientX,_sy=ev.clientY;
-  var _swept=false,_selMode=null,_prevX=_sx,_prevY=_sy;
-  var _toggled=new Set(),_lastHandTile=-1;
+  var _swept=false,_selMode=null,_prevX=_sx,_prevY=_sy,_lastHandTile=-1;
+  // Capture the tile under the initial click and its current sel state for shift-click handling.
+  var _clickTile=-1,_clickTileSel=false;
+  (function(){var _els=document.elementsFromPoint(_sx,_sy);for(var _ei=0;_ei<_els.length;_ei++){if(_els[_ei].classList.contains('hand-tile')){var _hoi=parseInt(_els[_ei].dataset.handOi);if(!isNaN(_hoi)&&S.hand[_hoi]){_clickTile=_hoi;_clickTileSel=!!S.hand[_hoi].sel;}break;}}})();
   function _sweepAt(x,y,vx,vy){
     var sq=sqAt(x,y);
     var _hasTopNew=sq>=0&&S.btTop&&S.btTop[sq]&&S.btTop[sq].isNew;
@@ -728,31 +1009,27 @@ document.addEventListener('pointerdown',function(ev){
       if(els[_i].classList.contains('hand-tile')){
         _foundTile=true;
         var _hoi=parseInt(els[_i].dataset.handOi);
-        if(!isNaN(_hoi)&&S.hand[_hoi]&&!S.hand[_hoi].onBoard&&_hoi!==_lastHandTile){
+        if(!isNaN(_hoi)&&S.hand[_hoi]&&_hoi!==_lastHandTile){
           _lastHandTile=_hoi;
-          if(_toggled.has(_hoi)){
-            S.hand[_hoi].sel=!S.hand[_hoi].sel;
-            if(S.hand[_hoi].sel)els[_i].classList.add('selected');else els[_i].classList.remove('selected');
-            _playTileClick('select');_toggled.delete(_hoi);
-          }else{
-            if(_selMode===null)_selMode=S.hand[_hoi].sel?'deselect':'select';
-            if(_selMode==='select'&&!S.hand[_hoi].sel){S.hand[_hoi].sel=true;els[_i].classList.add('selected');_playTileClick('select');_toggled.add(_hoi);}
-            else if(_selMode==='deselect'&&S.hand[_hoi].sel){S.hand[_hoi].sel=false;els[_i].classList.remove('selected');_playTileClick('select');_toggled.add(_hoi);}
-          }
+          if(vx>0)_selMode='select';
+          else if(vx<0)_selMode='deselect';
+          if(_selMode==='select'&&!S.hand[_hoi].sel){S.hand[_hoi].sel=true;els[_i].classList.add('selected');_playTileClick('select');}
+          else if(_selMode==='deselect'&&S.hand[_hoi].sel){S.hand[_hoi].sel=false;els[_i].classList.remove('selected');_playTileClick('select');}
         }
         break;
       }
     }
     if(!_foundTile)_lastHandTile=-1;
   }
-  _sweepAt(_sx,_sy,0,0);
   function _onMove(me){
     var cx=me.clientX,cy=me.clientY;
     var vx=cx-_prevX,vy=cy-_prevY;
     var dx=cx-_sx,dy=cy-_sy;
-    if(!_swept&&Math.sqrt(dx*dx+dy*dy)>5){_swept=true;activeDrag={src:'shift-sweep'};}
+    if(!_swept&&Math.sqrt(dx*dx+dy*dy)>5){
+      _swept=true;activeDrag={src:'shift-sweep'};
+      _sweepAt(_sx,_sy,vx,vy);  // process initial tile now that direction is known
+    }
     if(_swept){
-      // Sample intermediate points so a fast swipe never skips over a tile
       var dist=Math.sqrt(vx*vx+vy*vy);
       var steps=Math.max(1,Math.ceil(dist/30));
       for(var _s=1;_s<=steps;_s++){
@@ -766,15 +1043,18 @@ document.addEventListener('pointerdown',function(ev){
     document.removeEventListener('pointerup',_onUp);
     if(_swept){
       activeDrag=null;renderBoard();
-      // Only rebuild hand immediately if no swept tiles are still flying;
-      // the last flying tile's onDone will call renderHand() when they land.
-      if(_sweepFlyCount===0)renderHand();
+      if(HP.movingCount===0)renderHand();
     } else {
       var sq=sqAt(_sx,_sy);
       if(sq>=0&&S.bt[sq]&&S.bt[sq].isNew){_recallAllAnimated();}
-      else if(inHand(_sx,_sy)){
-        var _allSel=S.hand.every(function(t){return!t||t.onBoard||t.sel;});
-        for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&!S.hand[_si].onBoard)S.hand[_si].sel=!_allSel;}
+      else if(_clickTile>=0){
+        // shift-click unselected → select all; shift-click selected → deselect all
+        var _target=!_clickTileSel;
+        for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si])S.hand[_si].sel=_target;}
+        _playTileClick('select');renderHand();
+      } else if(inHand(_sx,_sy)){
+        var _allSel=S.hand.every(function(t){return!t||t.sel;});
+        for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si])S.hand[_si].sel=!_allSel;}
         _playTileClick('select');renderHand();
       }
     }
@@ -783,19 +1063,97 @@ document.addEventListener('pointerdown',function(ev){
   document.addEventListener('pointerup',_onUp);
 },true);
 
+function _resetArcQueue(){ _nextArcAt=0; HP.movingCount=0; }
+
+function _launchSelectedTiles(singleOnly){
+  if(typeof S==='undefined'||S.phase!=='play')return;
+  if(activeDrag)return;
+  if(document.getElementById('live-score-row').classList.contains('scoring'))return;
+  var _S=S;
+
+  var vis=[];
+  for(var i=0;i<S.hand.length;i++){
+    var t=S.hand[i];if(!t||t.state!=='hand')continue;
+    if(t.sel)vis.push({t:t,oi:i});
+  }
+  if(vis.length===0)return;
+  if(singleOnly)vis=[vis[0]];
+  var nSel=vis.length;
+
+  // Detach tile elements and capture rects before renderHand destroys them.
+  for(var j=0;j<nSel;j++){
+    var face=document.querySelector('.hand-tile[data-hand-oi="'+vis[j].oi+'"]');
+    if(face&&face.parentNode){
+      vis[j].sr=face.getBoundingClientRect();
+      face.parentNode.removeChild(face);
+      vis[j].el=face;
+    } else {
+      vis[j].sr=null;vis[j].el=null;
+    }
+    setTileState(vis[j].t,'moving',{movingFrom:'hand',movingTo:'hand'});
+  }
+  HP.movingCount+=nSel;
+
+  // Rebuild hand without launched tiles. Phantom slots let remaining tiles spring
+  // smoothly left without freezing.
+  renderHand();
+
+  // Pre-compute slot destinations so arcs have accurate visual targets.
+  hpBounds();
+  var nHand=HP.x.length;
+  var allSlots=hpRest(nHand+nSel);
+
+  var ha=document.getElementById('hand-area');var hr=ha?ha.getBoundingClientRect():null;
+  var destY=hr?(hr.top+34):(window.innerHeight-60);
+
+  var _G=0.00070,_D=160;
+  var _vm=Math.sqrt(2*_G*_D),_sv=(_D*0.25/3)*_G/_vm;
+  var _vlo=Math.sqrt(2*_G*_D*0.75),_vhi=Math.sqrt(2*_G*_D*1.25);
+  function _rn(){var u=1-Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*Math.random());}
+
+  for(var j=0;j<nSel;j++){
+    var _v0=Math.max(_vlo,Math.min(_vhi,_vm+_rn()*_sv));
+    (function(entry,v0,slotX){
+      var holdUntil=_allocArcSlot();
+      function _onLand(){
+        if(S!==_S){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;return;}
+        _landTile(entry.t);_playTileClick('land');
+      }
+      if(!entry.el||!entry.sr){_onLand();return;}
+      var cx=entry.sr.left+34,cy=entry.sr.top+34;
+      _flyTileSpiral(entry.el,holdUntil,cx,cy,slotX,destY,_onLand,entry.sr,0,undefined,v0);
+    })(vis[j],_v0,allSlots[nHand+j]);
+  }
+}
+
+document.addEventListener('keydown',function(ev){
+  if(ev.code!=='Space')return;
+  if(activeDrag)return;
+  if(typeof S==='undefined'||S.phase!=='play')return;
+  var _tgt=ev.target;
+  if(_tgt&&(_tgt.tagName==='INPUT'||_tgt.tagName==='TEXTAREA'||_tgt.isContentEditable))return;
+  var _hasSel=false;
+  for(var _i=0;_i<S.hand.length;_i++){if(S.hand[_i]&&S.hand[_i].sel){_hasSel=true;break;}}
+  if(!_hasSel)return;
+  ev.preventDefault();
+  _launchSelectedTiles(!ev.shiftKey);
+});
+
 function multiPlaceSelected(selOis,startSq,dir){
   var r=Math.floor(startSq/B),c=startSq%B;
   var free=[];
   if(dir==='h'){for(var cc=c;cc<B;cc++){var idx2=r*B+cc;if(!S.bt[idx2])free.push(idx2);}}
   else{for(var rr=r;rr<B;rr++){var idx2=rr*B+c;if(!S.bt[idx2])free.push(idx2);}}
-  if(free.length<selOis.length)return;
+  // Resolve tile refs before any splice — placement removes tiles from S.hand, shifting indices
+  var tiles=selOis.map(function(oi){return S.hand[oi];});
+  if(free.length<tiles.length)return;
   var i=0;
   function placeNext(){
-    if(i>=selOis.length){renderBoard();renderHand();return;}
-    var oi=selOis[i];var sqIdx=free[i];i++;
-    var t=S.hand[oi];t.sel=false;
-    if(t.isBlank&&!t.blankAs){renderBoard();renderHand();openBlankChooser(oi,function(){placeTile(oi,sqIdx);placeNext();});}
-    else{placeTile(oi,sqIdx);placeNext();}
+    if(i>=tiles.length){renderBoard();renderHand();return;}
+    var t=tiles[i];var sqIdx=free[i];i++;
+    t.sel=false;
+    if(t.isBlank&&!t.blankAs){renderBoard();renderHand();openBlankChooser(t,function(){placeTile(t,sqIdx);placeNext();});}
+    else{placeTile(t,sqIdx);placeNext();}
   }
   placeNext();
 }

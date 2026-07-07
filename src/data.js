@@ -86,6 +86,64 @@ var _THING_BLOCKED={the_thing:true,easy_mode:true,jenga:true,midas_touch:true,in
 //   tile/utility.js    — jenga, midas_touch, easy_mode, the_thing
 var SQ=[];
 
+// ── Tile State Machine ────────────────────────────────────────────────────────
+// Every tile exists in exactly one state at all times. Never write t.state
+// directly — always go through setTileState() so sub-props stay consistent.
+var TILE_STATE={
+  HAND:     'hand',      // in the hotbar, selectable
+  DRAGGING: 'dragging',  // held by the pointer
+  MOVING:   'moving',    // in-flight animation between locations
+  STORED:   'stored',    // off-screen: in the bag or discard pile
+  BOARD:    'board'      // placed on the board (isNew = can recall)
+};
+
+// Sub-props by state:
+//   hand     — sel:bool
+//   moving   — movingTo:string, movingFrom:string (auto-captured from prev state)
+//   stored   — storedIn:'bag'|'discard'  (open to future substates)
+//   board    — boardSq:int, isNew:bool, blankAs:string
+//   dragging — (no sub-props)
+function setTileState(t,newState,opts){
+  var prev=t.state;
+  t.state=newState;
+  opts=opts||{};
+  // Clear all sub-props — this is what enforces mutual exclusivity
+  t.sel=false;
+  t.storedIn=null;
+  t.movingTo=null;
+  t.movingFrom=null;
+  t.isNew=false;
+  t.boardSq=undefined;
+  // blankAs only clears when tile leaves active play (hand or storage)
+  // so a blank being dragged off the board still shows its assigned letter
+  if(newState==='hand'||newState==='stored')t.blankAs=null;
+  // Legacy compat: keep old flags in sync until Stage 4 removes them
+  t.onBoard=(newState==='board');
+  t.inFlight=(newState==='moving');
+  // Apply sub-props for the new state
+  switch(newState){
+    case 'hand':
+      t.sel=opts.sel||false;
+      break;
+    case 'moving':
+      t.movingTo=opts.movingTo||null;
+      t.movingFrom=opts.movingFrom!==undefined?opts.movingFrom:prev;
+      break;
+    case 'stored':
+      t.storedIn=opts.storedIn||'bag';
+      break;
+    case 'board':
+      t.boardSq=opts.boardSq!==undefined?opts.boardSq:undefined;
+      t.isNew=opts.isNew!==false; // default true — newly placed, can be recalled
+      if(opts.blankAs!==undefined)t.blankAs=opts.blankAs;
+      break;
+    // 'dragging': no sub-props
+  }
+  return t; // chainable
+}
+
+function tileDisplayLetter(t){return t.isBlank?(t.blankAs||'?'):t.letter;}
+
 var EASTER_EGGS=[
   {word:'REDRUM',effect:'red_tiles',msg:'REDRUM! Your tiles hunger for blood.'},
 ];
@@ -97,8 +155,7 @@ function applyEasterEgg(word,nt){
     if(egg.effect==='red_tiles'){
       for(var j=0;j<nt.length;j++){
         var bt=S.bt[nt[j].idx];if(!bt||!bt.isNew)continue;
-        bt.variant='red';
-        var hi=bt.handIdx;if(hi>=0&&S.hand[hi])S.hand[hi].variant='red';
+        if(bt.id)transformTile(bt.id,{variant:'red'});
       }
       renderBoard();renderHand();
       toast(egg.msg);

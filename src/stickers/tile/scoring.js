@@ -60,13 +60,14 @@ SQ.push({id:'magic_number',name:'Magic Number',
   liveDesc:function(p){var n=S.magicStreak||0;return 'Consecutive 3-letter streak: <span style="color:#f0e040">+'+n+' mult</span>. Play a non-3-letter word to reset.';},
   onPostWord:function(w,wt,ctx){
     if(w.length===3){
-      S.magicStreak=(S.magicStreak||0)+1;
-      var n=S.magicStreak;
+      var n=(S.magicStreak||0)+1;
       ctx.plusMults.push(n);
       ctx.events.push({type:'plus-mult',delta:n,label:'Magic Number +'+n+' mult'});
-    }else{
-      S.magicStreak=0;
     }
+  },
+  onWordPlayed:function(w,wt){
+    if(w.length===3){S.magicStreak=(S.magicStreak||0)+1;}
+    else{S.magicStreak=0;}
   }});
 
 // ── THE PURIST ────────────────────────────────────────────────────────────────
@@ -110,6 +111,7 @@ SQ.push({id:'palindrome_engine',name:'Palindrome Engine',
 SQ.push({id:'drunk_text',name:'Drunk Text',
   desc:'Play any word, even misspelled. Invalid words: letter score ÷2, mult ÷2. Each correct word in a row: +×0.1 bonus.',
   rarity:'rare',cost:8,bg:'#1a0a28',fg:'#d090ff',icon:'DT',type:'tile',
+  onAcquire:function(){S.drunkStreak=0;},
   liveDesc:function(p){var streak=S.drunkStreak||0;var dm=parseFloat((Math.round((1+streak*0.1)*10)/10).toFixed(1));return 'Valid words: <span style="color:#f0e040">×'+dm+' mult</span> (streak: '+streak+'). Invalid words: ÷2 letters &amp; mult, streak resets.';},
   onPostWord:function(w,wt,ctx){
     var streak=S.drunkStreak||0;
@@ -118,13 +120,15 @@ SQ.push({id:'drunk_text',name:'Drunk Text',
       ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Drunk Text ÷2 letters'});
       ctx.xmults.push(0.5);
       ctx.events.push({type:'x-mult',factor:0.5,label:'Drunk Text ÷2 mult'});
-      S.drunkStreak=0;
     }else{
       var dm=Math.round((1+streak*0.1)*10)/10;
       ctx.xmults.push(dm);
       ctx.events.push({type:'x-mult',factor:dm,label:'Drunk Text ×'+dm.toFixed(1)});
-      S.drunkStreak=streak+1;
     }
+  },
+  onWordPlayed:function(w,wt){
+    if(S._drunkValid===false){S.drunkStreak=0;}
+    else{S.drunkStreak=(S.drunkStreak||0)+1;}
   }});
 
 // ── THE PLAYER ────────────────────────────────────────────────────────────────

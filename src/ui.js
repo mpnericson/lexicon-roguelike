@@ -100,21 +100,29 @@ function devRenderPalette() {
 
 function devAddTile(letter) {
   if (!S.devMode) return;
-  S.hand.push({letter:letter,isBlank:false,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null,blueBonus:0});
+  S.hand.push({letter:letter,isBlank:false,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null});
   renderHand();
 }
 
 function devAddBlank() {
   if (!S.devMode) return;
-  S.hand.push({letter:'_',isBlank:true,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null,blueBonus:0,_devBlank:true});
+  S.hand.push({letter:'_',isBlank:true,id:uid(),blankAs:null,sel:false,onBoard:false,variant:null,_devBlank:true});
   renderHand();
 }
 
+var _mhTilesVisible=true,_mhTransitioning=false;
+function _mhSetFrame(n){var el=document.getElementById('menu-hide-sprite');if(el)el.src='Assets/animations/menu and hide tiles/menu_hide_tiles'+n+'.png';}
 function toggleBoardTiles(){
   var wrap=document.getElementById('board-wrap');
-  var btn=document.getElementById('board-tile-toggle-btn');
   var hidden=wrap.classList.toggle('tiles-hidden');
-  btn.textContent=hidden?'◎':'◉';
+  _mhTransitioning=true;
+  var frames=hidden?[3,6,7,8,13]:[10,8,7,6,1];
+  var i=0;
+  function step(){
+    if(i>=frames.length){_mhTilesVisible=!hidden;_mhTransitioning=false;return;}
+    _mhSetFrame(frames[i++]);setTimeout(step,80);
+  }
+  step();
 }
 
 function togglePreviewTiles(){

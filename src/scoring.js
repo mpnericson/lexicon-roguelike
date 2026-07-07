@@ -33,13 +33,12 @@ function newTiles(){
   for(var i=0;i<B*B;i++){
     // Jenga: btTop tile overrides the committed tile below for this position
     var tt=S.btTop&&S.btTop[i];
-    if(tt&&tt.isNew){r.push({idx:i,row:Math.floor(i/B),col:i%B,letter:tt.letter,isBlank:!!tt.isBlank,sc:tt.isBlank?(tt._alchSc||0):(LS[tt.letter]||0),variant:tt.variant||null,blueBonus:tt.blueBonus||0,handIdx:tt.handIdx,isNew:true});continue;}
+    if(tt&&tt.isNew){r.push({idx:i,row:Math.floor(i/B),col:i%B,letter:tileDisplayLetter(tt),isBlank:!!tt.isBlank,sc:tt.isBlank?(tt._alchSc||0):(LS[tt.letter]||0),variant:tt.variant||null,isNew:true});continue;}
     var t=S.bt[i];
     if(t&&t.isNew)r.push({idx:i,row:Math.floor(i/B),col:i%B,
-      letter:t.letter,isBlank:!!t.isBlank,
+      letter:tileDisplayLetter(t),isBlank:!!t.isBlank,
       sc:t.isBlank?(t._alchSc||0):(LS[t.letter]||0),
-      variant:t.variant||null,blueBonus:t.blueBonus||0,
-      handIdx:t.handIdx,isNew:true});
+      variant:t.variant||null,isNew:true});
   }
   return r;
 }
@@ -76,10 +75,9 @@ function extractAt(ar,ac,dir){
     var bt=topT||S.bt[si];
     if(!bt)return null;
     wt.push({idx:si,row:Math.floor(si/B),col:si%B,
-      letter:bt.letter,isNew:!!bt.isNew,isBlank:!!bt.isBlank,
+      letter:tileDisplayLetter(bt),isNew:!!bt.isNew,isBlank:!!bt.isBlank,
       sc:bt.isBlank?(bt._alchSc||0):(LS[bt.letter]||0),
-      variant:bt.variant||null,blueBonus:bt.blueBonus||0,
-      handIdx:bt.handIdx});
+      variant:bt.variant||null});
   }
   return{word:wt.map(function(t){return t.letter;}).join(''),tiles:wt};
 }
@@ -244,7 +242,7 @@ function scorePlay(nt,dir,preview){
     ctx.events.push({type:'plus-mult',delta:_tcb,label:ctx.newTileCount+' tiles +'+_tcb+' mult',silent:true});
   }
 
-  var bingo=ctx._freeHandCount>0&&nt.length>=ctx._freeHandCount;
+  var bingo=nt.length>0&&ctx._freeHandCount===0;
 
   // Extract cross words
   var cx=dir==='h'?'v':'h';
@@ -330,7 +328,7 @@ function scorePlay(nt,dir,preview){
 
 // ---- Backward-compat wrapper for solver (always preview) ----
 // solver.js calls scoreWord(wt, word, isMain, extraChips)
-// wt is a manually-built tile array with {idx,letter,isNew,isBlank,sc,sid,variant,blueBonus}
+// wt is a manually-built tile array with {idx,letter,isNew,isBlank,sc,sid,variant}
 
 function scoreWord(wt,word,isMain,extraChips,cwWts){
   if(!S.localCooldowns)S.localCooldowns=new Set();
@@ -338,6 +336,7 @@ function scoreWord(wt,word,isMain,extraChips,cwWts){
   ctx.preview=true;
   var _nc=0;for(var i=0;i<wt.length;i++)if(wt[i]&&wt[i].isNew)_nc++;
   ctx.newTileCount=_nc;
+  ctx._freeHandCount=S.hand.filter(function(t){return t!==null;}).length;
   if(ctx.newTileCount>=4)ctx.plusMults.push(ctx.newTileCount-3);
   // Score cross words first — same ctx, mirrors scorePlay ordering
   if(cwWts){for(var ci=0;ci<cwWts.length;ci++){for(var ti=0;ti<cwWts[ci].length;ti++){_scoreTile(cwWts[ci][ti],ctx,false);}}}
@@ -702,13 +701,45 @@ async function runScoreAnim(events,total){
   var saL=document.getElementById('ls-letters');
   var saM=document.getElementById('ls-mult');
   var saS=document.getElementById('ls-score');
+  var lsTileDelta=document.getElementById('ls-tile-delta');
   row.classList.add('scoring');
   saL.textContent='0';saM.textContent='1';saS.textContent='0';
+  if(lsTileDelta){lsTileDelta.textContent='';lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');}
 
   var delay=1000,minDelay=100,delayStep=50;
   var animPlusSum=0,animXprod=1;_scoreDingN=0;
   var _saLSynced=0; // tracks last value written to saL, to skip redundant isSilent updates
+  var _deltaActive=false,_deltaTileBase=0;
+  var _pendingTick=null; // {fV,tV} — last tile's score waiting to be ticked up
+  var _tickVer=0; // incremented to cancel in-flight tick animations
   S._crossroadsLiveCount=S.crossroadsCount||0; // baseline for live tooltip ticks this play
+
+  // Fire the pending per-tile tick-up.
+  // animated=true: 500ms rAF animation of saL (parallel with next tile's delta).
+  // animated=false: instant snap + fade delta (used for post-word events and final).
+  function _firePendingTick(animated){
+    if(!_pendingTick)return;
+    var p=_pendingTick;_pendingTick=null;
+    ++_tickVer;
+    if(!animated){
+      saL.textContent=p.tV;_saLSynced=p.tV;
+      if(lsTileDelta){lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');setTimeout(function(){lsTileDelta.textContent='';},200);}
+      return;
+    }
+    var myV=_tickVer;
+    (function(fV,tV,ver){
+      var _t0=null,_DUR=500;
+      function _tk(now){
+        if(_tickVer!==ver)return;
+        if(!_t0)_t0=now;
+        var t=Math.min(1,(now-_t0)/_DUR);
+        saL.textContent=Math.round(fV+(tV-fV)*t);
+        if(t<1)requestAnimationFrame(_tk);
+        else saL.textContent=tV;
+      }
+      requestAnimationFrame(_tk);
+    })(p.fV,p.tV,myV);
+  }
 
   function refreshMult(){
     var m=(1+animPlusSum)*animXprod;
@@ -747,27 +778,68 @@ async function runScoreAnim(events,total){
     if(ev.type==='letter'){
       if(ev.isSilent){
         if(ev.lettersAfter!==_saLSynced){saL.textContent=ev.lettersAfter;bumpSA('ls-letters');_saLSynced=ev.lettersAfter;}
-      }else if(ev.suppressVisual){
-        await scoreDelay(1);
+      }else if(ev.isTileLocal){
+        // Per-tile bracket event: show running tile score as "+X" delta beside the letter total.
+        // The total only ticks up when the NEXT tile starts (it "pushes" the previous score in).
+        // Post-word events snap the last tile's pending tick instantly.
+        if(!ev._skip){
+          if(!_deltaActive){
+            // New tile starting — fade out old delta, then fire tick + bounce in new delta
+            if(lsTileDelta&&lsTileDelta.classList.contains('delta-active')){
+              lsTileDelta.style.transition='opacity 0.15s ease';
+              void lsTileDelta.offsetWidth;
+              lsTileDelta.style.opacity='0';
+              await scoreDelay(150);
+            }
+            _firePendingTick(true);
+            _deltaActive=true;
+            _deltaTileBase=_saLSynced;
+            if(lsTileDelta){
+              lsTileDelta.textContent='+'+ev.lettersAfter;
+              lsTileDelta.style.transition='';
+              lsTileDelta.style.opacity='';
+              lsTileDelta.classList.remove('delta-enter');
+              void lsTileDelta.offsetWidth;
+              lsTileDelta.classList.add('delta-active','delta-enter');
+            }
+          }else{
+            if(lsTileDelta)lsTileDelta.textContent='+'+ev.lettersAfter;
+          }
+          if(!ev.suppressVisual){
+            var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);
+            var tileEl=ev.sqIdx!=null?(document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile')):null;
+            if(ev.floatSqIdx!=null)await _awaitPeelHold(ev.floatSqIdx);
+            _playScoreDing();
+            if(ev.floatSqIdx!=null)_activateStickerFloat(ev.floatSqIdx);
+            if(ev.floatTsId)_bounceTsSticker(ev.floatTsId);
+            if(tileEl){tileEl.classList.remove('binking');void tileEl.offsetWidth;tileEl.classList.add('binking');}
+          }
+          if(ev._globalLetters!=null){
+            // All brackets done for this tile — store tick, wait for next tile to pull the trigger
+            _saLSynced=ev._globalLetters;
+            _deltaActive=false;
+            _pendingTick={fV:_deltaTileBase,tV:ev._globalLetters};
+          }
+          if(!ev.suppressVisual)await scoreDelay(curDelay);
+          else await scoreDelay(1);
+        }
       }else{
+        // Non-tile-local letter event (bingo +50, sticker bonus, etc.)
+        // Snap any pending tile tick first so the delta clears before this event's visual.
+        _firePendingTick(false);
         if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
         var tileEl=ev.sqIdx!=null?(document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile')):null;
-        var r=tileEl?tileEl.getBoundingClientRect():null;
         if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
         if(!ev._skip)_playScoreDing();
         if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
         if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
         if(tileEl&&!ev._skip){tileEl.classList.remove('binking');void tileEl.offsetWidth;tileEl.classList.add('binking');}
-        if(ev.isTileLocal){
-          if(r)showScorePop(ev.lettersAfter,r.left+r.width/2-20,r.top-4,'#0d2a50','#80c8ff');
-          if(ev._globalLetters!=null&&!ev._skip){saL.textContent=ev._globalLetters;bumpSA('ls-letters');_saLSynced=ev._globalLetters;}
-        }else{
-          saL.textContent=ev.lettersAfter;bumpSA('ls-letters');_saLSynced=ev.lettersAfter;
-        }
+        saL.textContent=ev.lettersAfter;bumpSA('ls-letters');_saLSynced=ev.lettersAfter;
         if(!ev._skip){await scoreDelay(curDelay);}
       }
 
     }else if(ev.type==='plus-mult'){
+      _firePendingTick(false);
       if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
       if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
       if(!ev._skip&&!ev.silent)_playScoreDing();
@@ -787,6 +859,7 @@ async function runScoreAnim(events,total){
       _tooltipRefreshIfOpen();
 
     }else if(ev.type==='x-mult'){
+      _firePendingTick(false);
       if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
       var tileEl2=ev.sqIdx!=null?(document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile')):null;
       var r2=tileEl2?tileEl2.getBoundingClientRect():null;
@@ -802,6 +875,7 @@ async function runScoreAnim(events,total){
       if(!ev._skip){await scoreDelay(curDelay);}
 
     }else if(ev.type==='gold'){
+      _firePendingTick(false);
       if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
       if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
       if(!ev._skip)_playScoreDing();
@@ -811,6 +885,7 @@ async function runScoreAnim(events,total){
       if(!ev._skip){await scoreDelay(curDelay);}
 
     }else if(ev.type==='retrigger'){
+      _firePendingTick(false);
       if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
       var tileEl3=ev.sqIdx!=null?(document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile')):null;
       if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
@@ -822,6 +897,7 @@ async function runScoreAnim(events,total){
       if(!ev._skip){await scoreDelay(Math.max(minDelay,curDelay*0.6));}
 
     }else if(ev.type==='final-transform'){
+      _firePendingTick(false);
       if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
       if(!ev._skip)_playScoreDing();
       if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
@@ -831,6 +907,7 @@ async function runScoreAnim(events,total){
       if(!ev._skip){await scoreDelay(Math.max(200,curDelay));}
 
     }else if(ev.type==='final'){
+      _firePendingTick(false);
       saL.textContent=ev.letters;
       saM.textContent=fmtMult(ev.displayMult||ev.mult);
       saS.textContent=total.toLocaleString();bumpSA('ls-score');
@@ -860,21 +937,6 @@ async function runScoreAnim(events,total){
   });
   if(_bar)_bar.style.transition='height .6s cubic-bezier(.22,1,.36,1)';
   saL.textContent='0';saM.textContent='1';
+  if(lsTileDelta){lsTileDelta.textContent='';lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');}
   row.classList.remove('scoring');
-}
-
-function updateLiveScore(){
-  var lsC=document.getElementById('ls-letters'),lsM=document.getElementById('ls-mult'),lsS=document.getElementById('ls-score');
-  if(!lsC||!lsM||!lsS)return;
-  var nt=newTiles();
-  if(!nt.length){lsC.textContent='0';lsM.textContent='1';lsS.textContent='0';return;}
-  var dir=wordDir(nt);
-  if(!dir){lsC.textContent='0';lsM.textContent='1';lsS.textContent='0';return;}
-  var a=nt[0];var main=extractAt(a.row,a.col,dir);
-  if(!main||main.word.length<2){lsC.textContent='0';lsM.textContent='1';lsS.textContent='0';return;}
-  var res=scorePlay(nt,dir,true);
-  if(!res){lsC.textContent='0';lsM.textContent='1';lsS.textContent='0';return;}
-  lsC.textContent=res.letters;
-  lsM.textContent=fmtMult(res.mult);
-  lsS.textContent=res.total.toLocaleString();
 }

@@ -33,11 +33,13 @@ SQ.push({id:'echo',name:'Red Sticker',desc:'Letter here scores twice.',
 // ── GILDED ────────────────────────────────────────────────────────────────────
 // type: local · rarity: common · cost: $3
 // Bracket 2 (onSquareLand): awards +$1 gold when a tile lands on this square.
-SQ.push({id:'gilded',name:'Gilded',desc:'Letter here earns +$1.',
+SQ.push({id:'gilded',name:'Gilded',desc:'Transforms tile to gold before scoring (gold tiles earn +$1).',
   rarity:'common',cost:3,qty:3,bg:'#3a2a00',fg:'#f0c060',icon:'GL',type:'local',perishable:true,
   onSquareLand:function(tile,ctx,ts,baseSc,sqIdx){
-    ctx.tgold++;
-    ctx.events.push({type:'gold',delta:1,sqIdx:sqIdx,label:'Gilded +$1',floatSqIdx:sqIdx});
+    if(tile.variant==='gold')return ts;
+    tile.variant='gold';
+    if(!ctx.preview&&S.bt[sqIdx]&&S.bt[sqIdx].id)transformTile(S.bt[sqIdx].id,{variant:'gold'});
+    ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Gilded → Gold',floatSqIdx:sqIdx});
     return ts;
   }});
 
