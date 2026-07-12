@@ -281,7 +281,7 @@ function showGO(msg){
 }
 
 function closeAllModals(){
-  ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','gameover-modal','board-preview-modal','collection-modal','achv-modal','seed-modal'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
+  ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','gameover-modal','board-preview-modal','collection-modal','achv-modal','wordbook-modal','seed-modal'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
   document.getElementById('shop-screen').style.display='none';
 }
 

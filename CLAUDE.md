@@ -118,10 +118,12 @@ Three-phase pipeline shared by all entry points:
 2. **Score** — `_solverScoreMove(mv, hm)` runs each candidate through `runScoreEngine` (preview mode) on a board overlay, chunked via `setTimeout`.
 3. **Rank** — top-K insertion while scoring.
 
-Entry points (all no-op until `GADDAG` is built — kicked off in init.js after `loadDict()`):
-- `runSolver()` — dev-mode results panel, top 20.
-- `_rankRunRankSolve(snap)` — background top-10 for the rank-reward system; applies constraint filters (palindrome lock, min word length) and bounty score inflation.
-- `findBestMoveBackground(snap, onDone)` — called on game over. Temporarily swaps `S.hand/bt/board` for the snapshot, restores when done. Only restores if the gameover modal is still visible (prevents corruption if user starts a new game during solve).
+All three phases (plus constraint filtering and bounty-score inflation via `_solverInflateBounty`) live in **`_solverCore(opts)`** — the single function every entry point calls, so scoring rules can't drift between them. Options: `handTiles`, `topK`, `constraintState` ({palUnlocked, lastWordLen} — the position moves are judged from), `chunk`, `shouldAbort()`, `onProgress(frac, best, total)`, `onDone(best|null)`.
+
+Entry points (thin wrappers; all no-op until `GADDAG` is built — kicked off in init.js after `loadDict()`):
+- `runSolver()` — dev-mode results panel, top 20, live position, progress UI.
+- `_rankRunRankSolve(snap)` — background top-10 for the rank-reward system. Swaps `S.hand/bt/board` for the snapshot, restores when done.
+- `findBestMoveBackground(snap, onDone)` — called on game over, top 5, judged from the snapshot's pre-play constraint state. Only restores if the gameover modal is still visible (prevents corruption if user starts a new game during solve). Note: the game-over reveal in play.js prefers the already-computed `_capturedRankTop10` and only calls this as a fallback.
 
 ## Game-over solver reveal
 

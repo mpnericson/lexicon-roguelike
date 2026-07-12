@@ -1,7 +1,9 @@
 // =====================================================================
 // SOLVER — finds the highest-scoring move from current hand + board
 //
-// Three-phase pipeline (shared by all entry points):
+// Three-phase pipeline, all behind the single _solverCore(opts) function so
+// scoring rules (constraint legality, bounty inflation) can never drift
+// between callers:
 //   1. GENERATE  _solverGenMoves() — GADDAG anchor traversal (gaddag.js)
 //                emits every legal placement spellable with the rack.
 //                Synchronous and fast (ms).
@@ -10,9 +12,11 @@
 //                via setTimeout so the UI stays responsive.
 //   3. RANK      top-K insertion sort while scoring.
 //
-// Entry points: runSolver (dev panel, top 20), _rankRunRankSolve
-// (background top 10 for the rank-reward system), findBestMoveBackground
-// (game-over winning-plays reveal, top 5).
+// Entry points differ only in options they pass to _solverCore:
+//   runSolver              dev panel, top 20, live position, progress UI
+//   _rankRunRankSolve      background top 10 for the rank-reward system
+//   findBestMoveBackground game-over winning-plays reveal, top 5, snapshot
+//                          position (pre-play constraint state)
 // =====================================================================
 var _solverRunning = false;
 var _solverResults = [];
@@ -253,6 +257,74 @@ function _solverScoreMove(mv, hm) {
   return { score: res.total, letters: res.letters, mult: res.mult, gold: res.tgold, word: mv.word, r: mv.r, c: mv.c, isH: mv.isH, wt: wt };
 }
 
+// Bounty inflation — a word matching an active bounty scroll actually earns
+// the BOUNTY_REWARD bonus (default ×2), which the engine skips in preview mode.
+// Mirror it here so solver scores match what the word would really score.
+// Returns res unchanged if the word isn't an active bounty target.
+function _solverInflateBounty(res, bounties) {
+  if (!bounties || !bounties.length) return res;
+  var isBounty = false;
+  for (var i = 0; i < bounties.length && !isBounty; i++) {
+    var ws = bounties[i].words || [];
+    for (var j = 0; j < ws.length; j++) { if (ws[j].word.toUpperCase() === res.word) { isBounty = true; break; } }
+  }
+  if (!isBounty) return res;
+  var br = BOUNTY_REWARD, adj = res.score;
+  if (br.type === 'x-mult')        adj = Math.round(res.score * br.value);
+  else if (br.type === 'letters')  adj = Math.round((res.letters + br.value) * res.mult);
+  else if (br.type === 'plus-mult')adj = Math.round(res.score + res.letters * br.value);
+  // 'gold': no score change
+  if (adj === res.score) return res;
+  return { score:adj, letters:res.letters, mult:res.mult, gold:res.gold, word:res.word, r:res.r, c:res.c, isH:res.isH, wt:res.wt };
+}
+
+// ---- Shared solver core ----
+// The single generate → score → filter → rank pipeline behind every entry
+// point, so constraint legality and bounty inflation stay identical across
+// the dev panel, the rank-reward solve, and the game-over reveal. Reads
+// whatever S.hand/S.bt/S.board currently are (callers swap in a snapshot if
+// they solve a past position). Chunked via setTimeout to keep the UI live.
+//   handTiles       tile array for the rack (nulls ignored)
+//   topK            number of results to keep, ranked by score
+//   constraintState {palUnlocked, lastWordLen} — the position the moves are
+//                   judged from (live S for dev/rank, snapshot for game-over)
+//   chunk           moves scored per frame (default 200)
+//   shouldAbort()   optional — checked each chunk; true → onDone(null)
+//   onProgress(frac, best, total) optional — per-chunk UI hook
+//   onDone(best|null) — ranked results, or null if aborted
+function _solverCore(opts) {
+  var hm = _solverHandMaps(opts.handTiles);
+  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length);
+  var cs = opts.constraintState || {};
+  var _con = currentConstraint();
+  var _palUnlocked = cs.palUnlocked != null ? cs.palUnlocked : S.palUnlocked;
+  var _lastLen = cs.lastWordLen != null ? cs.lastWordLen : (S.lastWordLen || 0);
+  var _palLock = _con === 'c_pal' && !_palUnlocked;
+  var _minLen = _con === 'c_long' ? 5 : (_con === 'c_longer' ? _lastLen + 1 : 2);
+  var bounties = S.bounties || [];
+  var mi = 0, chunk = opts.chunk || 200, topK = opts.topK, best = [];
+  function step() {
+    if (opts.shouldAbort && opts.shouldAbort()) { opts.onDone(null); return; }
+    var end = Math.min(mi + chunk, moves.length);
+    for (; mi < end; mi++) {
+      var mv = moves[mi];
+      if (mv.word.length < _minLen) continue;
+      if (_palLock && !isExtendedPalindrome(mv.word)) continue;
+      var res = _solverScoreMove(mv, hm);
+      if (!res) continue;
+      res = _solverInflateBounty(res, bounties);
+      var ins = false;
+      for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi, 0, res); ins = true; break; } }
+      if (!ins) best.push(res);
+      if (best.length > topK) best.pop();
+    }
+    if (opts.onProgress) opts.onProgress(moves.length ? mi / moves.length : 1, best, moves.length);
+    if (mi < moves.length) setTimeout(step, 0);
+    else opts.onDone(best);
+  }
+  setTimeout(step, 0);
+}
+
 // ---- Rank solver — silent background solve, keeps top 10 for reward system ----
 
 var _rankTop10 = null;   // null = stale/computing; array = ready
@@ -282,55 +354,19 @@ function _rankRunRankSolve(snap) {
   var myId = ++_rankRunId;
   var origHand = S.hand, origBt = S.bt, origBoard = S.board;
   S.hand = snap.hand; S.bt = snap.bt; S.board = snap.board;
+  function restore() { S.hand = origHand; S.bt = origBt; S.board = origBoard; _rankSolving = false; }
 
-  var hm = _solverHandMaps(S.hand);
-  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length);
-
-  // Constraint context — captured now so processChunk closures see a consistent snapshot
-  var _con = currentConstraint();
-  var _palLock = _con === 'c_pal' && !S.palUnlocked;
-  var _minLen = _con === 'c_long' ? 5 : (_con === 'c_longer' ? (S.lastWordLen || 0) + 1 : 2);
-
-  function restore() { S.hand=origHand; S.bt=origBt; S.board=origBoard; _rankSolving=false; }
-
-  var mi = 0, CHUNK = 200, best = [];
-  function processChunk() {
-    if (_rankRunId !== myId) { restore(); return; }
-    var end = Math.min(mi+CHUNK, moves.length);
-    for (; mi < end; mi++) {
-      var mv = moves[mi];
-      if (mv.word.length < _minLen) continue;
-      // Palindrome lock: only palindromes score until unlocked
-      if (_palLock && !isExtendedPalindrome(mv.word)) continue;
-      var res = _solverScoreMove(mv, hm);
-      if (!res) continue;
-      // Bounty: if this word matches an active bounty scroll, inflate the score to match reality
-      if (S.bounties && S.bounties.length) {
-        var _isBounty = false;
-        for (var _bIdx = 0; _bIdx < S.bounties.length && !_isBounty; _bIdx++) {
-          var _bws = S.bounties[_bIdx].words || [];
-          for (var _bwi = 0; _bwi < _bws.length; _bwi++) {
-            if (_bws[_bwi].word.toUpperCase() === mv.word) { _isBounty = true; break; }
-          }
-        }
-        if (_isBounty) {
-          var _br = BOUNTY_REWARD, _adj = res.score;
-          if (_br.type === 'x-mult')    { _adj = Math.round(res.score * _br.value); }
-          else if (_br.type === 'letters')   { _adj = Math.round((res.letters + _br.value) * res.mult); }
-          else if (_br.type === 'plus-mult') { _adj = Math.round(res.score + res.letters * _br.value); }
-          // 'gold': no score change
-          if (_adj !== res.score) res = { score:_adj, letters:res.letters, mult:res.mult, gold:res.gold, word:res.word, r:res.r, c:res.c, isH:res.isH, wt:res.wt };
-        }
-      }
-      var ins = false;
-      for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi,0,res); ins=true; break; } }
-      if (!ins) best.push(res);
-      if (best.length > 10) best.pop();
+  _solverCore({
+    handTiles: S.hand,
+    topK: 10,
+    constraintState: { palUnlocked: S.palUnlocked, lastWordLen: S.lastWordLen },
+    chunk: 200,
+    shouldAbort: function () { return _rankRunId !== myId; },
+    onDone: function (best) {
+      restore();
+      if (best && _rankRunId === myId) { _rankTop10 = best; window._easyHint = best.length ? best[0] : null; }
     }
-    if (mi < moves.length) { setTimeout(processChunk, 0); }
-    else { restore(); if (_rankRunId === myId) { _rankTop10 = best; window._easyHint = best.length ? best[0] : null; } }
-  }
-  setTimeout(processChunk, 0);
+  });
 }
 
 // Compare played score to pre-play top-10. Call after score animation.
@@ -411,40 +447,25 @@ function runSolver() {
   panel.style.display = 'block';
   panel.innerHTML = '<div style="color:#a0a0c0;font-size:30px">Solving... 0%</div>';
 
-  var hm = _solverHandMaps(S.hand.filter(function(t){ return t && !t.onBoard; }));
-  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length);
-
-  var mi = 0, CHUNK = 150, best = [];
-
-  function processChunk() {
-    if (!_solverRunning) return;
-    var end = Math.min(mi + CHUNK, moves.length);
-    for (; mi < end; mi++) {
-      var result = _solverScoreMove(moves[mi], hm);
-      if (!result) continue;
-      var inserted = false;
-      for (var bi = 0; bi < best.length; bi++) {
-        if (result.score > best[bi].score) { best.splice(bi, 0, result); inserted = true; break; }
-      }
-      if (!inserted) best.push(result);
-      if (best.length > 20) best.pop();
-    }
-
-    var pct = moves.length ? Math.round(mi / moves.length * 100) : 100;
-    var bestTxt = best.length ? 'Best: ' + best[0].word + ' (' + best[0].score + 'pts)' : '';
-    panel.innerHTML = '<div style="color:#a0a0c0;font-size:30px">Solving... ' + pct + '%'
-      + (bestTxt ? '<br><span style="color:#80ff80">' + bestTxt + '</span>' : '') + '</div>';
-
-    if (mi < moves.length) {
-      setTimeout(processChunk, 0);
-    } else {
+  _solverCore({
+    handTiles: S.hand.filter(function (t) { return t && !t.onBoard; }),
+    topK: 20,
+    constraintState: { palUnlocked: S.palUnlocked, lastWordLen: S.lastWordLen },
+    chunk: 150,
+    shouldAbort: function () { return !_solverRunning; },
+    onProgress: function (frac, best) {
+      var pct = Math.round(frac * 100);
+      var bestTxt = best.length ? 'Best: ' + best[0].word + ' (' + best[0].score + 'pts)' : '';
+      panel.innerHTML = '<div style="color:#a0a0c0;font-size:30px">Solving... ' + pct + '%'
+        + (bestTxt ? '<br><span style="color:#80ff80">' + bestTxt + '</span>' : '') + '</div>';
+    },
+    onDone: function (best) {
+      if (!best) return; // aborted (toggled off)
       _solverRunning = false;
       _solverResults = best;
       showSolverResults(best);
     }
-  }
-
-  setTimeout(processChunk, 0);
+  });
 }
 
 // Game-over reveal: solves the pre-final-word snapshot and returns the top 5
@@ -456,36 +477,16 @@ function findBestMoveBackground(snap, onDone) {
   _solverRunning = true;
   var origHand = S.hand, origBt = S.bt, origBoard = S.board;
   S.hand = snap.hand; S.bt = snap.bt; S.board = snap.board;
-
-  var hm = _solverHandMaps(S.hand);
-  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length);
-
-  var _con = currentConstraint();
-  var _palUnlocked = snap.palUnlocked != null ? snap.palUnlocked : S.palUnlocked;
-  var _lastLen = snap.lastWordLen != null ? snap.lastWordLen : (S.lastWordLen || 0);
-  var _palLock = _con === 'c_pal' && !_palUnlocked;
-  var _minLen = _con === 'c_long' ? 5 : (_con === 'c_longer' ? _lastLen + 1 : 2);
-
-  var mi = 0, CHUNK = 250, best = [];
   function restore() { var live = document.getElementById('gameover-modal'); if (live && live.style.display !== 'none') { S.hand = origHand; S.bt = origBt; S.board = origBoard; } }
-  function processChunk() {
-    if (!_solverRunning) { restore(); onDone(null); return; }
-    var end = Math.min(mi + CHUNK, moves.length);
-    for (; mi < end; mi++) {
-      var mv = moves[mi];
-      if (mv.word.length < _minLen) continue;
-      if (_palLock && !isExtendedPalindrome(mv.word)) continue;
-      var res = _solverScoreMove(mv, hm);
-      if (!res) continue;
-      var ins = false;
-      for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi, 0, res); ins = true; break; } }
-      if (!ins) best.push(res);
-      if (best.length > 5) best.pop();
-    }
-    if (mi < moves.length) { setTimeout(processChunk, 0); }
-    else { _solverRunning = false; restore(); onDone(best); }
-  }
-  setTimeout(processChunk, 0);
+
+  _solverCore({
+    handTiles: S.hand,
+    topK: 5,
+    constraintState: { palUnlocked: snap.palUnlocked, lastWordLen: snap.lastWordLen },
+    chunk: 250,
+    shouldAbort: function () { return !_solverRunning; },
+    onDone: function (best) { _solverRunning = false; restore(); onDone(best); }
+  });
 }
 
 function showSolverResults(results) {

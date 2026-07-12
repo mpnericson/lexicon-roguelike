@@ -56,20 +56,43 @@ async function playWord(){
   var _eggWords={};for(var i=0;i<EASTER_EGGS.length;i++)_eggWords[EASTER_EGGS[i].word]=true;
   var _bountyWords={};if(S.bounties&&S.bounties.length){for(var _bwi2=0;_bwi2<S.bounties.length;_bwi2++){var _bws=S.bounties[_bwi2].words||[];for(var _bwj=0;_bwj<_bws.length;_bwj++)_bountyWords[_bws[_bwj].word.toUpperCase()]=true;}}
   var _dtInvalid=false;
-  for(var i=0;i<_words.length;i++){if(_eggWords[_words[i]])continue;if(_words[i]===main.word&&_bountyWords[_words[i]])continue;var v=await validWord(_words[i]);if(!v){if(_hasDT){_dtInvalid=true;}else{flashTiles(nt);window._scoring=false;if(_playBtn)_playBtn.disabled=false;if(!S.devMode){S.gold=Math.max(0,S.gold-1);renderHUD();toast('"'+_words[i]+'" is not a word — fined $1!');}else{toast('"'+_words[i]+'" is not a word.');}return;}}}
+  // Easter-egg and bounty words bypass the dictionary in ANY position (main or
+  // cross) — they may not be real dictionary words but are legal to play.
+  for(var i=0;i<_words.length;i++){var _vw=_words[i].word;if(_eggWords[_vw])continue;if(_bountyWords[_vw])continue;var v=await validWord(_vw);if(!v){if(_hasDT){_dtInvalid=true;}else{flashTiles(nt);window._scoring=false;if(_playBtn)_playBtn.disabled=false;if(!S.devMode){S.gold=Math.max(0,S.gold-1);renderHUD();toast('"'+_vw+'" is not a word — fined $1!');}else{toast('"'+_vw+'" is not a word.');}return;}}}
   if(_hasDT){S._drunkValid=!_dtInvalid;if(_dtInvalid)flashTiles(nt);}
-  // Easter egg effects (before scoring — can mutate tile variants)
-  var _eggApplied=applyEasterEgg(main.word,nt);if(_eggApplied)await new Promise(function(r){setTimeout(r,420);});
-  // Bounty check — glow starts NOW, reward applied inside scoring, slide-out happens after scoring
-  var _bountyIdx=-1,_bountyWordIdx=-1;
-  if(S.bounties&&S.bounties.length){_bScan:for(var _bi=S.bounties.length-1;_bi>=0;_bi--){var _bscws=S.bounties[_bi].words||[];for(var _bwi=0;_bwi<_bscws.length;_bwi++){if(_bscws[_bwi].word.toUpperCase()===main.word){_bountyIdx=_bi;_bountyWordIdx=_bwi;break _bScan;}}}}
+  // Easter egg effects (before scoring — can mutate tile variants). Any formed
+  // word (main or cross) can trigger an egg; each distinct egg fires once.
+  var _eggApplied=false,_eggSeen={};
+  for(var _egi=0;_egi<_words.length;_egi++){var _egw=_words[_egi].word;if(_eggSeen[_egw])continue;_eggSeen[_egw]=1;if(applyEasterEgg(_egw,nt))_eggApplied=true;}
+  if(_eggApplied)await new Promise(function(r){setTimeout(r,420);});
+  // Bounty check — any formed word (main or cross) can complete a bounty scroll.
+  // Glow starts NOW, reward applied inside scoring, slide-out after scoring.
+  // _matchedBounties: one entry per completed scroll {scrollIdx, reward, idxs}.
+  var _matchedBounties=[];
+  if(S.bounties&&S.bounties.length){
+    var _bScrollSeen={};
+    for(var _wmi=0;_wmi<_words.length;_wmi++){
+      var _wmUp=_words[_wmi].word.toUpperCase();
+      for(var _bi=S.bounties.length-1;_bi>=0;_bi--){
+        if(_bScrollSeen[_bi])continue;
+        var _bscws=S.bounties[_bi].words||[];
+        for(var _bwi=0;_bwi<_bscws.length;_bwi++){
+          if(_bscws[_bwi].word.toUpperCase()===_wmUp){
+            _bScrollSeen[_bi]=1;
+            _matchedBounties.push({scrollIdx:_bi,reward:_bscws[_bwi].reward||0,idxs:_words[_wmi].idxs});
+            break;
+          }
+        }
+      }
+    }
+  }
   var _hasBH=hasTileSticker('bounty_hunter');
-  var _wordBoardIdxs=main.tiles.map(function(t){return t.idx;});
-  var _bountyReward=_bountyIdx>=0?(S.bounties[_bountyIdx].words[_bountyWordIdx].reward||0):0;
-  if(_bountyIdx>=0){
-    _applyBountyGlow(_wordBoardIdxs,_bountyIdx);
-    toast('Bounty complete! +$'+_bountyReward+' + '+bountyRewardLabel());
-    S._pendingBountyReward=true;
+  if(_matchedBounties.length){
+    var _totBReward=0;
+    for(var _mbi=0;_mbi<_matchedBounties.length;_mbi++){_applyBountyGlow(_matchedBounties[_mbi].idxs,_matchedBounties[_mbi].scrollIdx);_totBReward+=_matchedBounties[_mbi].reward;}
+    var _bN=_matchedBounties.length;
+    toast(_bN>1?(_bN+' bounties complete! +$'+_totBReward+' + '+_bN+'× '+bountyRewardLabel()):('Bounty complete! +$'+_totBReward+' + '+bountyRewardLabel()));
+    S._pendingBountyReward=_bN;
   }
   if(!scoreLocked){
     if(justUnlocked)toast('Palindrome! Scoring is now live.');
@@ -78,6 +101,8 @@ async function playWord(){
     if(_hasDT)delete S._drunkValid;
     await runScoreAnim(res.events,res.total);
     S.score+=res.total;S.gold+=res.tgold;
+    // Record every formed word (main + crosswords) with this play's score.
+    for(var _wbi=0;_wbi<_words.length;_wbi++)wordbookRecord(_words[_wbi].word,res.total);
     var _hasMT=hasTileSticker('midas_touch');
     if(_hasMT&&main.word.length>=5){for(var _mj=0;_mj<main.tiles.length;_mj++){var _mIdx=main.tiles[_mj].idx;if(S.bt[_mIdx])transformTile(S.bt[_mIdx].id,{variant:'gold'});}}
     S.crossroadsCount=(S.crossroadsCount||0)+(res.crossWordCount||0);
@@ -143,13 +168,18 @@ async function playWord(){
     renderBoard();
     toast('Whack-a-Mole! It moved.');
   }
-  // Bounty slide-out: fires after scoring animation completes
-  if(_bountyIdx>=0){
+  // Bounty slide-out: fires after scoring animation completes. Multiple scrolls
+  // can complete at once — splice highest index first so lower ones stay valid.
+  if(_matchedBounties.length){
     S._pendingBountyReward=null;
-    S.gold+=_bountyReward;
-    await animBountySlideOut(_bountyIdx);
-    S.bounties.splice(_bountyIdx,1);
-    if(_hasBH)S.bhMult=(S.bhMult||1)+0.25;
+    var _bGold=0;for(var _mbg=0;_mbg<_matchedBounties.length;_mbg++)_bGold+=_matchedBounties[_mbg].reward;
+    S.gold+=_bGold;
+    var _bDesc=_matchedBounties.slice().sort(function(a,b){return b.scrollIdx-a.scrollIdx;});
+    for(var _mbo=0;_mbo<_bDesc.length;_mbo++){
+      await animBountySlideOut(_bDesc[_mbo].scrollIdx);
+      S.bounties.splice(_bDesc[_mbo].scrollIdx,1);
+      if(_hasBH)S.bhMult=(S.bhMult||1)+0.25;
+    }
     renderHUD();
   }
   S.wtr=(S.wtr||0)+1;S.discPressure=0;

@@ -110,6 +110,7 @@ document.addEventListener('click',function(e){
   });
   buildSQMap();
   achvInit();
+  wordbookInit();
   if(hasSave()&&loadGame()){
     resumeGame();
     toast('Welcome back!');

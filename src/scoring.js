@@ -43,12 +43,14 @@ function extractAt(ar,ac,dir){
   return _engExtract(lv.tiles,{},lv.jengaTops,ar,ac,dir);
 }
 
-// Returns all formed word strings (main + cross) — used for validation.
+// Returns every formed word (main + cross) as {word, idxs, main} — used for
+// validation, easter-egg / bounty matching, and wordbook recording. idxs are
+// the board indices of the word's tiles (for bounty glow).
 function getAllWords(nt,dir){
   var lv=_liveTiles(),cache={};
   var main=_engExtract(lv.tiles,cache,lv.jengaTops,nt[0].row,nt[0].col,dir);
   if(!main)return[];
-  var words=[main.word];
+  var words=[{word:main.word,idxs:main.tiles.map(function(t){return t.idx;}),main:true}];
   var cx=dir==='h'?'v':'h';
   var seen={};
   for(var i=0;i<nt.length;i++){
@@ -56,7 +58,7 @@ function getAllWords(nt,dir){
     // Jenga stacked tiles don't form cross-words
     if(lv.jengaTops.has(nt[i].idx))continue;
     var cxw=_engExtract(lv.tiles,cache,lv.jengaTops,nt[i].row,nt[i].col,cx);
-    if(cxw&&cxw.tiles.length>=2)words.push(cxw.word);
+    if(cxw&&cxw.tiles.length>=2)words.push({word:cxw.word,idxs:cxw.tiles.map(function(t){return t.idx;}),main:false});
   }
   return words;
 }
@@ -82,7 +84,7 @@ function buildEngineState(freeHandCount){
     constraint:currentConstraint(),
     usedLetters:S.usedLetters,
     stickersSold:(S.stickersSoldThisStage||0)>0,
-    pendingBountyReward:!!S._pendingBountyReward,
+    pendingBountyReward:S._pendingBountyReward||0,
     drunkValid:S._drunkValid,
     magicStreak:S.magicStreak||0,
     drunkStreak:S.drunkStreak||0,

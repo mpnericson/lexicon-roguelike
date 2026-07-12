@@ -347,8 +347,12 @@ function runScoreEngine(input) {
       }
     }
   }
-  // 5. Bounty reward — applied last so it multiplies everything
-  if (state.pendingBountyReward && !ctx.preview) applyBountyReward(ctx);
+  // 5. Bounty reward — applied last so it multiplies everything. Count is the
+  // number of bounty scrolls completed this play (each applies its own reward).
+  if (state.pendingBountyReward && !ctx.preview) {
+    var _bqty = (typeof state.pendingBountyReward === 'number') ? state.pendingBountyReward : 1;
+    for (var _bq = 0; _bq < _bqty; _bq++) applyBountyReward(ctx);
+  }
 
   // ---- FINAL ----
   var plusSum = 0; for (var psi = 0; psi < ctx.plusMults.length; psi++) plusSum += ctx.plusMults[psi];
