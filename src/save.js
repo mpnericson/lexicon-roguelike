@@ -85,8 +85,15 @@ function loadGame() {
       phase: d.phase || 'play',
       stickerInventory: (d.stickerInventory||[]).map(function(p){return(p&&p.id)?{id:p.id}:null;}).filter(Boolean),
       sqHand: [], sqStaged: {},
-      seed: d.seed, _slotMachineRoll: null,
-      bounties: (d.bounties||[]).map(function(b){return b?{word:b.word,reward:b.reward||5}:null;}).filter(Boolean),
+      seed: d.seed,
+      bounties: (d.bounties||[]).map(function(b){
+        if (!b) return null;
+        // Current scroll format: {theme?, words:[{word,reward}]}
+        if (b.words) return {theme: b.theme, words: b.words};
+        // Legacy single-word saves
+        if (b.word) return {words: [{word: b.word, reward: b.reward||5}]};
+        return null;
+      }).filter(Boolean),
       bhMult: d.bhMult || 1,
       palMult: d.palMult || 1,
       playerMult: d.playerMult || 1,
@@ -122,7 +129,7 @@ function clearSave() {
 // Restore UI state after loadGame() has set up S.
 function resumeGame() {
   window._easyHint = null;
-  shopPool = {sq:[], tileCards:[], packs:[], bounties:[]};
+  shopPool = {sq:[], packs:[], bounties:[]};
   activeDrag = null;
   document.getElementById('shop-screen').style.display = 'none';
   document.getElementById('play-controls').style.display = 'flex';

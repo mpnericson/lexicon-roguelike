@@ -83,7 +83,7 @@ function makePhysics(opts) {
     ph.bounds();
     var dragVi = activeDrag && activeDrag.src === _dragSrc ? activeDrag.vi : -1;
     // Multi-hand drag also creates a gap in the hand physics (same area, different activeDrag.src).
-    var isMultiDrag = activeDrag && activeDrag.src === 'multi-hand' && _dragSrc === 'hand';
+    var isMultiDrag = activeDrag && (activeDrag.src === 'multi-hand' || activeDrag.src === 'board') && _dragSrc === 'hand';
     var multiCount = isMultiDrag ? (activeDrag.multiCount || 1) : 0;
     // Expand layout bounds so the drag gap doesn't get wall-clamped.
     if (isMultiDrag && multiCount > 0) {

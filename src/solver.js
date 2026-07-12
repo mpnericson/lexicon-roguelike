@@ -1,5 +1,18 @@
 // =====================================================================
 // SOLVER — finds the highest-scoring move from current hand + board
+//
+// Three-phase pipeline (shared by all entry points):
+//   1. GENERATE  _solverGenMoves() — GADDAG anchor traversal (gaddag.js)
+//                emits every legal placement spellable with the rack.
+//                Synchronous and fast (ms).
+//   2. SCORE     _solverScoreMove() per candidate through the real
+//                scoring engine (runScoreEngine, preview mode), chunked
+//                via setTimeout so the UI stays responsive.
+//   3. RANK      top-K insertion sort while scoring.
+//
+// Entry points: runSolver (dev panel, top 20), _rankRunRankSolve
+// (background top 10 for the rank-reward system), findBestMoveBackground
+// (game-over winning-plays reveal, top 5).
 // =====================================================================
 var _solverRunning = false;
 var _solverResults = [];
@@ -31,151 +44,213 @@ function _solverPrecompute() {
   return { cvAbove: cvAbove, cvBelow: cvBelow, chLeft: chLeft, chRight: chRight };
 }
 
-// Rows and columns that contain tiles or are adjacent to tiles.
-// Limits search to ~20-40 lines instead of all 30.
-function _solverActiveLines() {
-  var rowSet = {}, colSet = {}, hasTiles = false;
+// Per-square bitmask of letters (bit L-65) whose perpendicular cross-word is
+// in DICT. Squares with no perpendicular neighbours allow every letter.
+// h = masks for horizontal placements (vertical cross-words), v = vice versa.
+var GD_ALLMASK = (1 << 26) - 1;
+function _solverCrossMasks(pre) {
+  var mh = new Array(B * B), mv = new Array(B * B);
+  for (var i = 0; i < B * B; i++) {
+    if (S.bt[i]) { mh[i] = 0; mv[i] = 0; continue; }
+    var ab = pre.cvAbove[i], be = pre.cvBelow[i], lf = pre.chLeft[i], rt = pre.chRight[i];
+    if (!ab && !be) mh[i] = GD_ALLMASK;
+    else { var m = 0; for (var c = 0; c < 26; c++) { if (DICT.has(ab + String.fromCharCode(65 + c) + be)) m |= 1 << c; } mh[i] = m; }
+    if (!lf && !rt) mv[i] = GD_ALLMASK;
+    else { var m2 = 0; for (var c2 = 0; c2 < 26; c2++) { if (DICT.has(lf + String.fromCharCode(65 + c2) + rt)) m2 |= 1 << c2; } mv[i] = m2; }
+  }
+  return { h: mh, v: mv };
+}
+
+// Anchor squares: empty squares 4-adjacent to a tile (centre square when the
+// board is empty). Every legal move covers at least one anchor.
+function _solverAnchors() {
+  var list = [], is = new Uint8Array(B * B), hasTiles = false;
   for (var i = 0; i < B * B; i++) {
     if (!S.bt[i]) continue;
     hasTiles = true;
     var r = Math.floor(i / B), c = i % B;
-    for (var dr = -1; dr <= 1; dr++) { var rr = r + dr; if (rr >= 0 && rr < B) rowSet[rr] = 1; }
-    for (var dc = -1; dc <= 1; dc++) { var cc = c + dc; if (cc >= 0 && cc < B) colSet[cc] = 1; }
-  }
-  if (!hasTiles) { var mid = Math.floor(B / 2); rowSet[mid] = 1; colSet[mid] = 1; }
-  var lines = [];
-  for (var r in rowSet) lines.push({ isH: true, coord: parseInt(r) });
-  for (var c in colSet) lines.push({ isH: false, coord: parseInt(c) });
-  return lines;
-}
-
-// Pre-filter: can this word be spelled using combined hand+board letters (with blanks)?
-// Optimistic — false positives OK, no false negatives.
-function _solverCanSpell(word, available, blanks) {
-  var freq = {};
-  for (var i = 0; i < word.length; i++) freq[word[i]] = (freq[word[i]] || 0) + 1;
-  var blanksNeeded = 0;
-  for (var l in freq) {
-    var shortage = freq[l] - (available[l] || 0);
-    if (shortage > 0) blanksNeeded += shortage;
-  }
-  return blanksNeeded <= blanks;
-}
-
-// Try placing `word` at (r, c) in direction isH.
-// Returns {score, letters, mult, gold, word, r, c, isH, wt} or null.
-// handTileCount: total tiles in hand (optional) — used for accurate bingo detection.
-function _solverTryPlace(word, r, c, isH, handCounts, handBestVariant, blankPool, pre, handTileCount) {
-  var len = word.length;
-
-  // Bounds
-  if (isH ? c + len > B : r + len > B) return null;
-
-  // Word must not extend an existing run in its own direction
-  if (isH) {
-    if (c > 0 && S.bt[r * B + (c - 1)]) return null;
-    if (c + len < B && S.bt[r * B + (c + len)]) return null;
-  } else {
-    if (r > 0 && S.bt[(r - 1) * B + c]) return null;
-    if (r + len < B && S.bt[(r + len) * B + c]) return null;
-  }
-
-  // Pass 1: detect conflicts and count letters needed from hand
-  var needed = {}, newCount = 0, touchesExisting = false;
-  for (var i = 0; i < len; i++) {
-    var ri = isH ? r : r + i, ci = isH ? c + i : c;
-    var idx = ri * B + ci, letter = word[i], existing = S.bt[idx];
-    if (existing) {
-      if (existing.letter !== letter) return null;
-      touchesExisting = true;
-    } else {
-      newCount++;
-      needed[letter] = (needed[letter] || 0) + 1;
+    var nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
+    for (var k = 0; k < 4; k++) {
+      var nr = nb[k][0], nc = nb[k][1];
+      if (nr < 0 || nr >= B || nc < 0 || nc >= B) continue;
+      var ni = nr * B + nc;
+      if (!S.bt[ni] && !is[ni]) { is[ni] = 1; list.push(ni); }
     }
   }
-  if (newCount === 0) return null;
+  if (!hasTiles) { var mid = Math.floor(B / 2) * B + Math.floor(B / 2); is[mid] = 1; list.push(mid); }
+  return { list: list, is: is };
+}
 
-  // Check hand covers needed letters (with blanks)
-  var blanksNeeded = 0;
-  for (var l in needed) {
-    var shortage = needed[l] - (handCounts[l] || 0);
-    if (shortage > 0) blanksNeeded += shortage;
-  }
-  if (blanksNeeded > blankPool.length) return null;
+// ---- GADDAG move generation (Gordon's algorithm) ----
+// Returns every legal placement as {word, r, c, isH, placements} where
+// placements = [{idx, letter, isBlank}] covers only the NEW tiles.
+// Each move is generated exactly once — from its leftmost/topmost covered
+// anchor: the leftward walk never places a tile on another anchor square
+// (moves doing so are found from that anchor instead). Blanks are used
+// greedily only when the rack letter is unavailable, like the old solver.
+function _solverGenMoves(handCounts, blankCount) {
+  var pre = _solverPrecompute();
+  var masks = _solverCrossMasks(pre);
+  var an = _solverAnchors();
+  var moves = [];
+  var rack = {}; for (var rl in handCounts) rack[rl] = handCounts[rl];
+  var blanks = blankCount;
+  var pend = {}, pendN = 0; // idx -> {letter, isBlank} placed along the current path
 
-  // Connectivity: must touch existing tiles or cover centre
-  if (!touchesExisting) {
-    var centerIdx = Math.floor(B / 2) * B + Math.floor(B / 2);
-    var connected = false;
-    for (var i = 0; i < len && !connected; i++) {
-      var ri = isH ? r : r + i, ci = isH ? c + i : c, idx = ri * B + ci;
-      if (idx === centerIdx) { connected = true; break; }
-      var nbrs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-      for (var ni = 0; ni < nbrs.length && !connected; ni++) {
-        var nr = ri + nbrs[ni][0], nc = ci + nbrs[ni][1];
-        if (nr >= 0 && nr < B && nc >= 0 && nc < B && S.bt[nr * B + nc]) connected = true;
-      }
+  function record(loIdx, hiIdx, stride, isH) {
+    var word = '';
+    for (var i = loIdx; i <= hiIdx; i += stride) {
+      var t = S.bt[i];
+      word += t ? tileDisplayLetter(t) : pend[i].letter;
     }
-    if (!connected) return null;
+    var pl = [];
+    for (var k in pend) pl.push({ idx: +k, letter: pend[k].letter, isBlank: pend[k].isBlank });
+    moves.push({ word: word, r: Math.floor(loIdx / B), c: loIdx % B, isH: isH, placements: pl });
   }
 
-  // Pass 2: build wt array, verify cross-words, collect cross-word tile arrays for scoring
-  var hUse = {}, blankUsed = 0, wt = [], cwWts = [];
-  for (var i = 0; i < len; i++) {
-    var ri = isH ? r : r + i, ci = isH ? c + i : c;
-    var idx = ri * B + ci, letter = word[i], existing = S.bt[idx];
-    if (existing) {
-      wt.push({
-        idx: idx, letter: letter, isNew: false, isBlank: existing.isBlank,
-        sc: existing.isBlank ? (existing._alchSc || 0) : (LS[letter] || 0),
-        sid: S.board[idx], variant: existing.variant || null
-      });
-    } else {
-      var isBlankTile = false, tileSc = LS[letter] || 0, tileVariant = null;
-      var hUsed = hUse[letter] || 0, hAvail = (handCounts[letter] || 0) - hUsed;
-      if (hAvail > 0) {
-        hUse[letter] = hUsed + 1;
-        if (hUsed === 0) { tileVariant = handBestVariant[letter] || null; }
-      } else {
-        isBlankTile = true;
-        var bp = blankPool[blankUsed++];
-        tileSc = bp.devBlank ? (LS[letter] || 0) : (bp.alchSc || 0);
-      }
-
-      // Cross-word validation + build tile array for scoring
-      var ab='',be='',lf='',rt='';
-      if(isH){ab=pre.cvAbove[idx];be=pre.cvBelow[idx];}
-      else{lf=pre.chLeft[idx];rt=pre.chRight[idx];}
-      var cwStr=(isH?(ab||be):(lf||rt))?(isH?ab+letter+be:lf+letter+rt):null;
-      if(cwStr!==null){
-        if(!DICT.has(cwStr.toLowerCase()))return null;
-        var cwWt=[];
-        var newTileEntry={idx:idx,letter:letter,isNew:true,isBlank:isBlankTile,
-          sc:isBlankTile?tileSc:(LS[letter]||0),sid:S.board[idx],
-          variant:isBlankTile?null:tileVariant};
-        if(isH){
-          for(var k=0;k<ab.length;k++){var sqk=(ri-ab.length+k)*B+ci,btk=S.bt[sqk];cwWt.push({idx:sqk,letter:ab[k],isNew:false,isBlank:btk.isBlank,sc:btk.isBlank?(btk._alchSc||0):(LS[ab[k]]||0),sid:S.board[sqk],variant:btk.variant||null});}
-          cwWt.push(newTileEntry);
-          for(var k=0;k<be.length;k++){var sqk=(ri+1+k)*B+ci,btk=S.bt[sqk];cwWt.push({idx:sqk,letter:be[k],isNew:false,isBlank:btk.isBlank,sc:btk.isBlank?(btk._alchSc||0):(LS[be[k]]||0),sid:S.board[sqk],variant:btk.variant||null});}
-        }else{
-          for(var k=0;k<lf.length;k++){var sqk=ri*B+(ci-lf.length+k),btk=S.bt[sqk];cwWt.push({idx:sqk,letter:lf[k],isNew:false,isBlank:btk.isBlank,sc:btk.isBlank?(btk._alchSc||0):(LS[lf[k]]||0),sid:S.board[sqk],variant:btk.variant||null});}
-          cwWt.push(newTileEntry);
-          for(var k=0;k<rt.length;k++){var sqk=ri*B+(ci+1+k),btk=S.bt[sqk];cwWt.push({idx:sqk,letter:rt[k],isNew:false,isBlank:btk.isBlank,sc:btk.isBlank?(btk._alchSc||0):(LS[rt[k]]||0),sid:S.board[sqk],variant:btk.variant||null});}
+  // Walk leftwards from the anchor consuming board tiles / placing rack tiles.
+  function genLeft(aIdx, aCo, off, node, isH, stride, mask) {
+    var co = aCo + off;
+    if (co < 0) return;
+    var cur = aIdx + off * stride, bt = S.bt[cur];
+    if (bt) {
+      var nx = gdChild(node, tileDisplayLetter(bt).charCodeAt(0));
+      if (nx) afterLeft(aIdx, aCo, off, nx, isH, stride, mask);
+      return;
+    }
+    if (off < 0 && an.is[cur]) return; // dedupe: another anchor owns those moves
+    var arr = GADDAG.arr, k = arr[node * 3 + 1], m = mask[cur];
+    while (k) {
+      var c = arr[k * 3] & 255;
+      if (c >= 65 && c <= 90 && (m >> (c - 65) & 1)) {
+        var L = String.fromCharCode(c);
+        var useBlank = !(rack[L] > 0);
+        if (!useBlank || blanks > 0) {
+          if (useBlank) blanks--; else rack[L]--;
+          pend[cur] = { letter: L, isBlank: useBlank }; pendN++;
+          afterLeft(aIdx, aCo, off, k, isH, stride, mask);
+          delete pend[cur]; pendN--;
+          if (useBlank) blanks++; else rack[L]++;
         }
-        cwWts.push(cwWt);
       }
-
-      wt.push({
-        idx: idx, letter: letter, isNew: true, isBlank: isBlankTile,
-        sc: isBlankTile ? tileSc : (LS[letter] || 0),
-        sid: S.board[idx], variant: isBlankTile ? null : tileVariant
-      });
+      k = arr[k * 3 + 2];
     }
   }
 
-  var _bingo = (handTileCount > 0) ? (newCount >= handTileCount) : (newCount === 7);
-  var res = scoreWord(wt, word, true, _bingo ? 50 : 0, cwWts);
-  return { score: res.total, letters: res.letters, mult: res.mult, gold: res.gold, word: word, r: r, c: c, isH: isH, wt: wt };
+  function afterLeft(aIdx, aCo, off, node, isH, stride, mask) {
+    var co = aCo + off, cur = aIdx + off * stride;
+    var leftOpen = co === 0 || !S.bt[cur - stride];
+    var aRightOpen = aCo === B - 1 || !S.bt[aIdx + stride];
+    // Word ends at the anchor (no rightward part)
+    if (leftOpen && aRightOpen && pendN > 0 && gdEnd(node)) record(cur, aIdx, stride, isH);
+    if (co > 0) genLeft(aIdx, aCo, off - 1, node, isH, stride, mask);
+    // '>' switches to rightward extension — only when the prefix is maximal
+    var sw = gdChild(node, GD_SW);
+    if (sw && leftOpen && aCo < B - 1) genRight(aIdx, aCo, 1, sw, cur, isH, stride, mask);
+  }
+
+  function genRight(aIdx, aCo, off, node, loIdx, isH, stride, mask) {
+    var co = aCo + off;
+    if (co >= B) return;
+    var cur = aIdx + off * stride, bt = S.bt[cur];
+    if (bt) {
+      var nx = gdChild(node, tileDisplayLetter(bt).charCodeAt(0));
+      if (nx) afterRight(aIdx, aCo, off, nx, loIdx, isH, stride, mask);
+      return;
+    }
+    var arr = GADDAG.arr, k = arr[node * 3 + 1], m = mask[cur];
+    while (k) {
+      var c = arr[k * 3] & 255;
+      if (c >= 65 && c <= 90 && (m >> (c - 65) & 1)) {
+        var L = String.fromCharCode(c);
+        var useBlank = !(rack[L] > 0);
+        if (!useBlank || blanks > 0) {
+          if (useBlank) blanks--; else rack[L]--;
+          pend[cur] = { letter: L, isBlank: useBlank }; pendN++;
+          afterRight(aIdx, aCo, off, k, loIdx, isH, stride, mask);
+          delete pend[cur]; pendN--;
+          if (useBlank) blanks++; else rack[L]++;
+        }
+      }
+      k = arr[k * 3 + 2];
+    }
+  }
+
+  function afterRight(aIdx, aCo, off, node, loIdx, isH, stride, mask) {
+    var co = aCo + off, cur = aIdx + off * stride;
+    var rightOpen = co === B - 1 || !S.bt[cur + stride];
+    if (rightOpen && pendN > 0 && gdEnd(node)) record(loIdx, cur, stride, isH);
+    if (co < B - 1) genRight(aIdx, aCo, off + 1, node, loIdx, isH, stride, mask);
+  }
+
+  for (var d = 0; d < 2; d++) {
+    var isH = d === 0, stride = isH ? 1 : B, mask = isH ? masks.h : masks.v;
+    for (var ai = 0; ai < an.list.length; ai++) {
+      var aIdx = an.list[ai];
+      var aCo = isH ? aIdx % B : Math.floor(aIdx / B);
+      genLeft(aIdx, aCo, 0, 0, isH, stride, mask);
+    }
+  }
+  return moves;
+}
+
+// Rack maps from a hand tile array (nulls allowed).
+function _solverHandMaps(tiles) {
+  var handCounts = {}, handBestVariant = {}, blankPool = [], n = 0;
+  for (var i = 0; i < tiles.length; i++) {
+    var t = tiles[i];
+    if (!t) continue;
+    n++;
+    if (t.isBlank) blankPool.push({ devBlank: !!t._devBlank, alchSc: t._alchSc || 0 });
+    else {
+      var l = t.letter;
+      handCounts[l] = (handCounts[l] || 0) + 1;
+      if (!(l in handBestVariant)) handBestVariant[l] = t.variant || null;
+    }
+  }
+  return { handCounts: handCounts, handBestVariant: handBestVariant, blankPool: blankPool, handTileCount: n };
+}
+
+// Score one generated move through the real engine (preview mode).
+// Returns {score, letters, mult, gold, word, r, c, isH, wt} or null.
+function _solverScoreMove(mv, hm) {
+  var overlay = S.bt.slice(), newIdxs = [], blankUsed = 0, firstUse = {};
+  for (var i = 0; i < mv.placements.length; i++) {
+    var p = mv.placements[i], variant = null, alch = 0;
+    if (p.isBlank) {
+      var bp = hm.blankPool[blankUsed++] || {};
+      alch = bp.devBlank ? (LS[p.letter] || 0) : (bp.alchSc || 0);
+    } else if (!firstUse[p.letter]) {
+      firstUse[p.letter] = 1;
+      variant = hm.handBestVariant[p.letter] || null;
+    }
+    overlay[p.idx] = {
+      letter: p.letter, isNew: true, isBlank: p.isBlank,
+      blankAs: p.isBlank ? p.letter : null, _alchSc: alch, variant: variant
+    };
+    newIdxs.push(p.idx);
+  }
+  var newCount = newIdxs.length;
+  // Bingo: whole hand used. When handTileCount is unknown, fall back to the
+  // classic 7-tile rule (freeHandCount 0 ⇒ engine awards the bingo).
+  var _bingoHit = (hm.handTileCount > 0) ? (newCount >= hm.handTileCount) : (newCount === 7);
+  var res = runScoreEngine({
+    tiles: overlay, newIdxs: newIdxs, dir: mv.isH ? 'h' : 'v',
+    boardStickers: S.board, placed: S.placed, hotbar: S.tileStickers,
+    cooldowns: S.localCooldowns || new Set(), bounties: S.bounties || [],
+    preview: true,
+    state: buildEngineState(_bingoHit ? 0 : Math.max(1, (hm.handTileCount || 7) - newCount))
+  });
+  if (!res) return null;
+  // wt spans the full main word — used by highlight and auto-play
+  var startIdx = mv.r * B + mv.c, stride = mv.isH ? 1 : B, wt = [];
+  for (var k = 0; k < mv.word.length; k++) {
+    var idx = startIdx + k * stride, ov = overlay[idx], ex = S.bt[idx];
+    wt.push(ex
+      ? { idx: idx, letter: mv.word[k], isNew: false, isBlank: !!ex.isBlank, variant: ex.variant || null }
+      : { idx: idx, letter: mv.word[k], isNew: true, isBlank: ov.isBlank, variant: ov.variant });
+  }
+  return { score: res.total, letters: res.letters, mult: res.mult, gold: res.tgold, word: mv.word, r: mv.r, c: mv.c, isH: mv.isH, wt: wt };
 }
 
 // ---- Rank solver — silent background solve, keeps top 10 for reward system ----
@@ -191,7 +266,7 @@ function _scheduleRankSolve() {
   _rankTop10 = null;
   _rankTimer = setTimeout(function() {
     _rankTimer = null;
-    if (!DICT || S.phase !== 'play' || _solverRunning || _rankSolving) return;
+    if (!DICT || !GADDAG || S.phase !== 'play' || _solverRunning || _rankSolving) return;
     var snap = {
       hand:  S.hand.map(function(t){ return t ? Object.assign({},t,{onBoard:false,_boardSq:undefined}) : null; }),
       bt:    S.bt.map(function(bt){ return (bt && !bt.isNew) ? Object.assign({},bt) : null; }),
@@ -202,76 +277,57 @@ function _scheduleRankSolve() {
 }
 
 function _rankRunRankSolve(snap) {
-  if (!DICT || _solverRunning || _rankSolving) return;
+  if (!DICT || !GADDAG || _solverRunning || _rankSolving) return;
   _rankSolving = true;
   var myId = ++_rankRunId;
   var origHand = S.hand, origBt = S.bt, origBoard = S.board;
   S.hand = snap.hand; S.bt = snap.bt; S.board = snap.board;
 
-  var handCounts = {}, handBestVariant = {}, blankPool = [];
-  for (var i = 0; i < S.hand.length; i++) {
-    var t = S.hand[i]; if (!t) continue;
-    if (t.isBlank) { blankPool.push({devBlank:false, alchSc:t._alchSc||0}); }
-    else {
-      var l = t.letter; handCounts[l] = (handCounts[l]||0)+1;
-      if (!(l in handBestVariant)) handBestVariant[l]=t.variant||null;
-    }
-  }
-  var available = {};
-  for (var l in handCounts) available[l] = handCounts[l];
-  for (var i = 0; i < B*B; i++) { var bt=S.bt[i]; if(bt) available[bt.letter]=(available[bt.letter]||0)+1; }
-  var totalBlanks = blankPool.length;
-  var _handTileCount = S.hand.filter(function(t){return t;}).length;
-  var pre = _solverPrecompute(), lines = _solverActiveLines();
+  var hm = _solverHandMaps(S.hand);
+  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length);
 
   // Constraint context — captured now so processChunk closures see a consistent snapshot
   var _con = currentConstraint();
   var _palLock = _con === 'c_pal' && !S.palUnlocked;
   var _minLen = _con === 'c_long' ? 5 : (_con === 'c_longer' ? (S.lastWordLen || 0) + 1 : 2);
 
-  var words = []; DICT.forEach(function(w){ if(w.length>=_minLen&&w.length<=B) words.push(w.toUpperCase()); });
-
   function restore() { S.hand=origHand; S.bt=origBt; S.board=origBoard; _rankSolving=false; }
 
-  var wi = 0, CHUNK = 1500, best = [];
+  var mi = 0, CHUNK = 200, best = [];
   function processChunk() {
     if (_rankRunId !== myId) { restore(); return; }
-    var end = Math.min(wi+CHUNK, words.length);
-    for (var w = wi; w < end; w++) {
-      var word = words[w];
-      if (!_solverCanSpell(word, available, totalBlanks)) continue;
-      for (var li = 0; li < lines.length; li++) {
-        var line = lines[li], maxStart = B - word.length;
-        for (var sp = 0; sp <= maxStart; sp++) {
-          var r = line.isH ? line.coord : sp, c = line.isH ? sp : line.coord;
-          var res = _solverTryPlace(word,r,c,line.isH,handCounts,handBestVariant,blankPool,pre,_handTileCount);
-          if (!res) continue;
-          // Palindrome lock: only palindromes score until unlocked
-          if (_palLock && !isExtendedPalindrome(word)) continue;
-          // Bounty: if this word matches an active bounty, inflate the score to match reality
-          if (S.bounties && S.bounties.length) {
-            var _wLower = word.toLowerCase();
-            for (var _bIdx = 0; _bIdx < S.bounties.length; _bIdx++) {
-              if (S.bounties[_bIdx].word === _wLower) {
-                var _br = BOUNTY_REWARD, _adj = res.score;
-                if (_br.type === 'x-mult')    { _adj = Math.round(res.score * _br.value); }
-                else if (_br.type === 'letters')   { _adj = Math.round((res.letters + _br.value) * res.mult); }
-                else if (_br.type === 'plus-mult') { _adj = Math.round(res.score + res.letters * _br.value); }
-                // 'gold': no score change
-                if (_adj !== res.score) res = { score:_adj, letters:res.letters, mult:res.mult, gold:res.gold, word:res.word, r:res.r, c:res.c, isH:res.isH, wt:res.wt };
-                break;
-              }
-            }
+    var end = Math.min(mi+CHUNK, moves.length);
+    for (; mi < end; mi++) {
+      var mv = moves[mi];
+      if (mv.word.length < _minLen) continue;
+      // Palindrome lock: only palindromes score until unlocked
+      if (_palLock && !isExtendedPalindrome(mv.word)) continue;
+      var res = _solverScoreMove(mv, hm);
+      if (!res) continue;
+      // Bounty: if this word matches an active bounty scroll, inflate the score to match reality
+      if (S.bounties && S.bounties.length) {
+        var _isBounty = false;
+        for (var _bIdx = 0; _bIdx < S.bounties.length && !_isBounty; _bIdx++) {
+          var _bws = S.bounties[_bIdx].words || [];
+          for (var _bwi = 0; _bwi < _bws.length; _bwi++) {
+            if (_bws[_bwi].word.toUpperCase() === mv.word) { _isBounty = true; break; }
           }
-          var ins = false;
-          for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi,0,res); ins=true; break; } }
-          if (!ins) best.push(res);
-          if (best.length > 10) best.pop();
+        }
+        if (_isBounty) {
+          var _br = BOUNTY_REWARD, _adj = res.score;
+          if (_br.type === 'x-mult')    { _adj = Math.round(res.score * _br.value); }
+          else if (_br.type === 'letters')   { _adj = Math.round((res.letters + _br.value) * res.mult); }
+          else if (_br.type === 'plus-mult') { _adj = Math.round(res.score + res.letters * _br.value); }
+          // 'gold': no score change
+          if (_adj !== res.score) res = { score:_adj, letters:res.letters, mult:res.mult, gold:res.gold, word:res.word, r:res.r, c:res.c, isH:res.isH, wt:res.wt };
         }
       }
+      var ins = false;
+      for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi,0,res); ins=true; break; } }
+      if (!ins) best.push(res);
+      if (best.length > 10) best.pop();
     }
-    wi = end;
-    if (wi < words.length) { setTimeout(processChunk, 0); }
+    if (mi < moves.length) { setTimeout(processChunk, 0); }
     else { restore(); if (_rankRunId === myId) { _rankTop10 = best; window._easyHint = best.length ? best[0] : null; } }
   }
   setTimeout(processChunk, 0);
@@ -285,9 +341,8 @@ function _checkRankReward(score, top10) {
     if (score >= top10[i].score) { rank = i + 1; break; }
   }
   if (rank <= 10) _showRankReward(rank);
-  if (rank === 1) {
-    var _hasPlayer=false;for(var _pi=0;_pi<(S.tileStickers||[]).length;_pi++)if(S.tileStickers[_pi].id==='the_player'){_hasPlayer=true;break;}
-    if(_hasPlayer){S.playerMult=parseFloat(((S.playerMult||1)+0.5).toFixed(2));toast('The Player: ×'+S.playerMult.toFixed(1)+' mult!');}
+  if (rank === 1 && hasTileSticker('the_player')) {
+    S.playerMult=parseFloat(((S.playerMult||1)+0.5).toFixed(2));toast('The Player: ×'+S.playerMult.toFixed(1)+' mult!');
   }
 }
 
@@ -336,6 +391,7 @@ function _confetti() {
 
 function runSolver() {
   if (!DICT) { toast('Dictionary still loading...'); return; }
+  if (!GADDAG) { toast('Word index still building...'); return; }
 
   // Toggle off
   if (_solverRunning) {
@@ -355,69 +411,31 @@ function runSolver() {
   panel.style.display = 'block';
   panel.innerHTML = '<div style="color:#a0a0c0;font-size:30px">Solving... 0%</div>';
 
-  // Build hand maps
-  var handCounts = {}, handBestVariant = {}, blankPool = [];
-  for (var i = 0; i < S.hand.length; i++) {
-    var t = S.hand[i];
-    if (!t || t.onBoard) continue;
-    if (t.isBlank) {
-      blankPool.push({ devBlank: !!t._devBlank, alchSc: t._alchSc || 0 });
-    } else {
-      var l = t.letter;
-      handCounts[l] = (handCounts[l] || 0) + 1;
-      if (!(l in handBestVariant)) handBestVariant[l] = t.variant || null;
-    }
-  }
+  var hm = _solverHandMaps(S.hand.filter(function(t){ return t && !t.onBoard; }));
+  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length);
 
-  // Combined letter pool for pre-filter
-  var available = {};
-  for (var l in handCounts) available[l] = handCounts[l];
-  for (var i = 0; i < B * B; i++) {
-    var bt = S.bt[i];
-    if (bt) available[bt.letter] = (available[bt.letter] || 0) + 1;
-  }
-  var totalBlanks = blankPool.length;
-
-  var pre = _solverPrecompute();
-  var lines = _solverActiveLines();
-  var _handTileCount = S.hand.filter(function(t){ return t && !t.onBoard; }).length;
-
-  var words = [];
-  DICT.forEach(function (w) { if (w.length >= 2 && w.length <= B) words.push(w.toUpperCase()); });
-
-  var wi = 0, CHUNK = 1500, best = [];
+  var mi = 0, CHUNK = 150, best = [];
 
   function processChunk() {
     if (!_solverRunning) return;
-    var end = Math.min(wi + CHUNK, words.length);
-    for (var w = wi; w < end; w++) {
-      var word = words[w];
-      if (!_solverCanSpell(word, available, totalBlanks)) continue;
-      for (var li = 0; li < lines.length; li++) {
-        var line = lines[li];
-        var maxStart = B - word.length;
-        for (var startPos = 0; startPos <= maxStart; startPos++) {
-          var r = line.isH ? line.coord : startPos;
-          var c = line.isH ? startPos : line.coord;
-          var result = _solverTryPlace(word, r, c, line.isH, handCounts, handBestVariant, blankPool, pre, _handTileCount);
-          if (!result) continue;
-          var inserted = false;
-          for (var bi = 0; bi < best.length; bi++) {
-            if (result.score > best[bi].score) { best.splice(bi, 0, result); inserted = true; break; }
-          }
-          if (!inserted) best.push(result);
-          if (best.length > 20) best.pop();
-        }
+    var end = Math.min(mi + CHUNK, moves.length);
+    for (; mi < end; mi++) {
+      var result = _solverScoreMove(moves[mi], hm);
+      if (!result) continue;
+      var inserted = false;
+      for (var bi = 0; bi < best.length; bi++) {
+        if (result.score > best[bi].score) { best.splice(bi, 0, result); inserted = true; break; }
       }
+      if (!inserted) best.push(result);
+      if (best.length > 20) best.pop();
     }
-    wi = end;
 
-    var pct = Math.round(wi / words.length * 100);
+    var pct = moves.length ? Math.round(mi / moves.length * 100) : 100;
     var bestTxt = best.length ? 'Best: ' + best[0].word + ' (' + best[0].score + 'pts)' : '';
     panel.innerHTML = '<div style="color:#a0a0c0;font-size:30px">Solving... ' + pct + '%'
       + (bestTxt ? '<br><span style="color:#80ff80">' + bestTxt + '</span>' : '') + '</div>';
 
-    if (wi < words.length) {
+    if (mi < moves.length) {
       setTimeout(processChunk, 0);
     } else {
       _solverRunning = false;
@@ -429,47 +447,43 @@ function runSolver() {
   setTimeout(processChunk, 0);
 }
 
+// Game-over reveal: solves the pre-final-word snapshot and returns the top 5
+// moves (descending score) via onDone. Constraint filters use the snapshot's
+// pre-play state (palUnlocked/lastWordLen) so every listed word would
+// genuinely have scored from that position.
 function findBestMoveBackground(snap, onDone) {
-  if (!DICT || _solverRunning || _rankSolving) { onDone(null); return; }
+  if (!DICT || !GADDAG || _solverRunning || _rankSolving) { onDone(null); return; }
   _solverRunning = true;
   var origHand = S.hand, origBt = S.bt, origBoard = S.board;
   S.hand = snap.hand; S.bt = snap.bt; S.board = snap.board;
-  var handCounts = {}, handBestVariant = {}, blankPool = [];
-  for (var i = 0; i < S.hand.length; i++) {
-    var t = S.hand[i]; if (!t) continue;
-    if (t.isBlank) { blankPool.push({ devBlank: false, alchSc: t._alchSc || 0 }); }
-    else {
-      var l = t.letter; handCounts[l] = (handCounts[l] || 0) + 1;
-      if (!(l in handBestVariant)) handBestVariant[l] = t.variant || null;
-    }
-  }
-  var available = {};
-  for (var l in handCounts) available[l] = handCounts[l];
-  for (var i = 0; i < B * B; i++) { var bt = S.bt[i]; if (bt) available[bt.letter] = (available[bt.letter] || 0) + 1; }
-  var totalBlanks = blankPool.length, pre = _solverPrecompute(), lines = _solverActiveLines();
-  var _handTileCount = S.hand.filter(function(t){return t;}).length;
-  var words = []; DICT.forEach(function (w) { if (w.length >= 2 && w.length <= B) words.push(w.toUpperCase()); });
-  var wi = 0, CHUNK = 2000, best = [];
+
+  var hm = _solverHandMaps(S.hand);
+  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length);
+
+  var _con = currentConstraint();
+  var _palUnlocked = snap.palUnlocked != null ? snap.palUnlocked : S.palUnlocked;
+  var _lastLen = snap.lastWordLen != null ? snap.lastWordLen : (S.lastWordLen || 0);
+  var _palLock = _con === 'c_pal' && !_palUnlocked;
+  var _minLen = _con === 'c_long' ? 5 : (_con === 'c_longer' ? _lastLen + 1 : 2);
+
+  var mi = 0, CHUNK = 250, best = [];
   function restore() { var live = document.getElementById('gameover-modal'); if (live && live.style.display !== 'none') { S.hand = origHand; S.bt = origBt; S.board = origBoard; } }
   function processChunk() {
     if (!_solverRunning) { restore(); onDone(null); return; }
-    var end = Math.min(wi + CHUNK, words.length);
-    for (var w = wi; w < end; w++) {
-      var word = words[w]; if (!_solverCanSpell(word, available, totalBlanks)) continue;
-      for (var li = 0; li < lines.length; li++) {
-        var line = lines[li], maxStart = B - word.length;
-        for (var sp = 0; sp <= maxStart; sp++) {
-          var r = line.isH ? line.coord : sp, c = line.isH ? sp : line.coord;
-          var res = _solverTryPlace(word, r, c, line.isH, handCounts, handBestVariant, blankPool, pre, _handTileCount);
-          if (!res) continue;
-          var ins = false; for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi, 0, res); ins = true; break; } } if (!ins) best.push(res);
-          if (best.length > 5) best.pop();
-        }
-      }
+    var end = Math.min(mi + CHUNK, moves.length);
+    for (; mi < end; mi++) {
+      var mv = moves[mi];
+      if (mv.word.length < _minLen) continue;
+      if (_palLock && !isExtendedPalindrome(mv.word)) continue;
+      var res = _solverScoreMove(mv, hm);
+      if (!res) continue;
+      var ins = false;
+      for (var bi = 0; bi < best.length; bi++) { if (res.score > best[bi].score) { best.splice(bi, 0, res); ins = true; break; } }
+      if (!ins) best.push(res);
+      if (best.length > 5) best.pop();
     }
-    wi = end;
-    if (wi < words.length) { setTimeout(processChunk, 0); }
-    else { _solverRunning = false; restore(); onDone(best.length ? best[0] : null); }
+    if (mi < moves.length) { setTimeout(processChunk, 0); }
+    else { _solverRunning = false; restore(); onDone(best); }
   }
   setTimeout(processChunk, 0);
 }

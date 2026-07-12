@@ -1,9 +1,6 @@
 // =====================================================================
 // SHOP — sticker shop, packs, tile upgrades, forge, hammer
 // =====================================================================
-function freeSquare(){var c=[];for(var i=0;i<B*B;i++)if(!S.board[i])c.push(i);return c.length?c[Math.floor(_rng()*c.length)]:-1;}
-
-
 function wrandN(pool,w,n){
   var used={},out=[];
   for(var k=0;k<n;k++){
@@ -36,9 +33,9 @@ function refreshShop(){
   for(var i=0;i<sqIds.length;i++)shopPool.sq.push({id:sqIds[i],sold:false});
   var shuffledPacks=shuffle(ALL_PACK_TYPES.slice());
   shopPool.packs=shuffledPacks.slice(0,2).map(function(p){return{type:p.type,sqId:p.sqId||null,label:p.label,desc:p.desc,cost:p.cost,sold:false};});
-  var _bActiveWords=(S.bounties||[]).map(function(b){return b.word;});
-  shopPool.bounties=_generateBounties(3,_bActiveWords).map(function(b){
-    return{word:b.word,cost:2,reward:b.reward,accepted:false};
+  var _bActiveWords=[];(S.bounties||[]).forEach(function(sc){(sc.words||[]).forEach(function(w){_bActiveWords.push(w.word);});});
+  shopPool.bounties=_generateBounties(3,_bActiveWords).map(function(sc){
+    return{theme:sc.theme,words:sc.words,cost:2,accepted:false};
   });
   shopPool.slotSpinCost=5;
   shopPool.slotSpinsThisVisit=0;
@@ -46,7 +43,6 @@ function refreshShop(){
   shopPool.bagEnchantUsed=false;
   shopPool.bagDestroyUsed=false;
   shopPool.bagDupUsed=false;
-  shopPool.tileCards=[];
 }
 
 function enterShopPhase(){
@@ -126,8 +122,6 @@ function cancelDevPlacing(){
   renderHand();renderBoard();renderHUD();
 }
 
-function openShop(){enterShopPhase();}
-
 function renderShop(){
   var sub=document.getElementById('shop-sub');if(sub)sub.textContent='Gold: $'+S.gold;
   var goldEl=document.getElementById('shop-gold-display');if(goldEl)goldEl.textContent='$'+S.gold;
@@ -154,37 +148,47 @@ function renderShop(){
   if(blist){
     blist.innerHTML='';
     var bpool=shopPool.bounties||[];
-    if(!bpool.length){var nem=document.createElement('div');nem.style.cssText='font-size:clamp(6px,0.9vw,14px);color:#6060a0';nem.textContent='No bounties';blist.appendChild(nem);}
-    var bCanvasW=Math.min(window.innerWidth,window.innerHeight*16/9);
-    var bListInnerW=bCanvasW*0.25*0.94;
-    // chip has padding:4% 3% (another 0.94×), worst case 6-letter word + reward = 7 items with 13px gaps
-    var bTileSz=Math.max(12,Math.floor((bListInnerW*0.94-21)/7));
+    var canvasW=Math.min(window.innerWidth,window.innerHeight*1.6);
+    var itemW=Math.round(canvasW*0.25*0.94);
+    var btSz=Math.max(9,Math.min(13,Math.round(itemW*0.046)));
     for(var bi=0;bi<bpool.length;bi++){
       var b=bpool[bi];
-      var item=document.createElement('div');item.className='shop-bounty-item';
-      var chip=document.createElement('div');chip.className='shop-bounty-chip';
-      chip.innerHTML=wordAsTilesHTML(b.word,bTileSz,b.variant||null);
+      var item=document.createElement('div');
+      item.className='shop-bounty-item';
+
+      var scrollWrap=document.createElement('div');
+      scrollWrap.style.cssText='position:relative;width:90%;margin:0 auto;overflow:hidden;'
+        +'background-image:url(\'Assets/animations/bounty scroll/bounty_scroll'+(b.accepted?'3':'1')+'.png\');'
+        +'background-size:100% auto;background-repeat:no-repeat;background-position:top center;'
+        +'image-rendering:pixelated;padding-top:30%;'
+        +(b.accepted?'opacity:0.55;cursor:default':'cursor:pointer');
+
       if(!b.accepted){
-        var bbtn=document.createElement('button');bbtn.className='shop-bounty-accept-btn';
-        bbtn.textContent='$'+b.reward;
-        bbtn.style.height=bTileSz+'px';bbtn.style.fontSize=Math.round(bTileSz*0.48)+'px';
-        (function(j){bbtn.onclick=function(){acceptBounty(j);};})(bi);
-        chip.appendChild(bbtn);
-      } else {
-        var adiv=document.createElement('div');adiv.className='shop-bounty-done';adiv.textContent='✓';
-        adiv.style.height=bTileSz+'px';adiv.style.fontSize=Math.round(bTileSz*0.48)+'px';
-        chip.appendChild(adiv);
+        (function(wrap,idx){
+          wrap.addEventListener('mouseenter',function(){wrap.style.backgroundImage='url(\'Assets/animations/bounty scroll/bounty_scroll2.png\')';});
+          wrap.addEventListener('mouseleave',function(){wrap.style.backgroundImage='url(\'Assets/animations/bounty scroll/bounty_scroll1.png\')';});
+          wrap.addEventListener('click',function(){acceptBounty(idx);});
+        })(scrollWrap,bi);
       }
-      item.appendChild(chip);
+
+      if(b.theme){
+        var tov=document.createElement('div');
+        tov.style.cssText='position:absolute;top:5px;left:0;right:0;'
+          +'display:flex;justify-content:center;align-items:center;pointer-events:none;z-index:3';
+        var ttag=document.createElement('span');
+        ttag.style.cssText='font-family:\'Jersey 10\',Georgia,serif;font-size:'+btSz+'px;color:#2e1800;'
+          +'background:rgba(238,210,155,0.92);border:1px solid rgba(110,65,10,0.6);'
+          +'border-radius:3px;padding:2px 6px;line-height:1;white-space:nowrap;'
+          +'max-width:88%;overflow:hidden;text-overflow:ellipsis';
+        ttag.textContent=b.theme;
+        tov.appendChild(ttag);
+        scrollWrap.appendChild(tov);
+      }
+
+      item.appendChild(scrollWrap);
       blist.appendChild(item);
     }
   }
-}
-
-function _sqBigIcon(d){
-  if(!d)return'';
-  if(d.iconPng)return'<img src="'+d.iconPng+'" style="max-width:80%;max-height:70%;image-rendering:pixelated;display:block;margin:0 auto">';
-  return'<span>'+d.icon+'</span>';
 }
 
 // ── SHOP UI INIT ──
@@ -374,14 +378,7 @@ function _initShopBag(){
   var spr=document.getElementById('shop-bag-sprite');
   if(!btn||!spr)return;
   var fresh=btn.cloneNode(true);btn.parentNode.replaceChild(fresh,btn);
-  btn=fresh;spr=fresh.querySelector('img');
-  var frame=0,dir=0,timer=null,MAX=4,MS=70;
-  function tick(){timer=null;frame=Math.max(0,Math.min(MAX,frame+dir));spr.src='Assets/animations/bag/bag-hl-frame'+frame+'.png';
-    if(dir===1&&frame<MAX)timer=setTimeout(tick,MS);
-    else if(dir===-1&&frame>0)timer=setTimeout(tick,MS);
-    else if(dir===-1&&frame===0)spr.src='Assets/animations/bag/bag-frame0.png';}
-  btn.addEventListener('mouseenter',function(){if(timer){clearTimeout(timer);timer=null;}dir=1;spr.src='Assets/animations/bag/bag-hl-frame'+frame+'.png';if(frame<MAX)timer=setTimeout(tick,MS);});
-  btn.addEventListener('mouseleave',function(){if(timer){clearTimeout(timer);timer=null;}dir=-1;if(frame>0)timer=setTimeout(tick,MS);else spr.src='Assets/animations/bag/bag-frame0.png';});
+  attachBagHover(fresh,fresh.querySelector('img'));
 }
 
 // ── REEL SYSTEM ──
@@ -422,16 +419,6 @@ function _buildReelStrip(items,itemH,numCopies){
     }
   }
   return strip;
-}
-
-// Pixel size (in rendered CSS px) of one slot-reel window's sticker icon, derived from a live
-// reel's rendered width. Used to make the shop pack-box icons match the reel icons exactly.
-function _reelIconSizePx(){
-  var el=document.getElementById('shop-reel-1');
-  if(!el)return 68;
-  var w=el.getBoundingClientRect().width;
-  if(!w)return 68;
-  return w*(REEL_WINDOW/REEL_UNIT_W);
 }
 
 function _initReels(){
@@ -525,22 +512,11 @@ function _reelLoop(ts){
       r.offset-=REEL_EJECT_SPEED*dt;
       strip.style.transform='translateY('+(r.centerPad-r.offset)+'px)';
     } else if(r.state==='flick'){
-      var felapsed=ts-r.flickT0;
-      var speed;
-      if(felapsed<REEL_FLICK_ACCEL_MS){
-        // Logarithmic acceleration from current speed up to peak
-        var fa=felapsed/REEL_FLICK_ACCEL_MS;
-        speed=r.flickStartSpeed+(REEL_FLICK_PEAK-r.flickStartSpeed)*Math.log(1+fa*(Math.E-1));
-      } else if(r.flickHeld){
-        // Button held — cruise at peak until released
-        speed=REEL_FLICK_PEAK;
-      } else {
-        // Decel — flickDecelT0 is set at release; if released during accel, set it now at first decel frame
-        if(!r.flickDecelT0)r.flickDecelT0=ts;
-        var fd_s=(ts-r.flickDecelT0)/1000;
-        var excess=(REEL_FLICK_PEAK-REEL_IDLE_SPEED)*Math.exp(-fd_s/REEL_FLICK_DECEL_TAU);
-        if(excess<=20){r.state='idle';speed=REEL_IDLE_SPEED;}
-        else{speed=REEL_IDLE_SPEED+excess;}
+      // flickDecelT0 is set at release; if released during accel, stamp it at the first decel frame
+      if(ts-r.flickT0>=REEL_FLICK_ACCEL_MS&&!r.flickHeld&&!r.flickDecelT0)r.flickDecelT0=ts;
+      var speed=_flickSpeedNow(r,ts);
+      if(!r.flickHeld&&ts-r.flickT0>=REEL_FLICK_ACCEL_MS&&speed-REEL_IDLE_SPEED<=20){
+        r.state='idle';speed=REEL_IDLE_SPEED;
       }
       r.offset+=speed*dt;
       if(r.offset>=loopLen)r.offset-=loopLen;
@@ -815,6 +791,21 @@ function _stopReels(){
   if(rl){rl.style.transition='none';rl.style.opacity='1';}
 }
 
+// Current speed (px/s) of a reel in the flick state at time `now`:
+// logarithmic accel toward peak, cruise while held, exponential decay after
+// release. Reels in any other state move at idle speed.
+function _flickSpeedNow(r,now){
+  if(!r||r.state!=='flick')return REEL_IDLE_SPEED;
+  var fe=now-r.flickT0;
+  if(fe<REEL_FLICK_ACCEL_MS){
+    var fa=fe/REEL_FLICK_ACCEL_MS;
+    return r.flickStartSpeed+(REEL_FLICK_PEAK-r.flickStartSpeed)*Math.log(1+fa*(Math.E-1));
+  }
+  if(r.flickHeld)return REEL_FLICK_PEAK;
+  var fd=r.flickDecelT0?(now-r.flickDecelT0)/1000:0;
+  return REEL_IDLE_SPEED+(REEL_FLICK_PEAK-REEL_IDLE_SPEED)*Math.exp(-fd/REEL_FLICK_DECEL_TAU);
+}
+
 // ── SLOT MACHINE ──
 // Swap reel sprite variant and fire a brief speed burst on idle reels.
 // type: 'common' | 'default' | 'rare'
@@ -835,21 +826,7 @@ function _flickReels(type){
     // Restart if idle OR already flickering (cancel → re-flick)
     if(r.state!=='idle'&&r.state!=='flick')continue;
     // Snapshot current speed so accel lifts off from here, not from idle
-    var curSpeed=REEL_IDLE_SPEED;
-    if(r.state==='flick'){
-      var _fe=now-r.flickT0;
-      if(_fe<REEL_FLICK_ACCEL_MS){
-        var _fa=_fe/REEL_FLICK_ACCEL_MS;
-        curSpeed=r.flickStartSpeed+(REEL_FLICK_PEAK-r.flickStartSpeed)*Math.log(1+_fa*(Math.E-1));
-      } else if(r.flickHeld){
-        curSpeed=REEL_FLICK_PEAK;
-      } else {
-        var _fd_s=r.flickDecelT0?(now-r.flickDecelT0)/1000:0;
-        var _exc=(REEL_FLICK_PEAK-REEL_IDLE_SPEED)*Math.exp(-_fd_s/REEL_FLICK_DECEL_TAU);
-        curSpeed=REEL_IDLE_SPEED+(_exc>20?_exc:20);
-      }
-    }
-    r.flickStartSpeed=curSpeed;
+    r.flickStartSpeed=_flickSpeedNow(r,now);
     r.flickHeld=true;
     r.flickDecelT0=0;
     r.flickT0=now;r.state='flick';any=true;
@@ -900,20 +877,7 @@ function spinSlots(){
     for(var ri=0;ri<_reels.length;ri++){
       var r=_reels[ri];if(!r)continue;
       // Snapshot current speed so spin accel lifts off smoothly from a mid-flick reel
-      var startSpeed=REEL_IDLE_SPEED;
-      if(r.state==='flick'){
-        var _fe=_now-r.flickT0;
-        if(_fe<REEL_FLICK_ACCEL_MS){
-          var _fa=_fe/REEL_FLICK_ACCEL_MS;
-          startSpeed=r.flickStartSpeed+(REEL_FLICK_PEAK-r.flickStartSpeed)*Math.log(1+_fa*(Math.E-1));
-        } else if(r.flickHeld){
-          startSpeed=REEL_FLICK_PEAK;
-        } else {
-          var _fd_s=r.flickDecelT0?(_now-r.flickDecelT0)/1000:0;
-          var _exc=(REEL_FLICK_PEAK-REEL_IDLE_SPEED)*Math.exp(-_fd_s/REEL_FLICK_DECEL_TAU);
-          startSpeed=REEL_IDLE_SPEED+(_exc>20?_exc:0);
-        }
-      }
+      var startSpeed=_flickSpeedNow(r,_now);
       // Reset any flick color class — spin uses default reel strip
       var reelEl=document.getElementById('shop-reel-'+(ri+1));
       if(reelEl)reelEl.classList.remove('reel-common','reel-rare');
@@ -1040,24 +1004,9 @@ function _bagEnchantFlow(t,sel,actDiv){
 function closeShopBagUI(){
   var ovr=document.getElementById('shop-bag-overlay');if(!ovr||ovr.dataset.closing)return;
   delete ovr.dataset.opening;ovr.dataset.closing='1';
-  var bridge=document.createElement('div');
-  bridge.style.cssText='position:fixed;inset:0;background:#0f2018;z-index:9990;pointer-events:none;transition:opacity 0.35s ease;';
-  document.body.appendChild(bridge);
+  _fadeBridge('#0f2018',350);
   ovr.style.display='none';
   _bagTransitionClose('shop-bag-sprite',function(){delete ovr.dataset.closing;});
-  requestAnimationFrame(function(){requestAnimationFrame(function(){
-    bridge.style.opacity='0';
-    setTimeout(function(){if(bridge.parentNode)bridge.parentNode.removeChild(bridge);},350);
-  });});
-}
-
-function buyTileCard(i){
-  var tc=shopPool.tileCards[i];if(!tc||tc.bought)return;
-  if(!spendGold(tc.cost))return;
-  tc.bought=true;
-  addTileToBag({letter:tc.letter,isBlank:false,variant:tc.variant});
-  S.bag=shuffle(S.bag);renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
-  toast(tc.variant.charAt(0).toUpperCase()+tc.variant.slice(1)+' '+tc.letter+' added to bag!');
 }
 
 function buyPack(i){
@@ -1084,66 +1033,6 @@ function buyPack(i){
     renderShop();renderHUD();
     toast(qty+'× '+d.name+' queued — place them after leaving shop!');
   }
-}
-
-function openHammerModal(){renderHammerModal();document.getElementById('hammer-modal').style.display='flex';}
-
-function renderHammerModal(){
-  var grid=document.getElementById('hammer-grid');grid.innerHTML='';
-  var sorted=S.bag.slice().sort(function(a,b){return(a.letter||'_').localeCompare(b.letter||'_');});
-  if(!sorted.length){grid.innerHTML='<div style="color:#8880a8;font-size:32px">Bag is empty!</div>';return;}
-  for(var i=0;i<sorted.length;i++){
-    var tl=sorted[i];var s=document.createElement('div');s.className='h-tile'+(tl.variant?' var-'+tl.variant:'');
-    s.style.cursor='pointer';s.style.position='relative';
-    s.innerHTML='<span class="tl">'+(tl.isBlank?'?':tl.letter)+'</span><span class="ts">'+(tl.isBlank?0:(LS[tl.letter]||0))+'</span>';
-    (function(tile){s.onclick=function(){hammerTile(tile);renderHammerModal();};})(tl);grid.appendChild(s);
-  }
-}
-
-var forgeSelectedTile=null;
-
-function openForgeModal(){forgeSelectedTile=null;renderForgeModal();document.getElementById('forge-modal').style.display='flex';}
-
-function renderForgeModal(){
-  var grid=document.getElementById('forge-grid-inner');grid.innerHTML='';
-  var opts=document.getElementById('forge-options');
-  var sub=document.getElementById('forge-sub');
-  var backBtn=document.getElementById('forge-back-btn');
-  if(forgeSelectedTile){
-    grid.style.display='none';opts.style.display='block';
-    sub.textContent='Choose an enchantment for '+forgeSelectedTile.letter+' ('+(LS[forgeSelectedTile.letter]||0)+' pts)';
-    backBtn.textContent='← Change tile';
-    opts.innerHTML='';
-    var FORGE=[{v:'gold',label:'Gold',desc:'+$1 each time scored',cost:1,bg:'#6a4800'},{v:'blue',label:'Blue',desc:'Score grows by base pts each play',cost:1,bg:'#0a2a60'},{v:'red',label:'Red',desc:'Triggers twice (DW/TW doubles too)',cost:1,bg:'#601010'}];
-    FORGE.forEach(function(f){
-      var btn=document.createElement('button');btn.className='btn';
-      btn.style.cssText='width:100%;padding:12px 16px;margin-bottom:6px;background:'+f.bg+';color:#e8e0d0;text-align:left;border:1px solid rgba(255,255,255,.15)';
-      btn.innerHTML='<strong style="color:#f0e080">'+f.label+'</strong> — '+f.desc+' <span style="color:#f0c060;float:right">$'+f.cost+'</span>';
-      btn.onclick=function(){forgeUpgrade(forgeSelectedTile.id,f.v,f.cost);forgeSelectedTile=null;renderForgeModal();};
-      opts.appendChild(btn);
-    });
-  } else {
-    grid.style.display='flex';opts.style.display='none';
-    sub.textContent='Select a plain tile to enchant.';backBtn.textContent='← Back';
-    var avail=S.bag.filter(function(t){return!t.variant;}).sort(function(a,b){return(a.letter||'_').localeCompare(b.letter||'_');});
-    if(!avail.length){grid.innerHTML='<div style="color:#8880a8;font-size:32px">No plain tiles to enchant!</div>';return;}
-    avail.forEach(function(tl){
-      var s=document.createElement('div');s.className='h-tile';s.style.cursor='pointer';
-      s.innerHTML='<span class="tl">'+(tl.isBlank?'?':tl.letter)+'</span><span class="ts">'+(tl.isBlank?0:(LS[tl.letter]||0))+'</span>';
-      s.onclick=function(){forgeSelectedTile=tl;renderForgeModal();};grid.appendChild(s);
-    });
-  }
-}
-
-function closeForgeStep(){if(forgeSelectedTile){forgeSelectedTile=null;renderForgeModal();}else document.getElementById('forge-modal').style.display='none';}
-
-function forgeUpgrade(tileId,variant,cost){
-  var found=false;
-  for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===tileId&&!S.bag[i].variant){transformTile(tileId,{variant:variant});found=true;break;}}
-  if(!found){toast('Tile not found.');return;}
-  if(!spendGold(cost))return;
-  renderShop();renderHUD();
-  var n={gold:'Gold',blue:'Blue',red:'Red'};toast(n[variant]+' tile forged!');
 }
 
 // Routes a freshly acquired sticker into tileStickers or stickerInventory.
@@ -1198,25 +1087,14 @@ function openPackReveal(name,contents){
 
 function skipPack(){document.getElementById('pack-modal').style.display='none';enterShopPhase();}
 
-function hammerTile(tile){
-  var idx=-1;for(var i=0;i<S.bag.length;i++)if(S.bag[i].id===tile.id){idx=i;break;}
-  if(idx<0){toast('Tile not found.');return;}
-  if(!spendGold(3))return;
-  transformTile(tile.id,{destroy:true});
-  renderShop();renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
-  toast((tile.isBlank?'Blank':tile.letter)+' destroyed!');
-}
-
 function acceptBounty(i){
   var b=shopPool.bounties[i];if(!b||b.accepted)return;
   if(!spendGold(b.cost))return;
   b.accepted=true;
-  S.bounties=S.bounties||[];S.bounties.push({word:b.word,reward:b.reward});
+  S.bounties=S.bounties||[];S.bounties.push({theme:b.theme,words:b.words});
   renderShop();renderHUD();
-  toast('Bounty accepted! Play "'+b.word+'" for +$'+b.reward+' + '+bountyRewardLabel()+'!');
+  toast('Bounty scroll accepted! Play any listed word for its reward + '+bountyRewardLabel()+'!');
 }
-
-function closeShop(){document.getElementById('shop-screen').style.display='none';S.phase='play';}
 
 // ── SHOP STICKER TOOLTIP ──
 var _shopTipShowTimer=null,_shopTipHideTimer=null;

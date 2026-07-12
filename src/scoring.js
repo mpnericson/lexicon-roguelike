@@ -1,26 +1,13 @@
 // =====================================================================
-// SCORING — bracket-based cumulative letter/mult tracking
+// SCORING — live-state adapters + score animation
 //
-// Letter score (L) and mult score (M) are separate tracks:
-//   Final: total = round(L × (1 + sum(plusMults)) × product(xmults))
-//
-// Per tile (brackets 1-6, run for every tile in every word):
-//   1. Base letter score added to L
-//   2. Local additive — sqDef.onSquareLand(tile,ctx,ts,baseSc,sqIdx) if defined (cooldown-gated)
-//   3. Global +letter — tile sticker onPerTile hooks (Commons, NATO); gold tile
-//   4. Local ×letter + local xmult (DL/TL → ×L; DW/TW → push xmult; Purist doubles these)
-//   5. Global ×letter — _applyChessAura() (chess pieces ×3; King TW on aura squares)
-//   6. Retrigger      — sqDef.retrigger:true (Red Sticker); red tile variant
-//
-// Post-word (run once after all tiles across all words):
-//   Bingo +50
-//   Sticker onPostWord hooks (Scholar, Aristocrat, Pressure Cooker,
-//     Bounty Hunter, Crossroads, Palindrome Engine, Inkwell, Slot Machine, etc.)
-//   Bounty reward
-//   Final transform: Palindrome Engine ×palMult
-//
-// Word order: cross words scored before main word (per-tile only).
-// Both contribute to the same L / plusMults / xmults accumulators.
+// The scoring algorithm itself lives in src/score_engine.js
+// (runScoreEngine) and is a pure function of its input. This file:
+//   1. Extracts play data from live game state (newTiles, wordDir,
+//      extractAt, getAllWords).
+//   2. Builds the engine input from S (scorePlay, buildEngineState) and
+//      commits results back (cooldowns).
+//   3. Plays back the engine's event log (runScoreAnim + sticker floats).
 //
 // Cooldowns: local effects are gated by S.localCooldowns (a Set of sqIdx).
 // Within one play no flags are set — a square can fire multiple times.
@@ -43,49 +30,23 @@ function newTiles(){
   return r;
 }
 
+// Direction / word extraction delegate to the pure engine helpers
+// (_engWordDir/_engExtract in score_engine.js) over the merged live board,
+// so the logic exists in exactly one place.
+
 function wordDir(nt){
-  if(!nt.length)return null;
-  if(nt.length===1){
-    var r=nt[0].row,c=nt[0].col;
-    var hasV=!!(S.bt[(r-1)*B+c]||S.bt[(r+1)*B+c]);
-    var hasH=!!(S.bt[r*B+(c-1)]||S.bt[r*B+(c+1)]);
-    if(hasV&&!hasH)return'v';
-    return'h';
-  }
-  var rows={},cols={};
-  for(var i=0;i<nt.length;i++){rows[nt[i].row]=1;cols[nt[i].col]=1;}
-  if(Object.keys(rows).length===1)return'h';
-  if(Object.keys(cols).length===1)return'v';
-  return null;
+  return _engWordDir(_liveTiles().tiles,nt);
 }
 
 function extractAt(ar,ac,dir){
-  var pos=dir==='h'?ac:ar;
-  while(pos>0){var p=dir==='h'?ar*B+(pos-1):(pos-1)*B+ac;if(S.bt[p])pos--;else break;}
-  var start=pos;
-  pos=dir==='h'?ac:ar;
-  while(pos<B-1){var p=dir==='h'?ar*B+(pos+1):(pos+1)*B+ac;if(S.bt[p])pos++;else break;}
-  var end=pos;
-  if(start===end)return null;
-  var wt=[];
-  for(var p=start;p<=end;p++){
-    var si=dir==='h'?ar*B+p:p*B+ac;
-    // Jenga: use top stacked tile if present (it's the one that scores)
-    var topT=S.btTop&&S.btTop[si]&&S.btTop[si].isNew?S.btTop[si]:null;
-    var bt=topT||S.bt[si];
-    if(!bt)return null;
-    wt.push({idx:si,row:Math.floor(si/B),col:si%B,
-      letter:tileDisplayLetter(bt),isNew:!!bt.isNew,isBlank:!!bt.isBlank,
-      sc:bt.isBlank?(bt._alchSc||0):(LS[bt.letter]||0),
-      variant:bt.variant||null});
-  }
-  return{word:wt.map(function(t){return t.letter;}).join(''),tiles:wt};
+  var lv=_liveTiles();
+  return _engExtract(lv.tiles,{},lv.jengaTops,ar,ac,dir);
 }
 
 // Returns all formed word strings (main + cross) — used for validation.
 function getAllWords(nt,dir){
-  var a=nt[0];
-  var main=extractAt(a.row,a.col,dir);
+  var lv=_liveTiles(),cache={};
+  var main=_engExtract(lv.tiles,cache,lv.jengaTops,nt[0].row,nt[0].col,dir);
   if(!main)return[];
   var words=[main.word];
   var cx=dir==='h'?'v':'h';
@@ -93,265 +54,67 @@ function getAllWords(nt,dir){
   for(var i=0;i<nt.length;i++){
     var k=nt[i].row+','+nt[i].col;if(seen[k])continue;seen[k]=1;
     // Jenga stacked tiles don't form cross-words
-    if(S.btTop&&S.btTop[nt[i].idx]&&S.btTop[nt[i].idx].isNew)continue;
-    var cxw=extractAt(nt[i].row,nt[i].col,cx);
+    if(lv.jengaTops.has(nt[i].idx))continue;
+    var cxw=_engExtract(lv.tiles,cache,lv.jengaTops,nt[i].row,nt[i].col,cx);
     if(cxw&&cxw.tiles.length>=2)words.push(cxw.word);
   }
   return words;
 }
 
-// ---- Scoring context ----
+// ---- Engine adapters — build runScoreEngine input from live game state ----
 
-function _buildCtx(mainWord){
-  var ctx={
-    letters:0, plusMults:[], xmults:[], tgold:0, events:[],
-    activatedSqs:new Set(),
-    allSc1:true, anyHigh:false, blankCt:0, newTileCount:0, maxSc:0,
-    mainWord:mainWord||'',
-    crossWordCount:0,
-    slotUsed:false, preview:false,
-    // sticker flags populated below via onBuildCtx hooks
-    chessPieces:[],chessKingActive:false,
-    purist:false,palMult:1,
-    stickerLocked:(currentConstraint()==='c_stickers')&&!(S.stickersSoldThisStage>0),
+// Full-board tile view with Jenga tops merged over the tiles they cover.
+function _liveTiles(){
+  var tiles=new Array(B*B),jengaTops=new Set();
+  for(var i=0;i<B*B;i++){
+    var tt=S.btTop&&S.btTop[i];
+    if(tt&&tt.isNew){tiles[i]=tt;jengaTops.add(i);}
+    else tiles[i]=S.bt[i]||null;
+  }
+  return{tiles:tiles,jengaTops:jengaTops};
+}
+
+// Snapshot of every S field that influences scoring. Sticker hooks read
+// these through ctx.state instead of touching S directly.
+function buildEngineState(freeHandCount){
+  return{
+    freeHandCount:freeHandCount,
+    constraint:currentConstraint(),
+    usedLetters:S.usedLetters,
+    stickersSold:(S.stickersSoldThisStage||0)>0,
+    pendingBountyReward:!!S._pendingBountyReward,
+    drunkValid:S._drunkValid,
+    magicStreak:S.magicStreak||0,
+    drunkStreak:S.drunkStreak||0,
+    palMult:S.palMult||1,
+    playerMult:S.playerMult||1,
+    bhMult:S.bhMult||1,
+    crossroadsCount:S.crossroadsCount||0,
+    discPressure:S.discPressure||0,
+    bagColouredCount:S.bag?S.bag.filter(function(t){return t.variant;}).length:0
   };
-  if(!ctx.stickerLocked)_fireAllStickers('onBuildCtx',[ctx]);
-  return ctx;
-}
-
-// ---- Per-tile pass engine (brackets 1-6) ----
-// ts = tile's running score coming in (0 for first pass, current value for retrigger).
-// Returns updated tile score. Does NOT touch ctx.letters.
-// Letter events carry isTileLocal:true so the animation shows pops without advancing saL.
-
-function _scoreTilePasses(tile,ctx,ts,skipRetrigger){
-  var sqIdx=tile.idx;
-  var sqId=S.board[sqIdx];
-  var sqDef=sqId?sqd(sqId):null;
-  var sqActive=!S.localCooldowns.has(sqIdx);
-  var tileSc=tile.isBlank?(tile.sc||0):(LS[tile.letter]||0);
-
-  // --- Bracket 1: base ---
-  var baseSc=tile.isBlank?(tile.sc||0):tileSc;
-  var _letterUsed=!tile.isBlank&&tile.letter&&currentConstraint()==='c_letters'&&S.usedLetters&&S.usedLetters.has(tile.letter);
-  if(_letterUsed)baseSc=0;
-  ts+=baseSc;
-  ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,
-    label:tile.letter+(tile.isBlank?' (blank)':'')+ (_letterUsed?' (used-0)':'')});
-
-  // --- Bracket 2: local additive (cooldown-gated) — sqDef.onSquareLand hook ---
-  if(sqActive&&sqDef&&sqDef.onSquareLand&&!ctx.stickerLocked){
-    ctx._stickerActed=false;
-    var _prevEvLen=ctx.events.length;
-    ts=sqDef.onSquareLand(tile,ctx,ts,baseSc,sqIdx);
-    if(!ctx.preview&&(ctx.events.length>_prevEvLen||ctx._stickerActed))ctx.activatedSqs.add(sqIdx);
-  }
-
-  // --- Bracket 3: global additive — tile sticker onPerTile hooks + gold tile ---
-  if(tile.variant==='gold'){
-    ctx.tgold++;
-    ctx.events.push({type:'gold',delta:1,sqIdx:sqIdx,label:'Gold tile +$1'});
-  }
-  if(!ctx.stickerLocked){
-    for(var _pti=0;_pti<S.tileStickers.length;_pti++){
-      var _ptd=sqd(S.tileStickers[_pti].id);
-      if(_ptd&&_ptd.onPerTile)ts=_ptd.onPerTile(tile,ctx,ts,S.tileStickers[_pti]);
-    }
-  }
-
-  // --- Bracket 4: local ×letter (DL/TL) + local xmult (DW/TW) ---
-  if(sqActive&&sqDef&&sqDef.bm&&!ctx.stickerLocked){
-    var bm=sqDef.bm;
-    if(bm==='dl'||bm==='tl'){
-      var f4=bm==='dl'?(ctx.purist?4:2):(ctx.purist?9:3);
-      ts*=f4;
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:sqDef.name+' ×'+f4,floatSqIdx:sqIdx});
-      if(!ctx.preview)ctx.activatedSqs.add(sqIdx);
-    }
-    if(bm==='dw'||bm==='tw'){
-      var f4b=bm==='dw'?(ctx.purist?4:2):(ctx.purist?9:3);
-      ctx.xmults.push(f4b);
-      ctx.events.push({type:'x-mult',factor:f4b,sqIdx:sqIdx,label:sqDef.name+' ×'+f4b,floatSqIdx:sqIdx});
-      if(!ctx.preview)ctx.activatedSqs.add(sqIdx);
-    }
-  }
-
-  // --- Bracket 5: global ×letter — chess aura (_applyChessAura defined in indirect.js) ---
-  if(ctx.chessPieces.length)ts=_applyChessAura(tile,ctx,ts,sqIdx);
-
-  // --- Bracket 6: retrigger — sqDef.retrigger:true flag or red tile variant ---
-  // Continues from current ts — does NOT reset to 0.
-  if(!skipRetrigger){
-    if(sqActive&&sqDef&&sqDef.retrigger&&!ctx.stickerLocked){
-      if(!ctx.preview)ctx.activatedSqs.add(sqIdx);
-      ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:sqDef.name,floatSqIdx:sqIdx});
-      ts=_scoreTilePasses(tile,ctx,ts,true);
-    }
-    if(tile.variant==='red'){
-      ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:'Red'});
-      ts=_scoreTilePasses(tile,ctx,ts,true);
-    }
-  }
-  return ts;
-}
-
-// ---- Per-tile entry point ----
-// Runs all passes, then adds the completed tile score to ctx.letters once.
-
-function _scoreTile(tile,ctx,skipRetrigger){
-  var tileSc=tile.isBlank?(tile.sc||0):(LS[tile.letter]||0);
-  if(tileSc>1)ctx.allSc1=false;
-  if(tileSc>=8)ctx.anyHigh=true;
-  if(tile.isBlank&&tile.isNew)ctx.blankCt++;
-  if(tileSc>ctx.maxSc)ctx.maxSc=tileSc;
-  var _startEvt=ctx.events.length;
-  var ts=_scoreTilePasses(tile,ctx,0,skipRetrigger);
-  // If bracket1 has subsequent tile-local sticker effects, suppress its pop/bounce/ding
-  var _hasLater=false;
-  for(var _ei=_startEvt+1;_ei<ctx.events.length;_ei++){if(ctx.events[_ei].isTileLocal){_hasLater=true;break;}}
-  if(_hasLater)ctx.events[_startEvt].suppressVisual=true;
-  ctx.letters+=ts;
-  // Tag the last isTileLocal event with the global running total so the
-  // animation can sync saL at the same frame as the tile bink.
-  for(var _li=ctx.events.length-1;_li>=_startEvt;_li--){
-    if(ctx.events[_li].isTileLocal){ctx.events[_li]._globalLetters=ctx.letters;break;}
-  }
-  ctx.events.push({type:'letter',lettersAfter:ctx.letters,isSilent:true});
 }
 
 // ---- Main scoring entry point ----
-// preview=true → no cooldown commits, no S._slotMachineRoll writes.
-// Returns {total, tgold, events, mainWord, bingo, letters, plusMults, xmults, mult, allWords}
+// preview=true → no cooldown commits, sticker hooks skip side effects.
+// Returns the runScoreEngine result (see score_engine.js) or null.
 
 function scorePlay(nt,dir,preview){
   if(!S.localCooldowns)S.localCooldowns=new Set();
-  var a=nt[0];
-  var main=extractAt(a.row,a.col,dir);
-  if(!main)return null;
-
-  var ctx=_buildCtx(main.word);
-  ctx.preview=!!preview;
-  ctx.newTileCount=nt.length;
-  ctx._freeHandCount=S.hand.filter(function(t){return t!==null;}).length;
-  if(!preview)S._slotMachineRoll=null;
-
-  // Tile-count base +mult — established before any per-tile scoring
-  if(ctx.newTileCount>=4){
-    var _tcb=ctx.newTileCount-3;
-    ctx.plusMults.push(_tcb);
-    ctx.events.push({type:'plus-mult',delta:_tcb,label:ctx.newTileCount+' tiles +'+_tcb+' mult',silent:true});
-  }
-
-  var bingo=nt.length>0&&ctx._freeHandCount===0;
-
-  // Extract cross words
-  var cx=dir==='h'?'v':'h';
-  var crossWords=[];
-  var seen={};
-  for(var i=0;i<nt.length;i++){
-    var k=nt[i].row+','+nt[i].col;if(seen[k])continue;seen[k]=1;
-    // Jenga stacked tiles sit on existing words — no new cross-word is formed
-    if(S.btTop&&S.btTop[nt[i].idx]&&S.btTop[nt[i].idx].isNew)continue;
-    var cxw=extractAt(nt[i].row,nt[i].col,cx);
-    if(cxw&&cxw.tiles.length>=2)crossWords.push(cxw);
-  }
-
-  // Score cross words first (per-tile brackets 1-6)
-  // Crossroads: display-only tick per crossword, purely so a hovered tooltip can track the
-  // count live — the real mult is applied once at the end via onPostWord (see below).
-  var _hasCrossroads=false;for(var _cri=0;_cri<S.tileStickers.length;_cri++)if(S.tileStickers[_cri].id==='crossroads'){_hasCrossroads=true;break;}
-  for(var ci=0;ci<crossWords.length;ci++){
-    var cwtiles=crossWords[ci].tiles;
-    if(_hasCrossroads&&!ctx.stickerLocked)ctx.events.push({type:'crossword-tick',isSilent:true});
-    for(var ti=0;ti<cwtiles.length;ti++)_scoreTile(cwtiles[ti],ctx,false);
-  }
-  // Score main word (per-tile brackets 1-6)
-  for(var ti=0;ti<main.tiles.length;ti++)_scoreTile(main.tiles[ti],ctx,false);
-
-  // ---- POST-WORD PHASE ----
-
-  // Bingo +50 (game mechanic, not a sticker)
-  if(bingo){
-    ctx.letters+=50;
-    ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Bingo +50'});
-  }
-
-  // Sticker onPostWord hooks — each sticker pushes directly to ctx
-  ctx.crossWordCount=crossWords.length;
-  if(!ctx.stickerLocked){
-    for(var pwi=0;pwi<S.placed.length;pwi++){
-      var _pDef=sqd(S.placed[pwi].id);
-      if(_pDef&&_pDef.onPostWord)_pDef.onPostWord(main.word,main.tiles,ctx,S.placed[pwi]);
-    }
-    for(var twi=0;twi<S.tileStickers.length;twi++){
-      var _tDef=sqd(S.tileStickers[twi].id);
-      if(_tDef&&_tDef.onPostWord){
-        var _evStart=ctx.events.length;
-        _tDef.onPostWord(main.word,main.tiles,ctx,S.tileStickers[twi]);
-        for(var _evi=_evStart;_evi<ctx.events.length;_evi++){
-          var _tev=ctx.events[_evi];
-          if((_tev.type==='letter'||_tev.type==='plus-mult'||_tev.type==='x-mult')&&_tev.floatSqIdx==null&&_tev.floatTsId==null)_tev.floatTsId=S.tileStickers[twi].id;
-        }
-      }
-    }
-  }
-  // Bounty reward — applied last so it multiplies everything
-  if(S._pendingBountyReward&&!preview)applyBountyReward(ctx);
-
-  // Final calculation
-  var plusSum=0;for(var i=0;i<ctx.plusMults.length;i++)plusSum+=ctx.plusMults[i];
-  var xprod=1;for(var i=0;i<ctx.xmults.length;i++)xprod*=ctx.xmults[i];
-  var mult=(1+plusSum)*xprod;
-  var total=Math.round(ctx.letters*mult);
-
-  // Palindrome Engine scaling mult
-  if(ctx.palMult>1){
-    total=Math.round(total*ctx.palMult);
-    ctx.events.push({type:'final-transform',label:'Palindrome Engine ×'+fmtMult(ctx.palMult),total:total,palMult:ctx.palMult,floatTsId:'palindrome_engine'});
-  }
-
-  var _displayMult=ctx.palMult>1?mult*ctx.palMult:mult;
-  ctx.events.push({type:'final',letters:ctx.letters,plusSum:plusSum,xprod:xprod,mult:mult,displayMult:_displayMult,total:total});
-
+  var lv=_liveTiles();
+  var res=runScoreEngine({
+    tiles:lv.tiles,jengaTops:lv.jengaTops,
+    newIdxs:nt.map(function(t){return t.idx;}),
+    dir:dir,
+    boardStickers:S.board,placed:S.placed,hotbar:S.tileStickers,
+    cooldowns:S.localCooldowns,bounties:S.bounties||[],
+    preview:!!preview,
+    state:buildEngineState(S.hand.filter(function(t){return t!==null;}).length)
+  });
+  if(!res)return null;
   // Commit cooldowns (non-preview only)
-  if(!preview)ctx.activatedSqs.forEach(function(sq){S.localCooldowns.add(sq);});
-
-  return{
-    total:total,tgold:ctx.tgold,events:ctx.events,
-    mainWord:main.word,bingo:bingo,
-    letters:ctx.letters,plusMults:ctx.plusMults,xmults:ctx.xmults,mult:mult,
-    allWords:getAllWords(nt,dir),
-    crossWordCount:crossWords.length,
-    springTraps:ctx.springTraps||[],
-  };
-}
-
-// ---- Backward-compat wrapper for solver (always preview) ----
-// solver.js calls scoreWord(wt, word, isMain, extraChips)
-// wt is a manually-built tile array with {idx,letter,isNew,isBlank,sc,sid,variant}
-
-function scoreWord(wt,word,isMain,extraChips,cwWts){
-  if(!S.localCooldowns)S.localCooldowns=new Set();
-  var ctx=_buildCtx(word);
-  ctx.preview=true;
-  var _nc=0;for(var i=0;i<wt.length;i++)if(wt[i]&&wt[i].isNew)_nc++;
-  ctx.newTileCount=_nc;
-  ctx._freeHandCount=S.hand.filter(function(t){return t!==null;}).length;
-  if(ctx.newTileCount>=4)ctx.plusMults.push(ctx.newTileCount-3);
-  // Score cross words first — same ctx, mirrors scorePlay ordering
-  if(cwWts){for(var ci=0;ci<cwWts.length;ci++){for(var ti=0;ti<cwWts[ci].length;ti++){_scoreTile(cwWts[ci][ti],ctx,false);}}}
-  for(var i=0;i<wt.length;i++){
-    var t=wt[i];
-    _scoreTile(t,ctx,false);
-  }
-  if(extraChips&&extraChips>0){ctx.letters+=extraChips;}
-  if(isMain)_fireAllStickers('onPostWord',[word,wt,ctx]);
-  var plusSum=0;for(var i=0;i<ctx.plusMults.length;i++)plusSum+=ctx.plusMults[i];
-  var xprod=1;for(var i=0;i<ctx.xmults.length;i++)xprod*=ctx.xmults[i];
-  var mult=(1+plusSum)*xprod;
-  var total=Math.round(ctx.letters*mult);
-  if(ctx.palMult>1)total=Math.round(total*ctx.palMult);
-  return{letters:ctx.letters,mult:mult,total:total,gold:ctx.tgold};
+  if(!preview)res.activatedSqs.forEach(function(sq){S.localCooldowns.add(sq);});
+  return res;
 }
 
 // ---- Sticker float animation ----
@@ -515,15 +278,6 @@ function _runPeel(f){
     b=((pp*2-1)*100).toFixed(2);
     return 'polygon(0% 0%, 100% 0%, 100% '+b+'%, '+b+'% 100%, 0% 100%)';
   }
-  // Clip-path for the bottom-right (flat) region.
-  function _fc(pp){
-    if(pp<=0)return 'none';
-    var a,b;
-    if(pp<0.5){a=(pp*200).toFixed(2);return 'polygon('+a+'% 0%, 100% 0%, 100% 100%, 0% 100%, 0% '+a+'%)';}
-    if(pp>=1)return 'polygon(0% 0%, 0% 0%, 0% 0%)';
-    b=((pp*2-1)*100).toFixed(2);
-    return 'polygon(100% '+b+'%, 100% 100%, '+b+'% 100%)';
-  }
   // Peel angle: phase 1 rises to 70° at pp=1/8, phase 2 corner stays at fixed height.
   // Larger angle = more dramatic lift on small elements with perspective(30px).
   var _SIN70=Math.sin(70*Math.PI/180); // fixed corner height ratio
@@ -675,6 +429,19 @@ function bumpSA(id){var el=document.getElementById(id);if(!el)return;el.classLis
 function scoreDelay(ms){return new Promise(function(r){setTimeout(r,ms);});}
 function fmtMult(m){var r=Math.round(m);if(m>=10||Math.abs(m-r)<0.001)return r.toString();return parseFloat(m.toFixed(2)).toString();}
 
+// Board tile element for an event's square (jenga top face wins), or null.
+function _evTileEl(ev){
+  if(ev.sqIdx==null)return null;
+  return document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')
+    ||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile');
+}
+
+// Restart the bink (pop) animation on a tile element.
+function _binkEl(el){
+  if(!el)return;
+  el.classList.remove('binking');void el.offsetWidth;el.classList.add('binking');
+}
+
 // Bounces the matching hotbar sticker face(s) when its effect contributes to scoring.
 function _bounceTsSticker(id){
   var els=document.querySelectorAll('#tile-sticker-bar .sticker-tile[data-ts-id="'+id+'"]');
@@ -747,6 +514,22 @@ async function runScoreAnim(events,total){
     bumpSA('ls-mult');
   }
 
+  // Shared opening beat for every non-tile-local event: snap the pending tile
+  // tick, consume one delay step, wait for the sticker peel, then fire the
+  // ding + sticker float + hotbar bounce (all suppressed for _skip events).
+  // Returns the delay to await after the branch's own visuals, or null for
+  // _skip events (which fire their state changes with no beat of their own).
+  async function _evBeatStart(ev){
+    _firePendingTick(false);
+    var curDelay=null;
+    if(!ev._skip){curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
+    if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
+    if(!ev._skip&&!ev.silent)_playScoreDing();
+    if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
+    if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
+    return curDelay;
+  }
+
   // Consecutive events sharing a floatSqIdx come from the same sticker trigger.
   // Mark all but the first in each run as _skip so they fire their effects in the
   // same beat as the primary event (no extra ding, no extra delay, no re-activation).
@@ -807,12 +590,12 @@ async function runScoreAnim(events,total){
           }
           if(!ev.suppressVisual){
             var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);
-            var tileEl=ev.sqIdx!=null?(document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile')):null;
+            var tileEl=_evTileEl(ev);
             if(ev.floatSqIdx!=null)await _awaitPeelHold(ev.floatSqIdx);
             _playScoreDing();
             if(ev.floatSqIdx!=null)_activateStickerFloat(ev.floatSqIdx);
             if(ev.floatTsId)_bounceTsSticker(ev.floatTsId);
-            if(tileEl){tileEl.classList.remove('binking');void tileEl.offsetWidth;tileEl.classList.add('binking');}
+            _binkEl(tileEl);
           }
           if(ev._globalLetters!=null){
             // All brackets done for this tile — store tick, wait for next tile to pull the trigger
@@ -825,31 +608,19 @@ async function runScoreAnim(events,total){
         }
       }else{
         // Non-tile-local letter event (bingo +50, sticker bonus, etc.)
-        // Snap any pending tile tick first so the delta clears before this event's visual.
-        _firePendingTick(false);
-        if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
-        var tileEl=ev.sqIdx!=null?(document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile')):null;
-        if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
-        if(!ev._skip)_playScoreDing();
-        if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
-        if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
-        if(tileEl&&!ev._skip){tileEl.classList.remove('binking');void tileEl.offsetWidth;tileEl.classList.add('binking');}
+        var curDelay=await _evBeatStart(ev);
+        if(!ev._skip)_binkEl(_evTileEl(ev));
         saL.textContent=ev.lettersAfter;bumpSA('ls-letters');_saLSynced=ev.lettersAfter;
-        if(!ev._skip){await scoreDelay(curDelay);}
+        if(curDelay!=null)await scoreDelay(curDelay);
       }
 
     }else if(ev.type==='plus-mult'){
-      _firePendingTick(false);
-      if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
-      if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
-      if(!ev._skip&&!ev.silent)_playScoreDing();
-      if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
-      if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
+      var curDelay=await _evBeatStart(ev);
       var br=row.getBoundingClientRect();
       showScorePop('+'+ev.delta+' mult',br.left+100,br.top-32,'#500808','#ff8080');
       animPlusSum+=ev.delta;
       refreshMult();
-      if(!ev._skip){await scoreDelay(curDelay);}
+      if(curDelay!=null)await scoreDelay(curDelay);
 
     }else if(ev.type==='crossword-tick'){
       // Display-only: bumps Crossroads' live preview counter so a hovered tooltip steps up
@@ -859,52 +630,38 @@ async function runScoreAnim(events,total){
       _tooltipRefreshIfOpen();
 
     }else if(ev.type==='x-mult'){
-      _firePendingTick(false);
-      if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
-      var tileEl2=ev.sqIdx!=null?(document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile')):null;
+      // Tile rect captured before the peel-hold await so the pop lands where
+      // the tile was when the event began.
+      var tileEl2=_evTileEl(ev);
       var r2=tileEl2?tileEl2.getBoundingClientRect():null;
-      if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
-      if(!ev._skip)_playScoreDing();
-      if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
-      if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
+      var curDelay=await _evBeatStart(ev);
       if(r2)showScorePop(ev.factor,r2.left+r2.width/2-20,r2.top-4,'#500808','#ff6060');
       else{var br2=row.getBoundingClientRect();showScorePop(ev.factor+' mult',br2.left+100,br2.top-32,'#500808','#ff6060');}
-      if(tileEl2&&!ev._skip){tileEl2.classList.remove('binking');void tileEl2.offsetWidth;tileEl2.classList.add('binking');}
+      if(!ev._skip)_binkEl(tileEl2);
       animXprod*=ev.factor;
       refreshMult();
-      if(!ev._skip){await scoreDelay(curDelay);}
+      if(curDelay!=null)await scoreDelay(curDelay);
 
     }else if(ev.type==='gold'){
-      _firePendingTick(false);
-      if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
-      if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
-      if(!ev._skip)_playScoreDing();
-      if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
+      var curDelay=await _evBeatStart(ev);
       var br3=row.getBoundingClientRect();
       showScorePop('+$'+ev.delta,br3.left+24,br3.top-32,'#3a2800','#f0c060');
-      if(!ev._skip){await scoreDelay(curDelay);}
+      if(curDelay!=null)await scoreDelay(curDelay);
 
     }else if(ev.type==='retrigger'){
-      _firePendingTick(false);
-      if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
-      var tileEl3=ev.sqIdx!=null?(document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile')):null;
-      if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
-      if(!ev._skip)_playScoreDing();
-      if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
-      if(tileEl3&&!ev._skip){tileEl3.classList.remove('binking');void tileEl3.offsetWidth;tileEl3.classList.add('binking');}
+      var tileEl3=_evTileEl(ev);
+      var curDelay=await _evBeatStart(ev);
+      if(!ev._skip)_binkEl(tileEl3);
       var br5=row.getBoundingClientRect();
       showScorePop(ev.label+'!',br5.left+60,br5.top-32,'#1a0a2a','#c080ff');
-      if(!ev._skip){await scoreDelay(Math.max(minDelay,curDelay*0.6));}
+      if(curDelay!=null)await scoreDelay(Math.max(minDelay,curDelay*0.6));
 
     }else if(ev.type==='final-transform'){
-      _firePendingTick(false);
-      if(!ev._skip){var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
-      if(!ev._skip)_playScoreDing();
-      if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
+      var curDelay=await _evBeatStart(ev);
       if(ev.palMult&&ev.palMult>1&&!ev._skip){animXprod*=ev.palMult;refreshMult();}
       var br4=row.getBoundingClientRect();
       showScorePop(ev.label,br4.left+60,br4.top-48,'#0a2a2a','#60ffff');
-      if(!ev._skip){await scoreDelay(Math.max(200,curDelay));}
+      if(curDelay!=null)await scoreDelay(Math.max(200,curDelay));
 
     }else if(ev.type==='final'){
       _firePendingTick(false);

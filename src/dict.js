@@ -20,6 +20,39 @@ async function loadDict() {
   console.log('No local dict, using API'); DICT = null;
 }
 
+var BOUNTY_THEMES = null;
+
+function parseBountyThemes(txt) {
+  var themes = [];
+  var lines = txt.split('\n').map(function(l){ return l.trim(); });
+  var i = 0;
+  while (i < lines.length) {
+    while (i < lines.length && !lines[i]) i++;
+    if (i >= lines.length) break;
+    var theme = lines[i++];
+    if (i < lines.length && lines[i]) {
+      var words = lines[i++].split(',').map(function(w){ return w.trim().toLowerCase(); }).filter(Boolean);
+      if (theme && words.length > 0) themes.push({theme: theme, words: words});
+    }
+  }
+  return themes;
+}
+
+async function loadBountyThemes() {
+  try {
+    var r = await fetch(new URL('bounties.txt', location.href));
+    if (r.ok) { BOUNTY_THEMES = parseBountyThemes(await r.text()); return; }
+  } catch(e) {}
+  try {
+    if (typeof require !== 'undefined') {
+      var fs = require('fs'), path = require('path');
+      var txt = fs.readFileSync(path.join(__dirname, '../bounties.txt'), 'utf8');
+      BOUNTY_THEMES = parseBountyThemes(txt); return;
+    }
+  } catch(e) {}
+  BOUNTY_THEMES = [];
+}
+
 async function validWord(word) {
   if (word.length < 2) return false;
   if (DICT && DICT.size > 0) return DICT.has(word.toUpperCase());

@@ -8,7 +8,7 @@ function makeDragClone(innerHTML,css,extraClass){
 }
 
 function clearHL(){if(_hl>=0){var e=document.querySelector('[data-sq-idx="'+_hl+'"]');if(e)e.classList.remove('drop-target');}_hl=-1;}
-function hasJenga(){for(var _ji=0;_ji<S.tileStickers.length;_ji++)if(S.tileStickers[_ji].id==='jenga')return true;return false;}
+function hasJenga(){return hasTileSticker('jenga');}
 function _jengaCanStack(idx){return hasJenga()&&S.bt[idx]&&!S.bt[idx].isNew&&!(S.btTop&&S.btTop[idx]);}
 function setHL(idx){
   if(idx===_hl)return;clearHL();_hl=idx;
@@ -21,12 +21,15 @@ function sqAt(x,y){
   return -1;
 }
 
-function inHand(x,y){var r=document.getElementById('hand-area').getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top-20&&y<=r.bottom+20;}
+function inHand(x,y){var r=document.getElementById('hand-area').getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top-40&&y<=r.bottom+20;}
 function inBoardBounds(x,y){var bw=document.getElementById('board-wrap');if(!bw)return false;var r=bw.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;}
 
 function attachHandTileDrag(face,oi,vi,tile){
   face.dataset.handOi=String(oi);
   face.addEventListener('pointerdown',function(ev){
+    // Left button only — up() ignores non-left releases (right-click pivots mid-drag),
+    // so a right/middle press here would leak the move/up listeners permanently.
+    if(ev.button!==0)return;
     ev.preventDefault();ev.stopPropagation();
     if(activeDrag)return;
     if(document.getElementById('live-score-row').classList.contains('scoring'))return;
@@ -64,50 +67,60 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
   face.addEventListener('pointerdown',function(ev){
     ev.preventDefault();ev.stopPropagation();if(activeDrag)return;
     if(document.getElementById('live-score-row').classList.contains('scoring'))return;
-    var sr=face.getBoundingClientRect();var sx=ev.clientX,sy=ev.clientY;var moved=false,clone=null;
+    var sr=face.getBoundingClientRect();var sx=ev.clientX,sy=ev.clientY;var moved=false;
+    var _tsz=sz;
     function _getBtRef(){return isTop?(S.btTop&&S.btTop[sqIdx]):S.bt[sqIdx];}
     function move(me){
       var dx=me.clientX-sx,dy=me.clientY-sy;
       if(!moved&&Math.sqrt(dx*dx+dy*dy)>5){
         moved=true;_playTileClick('pick');
-        var sprCss=face.dataset.spr||'';var tsz=parseInt(face.dataset.tsz)||sz;
-        clone=makeDragClone(face.innerHTML,'width:'+tsz+'px;height:'+tsz+'px;left:'+sr.left+'px;top:'+sr.top+'px;box-shadow:0 8px 20px rgba(0,0,0,.6);transform:scale(1.2);'+(sprCss||'background:#f0e080;border-color:#a89000;'),sprCss?'tile-spr':'');
+        var sprCss=face.dataset.spr||'';_tsz=parseInt(face.dataset.tsz)||sz;
+        if(face.parentNode)face.parentNode.removeChild(face);
+        face.style.cssText='position:fixed;z-index:9999;pointer-events:none;width:'+_tsz+'px;height:'+_tsz+'px;left:'+(me.clientX-_tsz/2)+'px;top:'+(me.clientY-_tsz/2)+'px;transform:scale(1);transform-origin:center center;box-shadow:0 4px 12px rgba(0,0,0,.5);transition:transform 0.1s ease,box-shadow 0.1s ease;'+(sprCss||'background:#f0e080;border-color:#a89000;');
+        document.body.appendChild(face);
         var btRef=_getBtRef();if(btRef)setTileState(btRef,'dragging');
-        activeDrag={src:'board',sqIdx:sqIdx,isTop:!!isTop,clone:clone,sr:sr};renderBoard();
+        activeDrag={src:'board',sqIdx:sqIdx,isTop:!!isTop,cx:me.clientX,cy:me.clientY,multiCount:1,gapLeft:me.clientX,gapRight:me.clientX};
+        renderBoard();
       }
-      if(moved&&clone){
-        clone.style.left=(sr.left+(me.clientX-sx))+'px';clone.style.top=(sr.top+(me.clientY-sy))+'px';
+      if(moved){
+        face.style.left=(me.clientX-_tsz/2)+'px';face.style.top=(me.clientY-_tsz/2)+'px';
+        var _ob=sqAt(me.clientX,me.clientY)>=0||inBoardBounds(me.clientX,me.clientY);
+        face.style.transform='scale('+(_ob?'1':(68/_tsz).toFixed(3))+')';
+        face.style.boxShadow=_ob?'0 4px 12px rgba(0,0,0,.5)':'0 12px 28px rgba(0,0,0,.7)';
+        activeDrag.cx=me.clientX;activeDrag.cy=me.clientY;activeDrag.gapLeft=me.clientX;activeDrag.gapRight=me.clientX;
         var over=sqAt(me.clientX,me.clientY);if(over>=0&&over!==sqIdx&&!S.bt[over])setHL(over);else clearHL();
       }
     }
     function up(me){
       document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
       if(!moved){recallTile(sqIdx);return;}
-      _dragEndTime=Date.now();
-      if(!clone)return;clearHL();
+      _dragEndTime=Date.now();clearHL();
       var btRef=_getBtRef();if(btRef)setTileState(btRef,'board',{boardSq:sqIdx,isNew:true});
       var over=sqAt(me.clientX,me.clientY);var ih=inHand(me.clientX,me.clientY);
       if(ih){
         var _dBt=_getBtRef();
+        var _faceX=parseFloat(face.style.left)+_tsz/2;
+        if(face.parentNode)face.parentNode.removeChild(face);
         if(_dBt){
           if(isTop){if(S.btTop)S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
-          setTileState(_dBt,'hand');S.hand.push(_dBt);
+          var _ins=Math.max(0,Math.min(computeInsert(me.clientX,-1),S.hand.length));
+          setTileState(_dBt,'hand');S.hand.splice(_ins,0,_dBt);
         }
-        activeDrag=null;renderBoard();
-        var _dropX=me.clientX;
-        setTimeout(function(){
-          if(clone.parentNode)clone.parentNode.removeChild(clone);
-          _playTileClick('land');
-          hpBounds();
-          // Seed tile at drop x so spring physics carries it to its natural rest slot.
-          HP.x.push(_dropX);HP.vx.push(0);
-          renderHand();
-        },120);
+        activeDrag=null;renderBoard();renderHand();
+        if(_dBt){
+          HP.fromX=HP.x.slice();
+          for(var k=0;k<S.hand.length;k++){if(S.hand[k]===_dBt){HP.fromX[k]=_faceX;break;}}
+          HP.toX=hpRest(S.hand.length);
+          HP.settleDur=180;HP.settleAt=performance.now();
+          HP.x=HP.fromX.slice();HP.vx=Array(S.hand.length).fill(0);
+          hpDraw();
+        }
+        _playTileClick('land');
       } else if(over>=0&&over!==sqIdx&&!S.bt[over]){
         var sqEl=document.querySelector('[data-sq-idx="'+over+'"]');var tr=sqEl?sqEl.getBoundingClientRect():null;
-        if(tr){clone.style.transition='left .13s,top .13s,transform .13s';clone.style.left=(tr.left+tr.width/2-(sz/2))+'px';clone.style.top=(tr.top+tr.height/2-(sz/2))+'px';clone.style.transform='scale(0.9)';}
+        if(tr){face.style.transition='left .13s,top .13s,transform .13s';face.style.left=(tr.left+tr.width/2-_tsz/2)+'px';face.style.top=(tr.top+tr.height/2-_tsz/2)+'px';face.style.transform='scale(1)';}
         setTimeout(function(){
-          if(clone.parentNode)clone.parentNode.removeChild(clone);
+          if(face.parentNode)face.parentNode.removeChild(face);
           var src=_getBtRef();
           if(src){
             if(isTop){if(S.btTop)S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
@@ -117,8 +130,8 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
           activeDrag=null;renderBoard();renderHand();
         },140);
       } else {
-        clone.style.transition='left .14s,top .14s,transform .14s';clone.style.left=sr.left+'px';clone.style.top=sr.top+'px';clone.style.transform='scale(1)';
-        setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);activeDrag=null;renderBoard();},140);
+        face.style.transition='left .14s,top .14s,transform .14s';face.style.left=sr.left+'px';face.style.top=sr.top+'px';face.style.transform='scale(1)';
+        setTimeout(function(){if(face.parentNode)face.parentNode.removeChild(face);activeDrag=null;renderBoard();},140);
       }
     }
     document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);
@@ -260,6 +273,16 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
   var _lastCx=sx,_lastCy=sy,_lastSq=-1;
   var _committedSlotX=null; // locked slot centre when cursor crosses funnel threshold
   var dragIdx=0;
+  // Lateral slide mode (single-tile only): tile rises above hotbar and slides along the top.
+  var _latMode=false,_latExitTimer=null,_latPhantomEl=null;
+  var _latFloatY=0,_latGapInsert=-1,_latOriginInsert=-1,_latDescending=false,_latDescentTimer=null,_latRiseTimer=null;
+  // Surface-mode dwell: gap only opens after cursor stays in a slot zone for 800ms.
+  // Exception: arriving from above (free mode) opens gap immediately.
+  var _surfaceDwellTimer=null,_surfaceDwellSlotIdx=-1,_surfaceGapOpen=false;
+  var _wasAtSurface=false; // true when cursor was at surface level last frame
+  var _cameFromAbove=false; // true when gap opened via above-arrival (no dwell); suppresses lateral dwell on descent
+  // Entry animation when gap opens: lerp tile from surface → slot and slow HP spring briefly.
+  var _gapWasOpen=false,_gapOpenAt=-1,_gapOpenFromY=0,_springSlowed=false;
   for(var _di=0;_di<selTiles.length;_di++){if(selTiles[_di].oi===dragOi){dragIdx=_di;break;}}
 
   HP.held=dragVi;
@@ -310,6 +333,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
   // Phase 2: hotbar closes gap + dragging tiles sweep to cluster. Guarded by _phase2Fired.
   function _firePhase2(){
     if(_phase2Fired)return;
+    if(_latExitTimer){clearTimeout(_latExitTimer);_latExitTimer=null;}
     _phase2Fired=true;
     _animUntil=0;
     hpBounds();
@@ -362,6 +386,172 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     if(nSel===0)renderHand();
   }
 
+  // ---- Lateral slide helpers ----
+  // Activates after cursor has been outside tile X bounds for 200ms in Phase 1.
+  function _activateLatMode(){
+    if(_latMode||_phase2Fired||selTiles.length>1)return;
+    _latMode=true;_latExitTimer=null;
+    _latGapInsert=-1;
+    var haEl=document.getElementById('hand-area');
+    var haR=haEl?haEl.getBoundingClientRect():null;
+    _latFloatY=haR?haR.top-42:0;
+    _latOriginInsert=dragVi;
+    HP.settleDur=0;HP.settleAt=0;
+    // Snap tiles to origin-gap positions immediately and lock gap — prevents spring drift during rise.
+    if(activeDrag){
+      hpBounds();
+      var _n0=HP.tiles.length,_rest0=hpRest(_n0+1);
+      for(var _i0=0;_i0<_n0;_i0++){HP.x[_i0]=_rest0[_i0<_latOriginInsert?_i0:_i0+1];HP.vx[_i0]=0;}
+      var _cx0=_rest0[_latOriginInsert];
+      activeDrag.cx=_cx0;activeDrag.cy=haR?haR.top:0;
+      activeDrag.funnelInsertIdx=_latOriginInsert;activeDrag._prevGapRef=undefined;
+      activeDrag.gapLeft=_cx0;activeDrag.gapRight=_cx0;
+      activeDrag.multiCount=0.5;
+    }
+    if(dragEls[0]){
+      var _upDist=initRects[0]?Math.abs(initRects[0].top-(_latFloatY-34)):100;
+      var _upMs=Math.max(80,_upDist/450*1000)+30;
+      dragEls[0].style.transition='top '+Math.max(0.08,_upDist/450).toFixed(3)+'s ease-in,box-shadow 0.1s ease';
+      dragEls[0].style.top=(_latFloatY-34)+'px';
+      dragEls[0].style.boxShadow='0 14px 32px rgba(0,0,0,.78)';
+      // Phase 2 fires automatically when rise completes — no pointermove needed.
+      _latRiseTimer=setTimeout(_triggerLatPhase2,_upMs);
+    }
+  }
+
+  // Called when rise animation completes.
+  // Sequence: lateral slide (tiles stationary) → tiles shift to open destination gap → descent.
+  function _triggerLatPhase2(){
+    _latRiseTimer=null;
+    if(!_latMode||_latDescending)return;
+    _latDescending=true;
+    document.removeEventListener('pointermove',move);
+    document.removeEventListener('pointerup',up);
+    document.removeEventListener('pointerdown',_onRightPD);
+    document.removeEventListener('contextmenu',_preventCM);
+    document.removeEventListener('keydown',_onMultiDragKey);
+    hpBounds();
+    var _haEl2=document.getElementById('hand-area');
+    var _haR2=_haEl2?_haEl2.getBoundingClientRect():null;
+    var _haTop2=_haR2?_haR2.top:0;
+    // After renderHand() at drag start, HP.tiles has n-1 tiles (dragT removed).
+    // All HP.tiles indices are active — no exclusion needed.
+    // Use hpRest(_n2+1): n-1 active + 1 gap = n slots, matching HP spring layout with gapCount=1.
+    var _n2=HP.tiles.length;
+    var _act2=[];
+    for(var _ai2=0;_ai2<_n2;_ai2++){_act2.push(_ai2);}
+    var _slots2=hpRest(_n2+1);
+    var _newGap2=_act2.length;
+    for(var _j2=0;_j2<_act2.length;_j2++){if(_lastCx<_slots2[_j2]+34){_newGap2=_j2;break;}}
+    _latGapInsert=_newGap2;
+    var _origGapCx2=_slots2[_latOriginInsert];
+    var _dropGapCx2=_slots2[_latGapInsert];
+    // Lock origin gap open during lateral — tiles don't move until tile is above destination.
+    if(activeDrag){
+      activeDrag.cx=_origGapCx2;activeDrag.cy=_haTop2;
+      activeDrag.funnelInsertIdx=_latOriginInsert;activeDrag._prevGapRef=undefined;
+      activeDrag.gapLeft=_origGapCx2;activeDrag.gapRight=_origGapCx2;
+      activeDrag.multiCount=0.5;
+    }
+    if(_latGapInsert===_latOriginInsert){
+      // Cursor at origin: drop straight back down with no lateral movement.
+      if(dragEls[0]&&_haR2){dragEls[0].style.transition='top 0.13s ease-in';dragEls[0].style.top=(_haTop2-34)+'px';}
+      _latDescentTimer=setTimeout(_doLatDrop,140);
+      return;
+    }
+    // Phases 2+3 (simultaneous): tile slides laterally AND the tiles between origin/dest
+    // shift together. Opening the destination gap at slide-start prevents the dragging
+    // tile from overlapping destination tiles — which looked like a duplication glitch
+    // when a same-letter tile was at the destination. Settle (170ms) finishes before the
+    // lateral slide (220ms) completes, so the gap is open when the tile arrives.
+    var _goingRight3=_latGapInsert>_latOriginInsert;
+    var _minIdx3=Math.min(_latOriginInsert,_latGapInsert);
+    var _maxIdx3=Math.max(_latOriginInsert,_latGapInsert);
+    HP.fromX=HP.x.slice();
+    HP.toX=HP.x.slice();
+    for(var _k3=0;_k3<_act2.length;_k3++){
+      if(_k3>=_minIdx3&&_k3<_maxIdx3){
+        HP.toX[_act2[_k3]]=_slots2[_goingRight3?_k3:_k3+1];
+      }
+    }
+    HP.settleDur=170;HP.settleAt=performance.now();
+    if(activeDrag){
+      activeDrag.cx=_dropGapCx2;activeDrag.cy=_haTop2;
+      activeDrag.funnelInsertIdx=_latGapInsert;activeDrag._prevGapRef=undefined;
+      activeDrag.gapLeft=_dropGapCx2;activeDrag.gapRight=_dropGapCx2;
+      activeDrag.multiCount=0.5;
+    }
+    if(dragEls[0]){
+      dragEls[0].style.transition='left 0.20s ease-in-out';
+      dragEls[0].style.left=(_dropGapCx2-34)+'px';
+    }
+    // Phase 4: descend after lateral slide ends (tile shift already finished by then).
+    _latDescentTimer=setTimeout(function(){
+      hpBounds();
+      var _haR4=_haEl2?_haEl2.getBoundingClientRect():null;
+      var _haTop4=_haR4?_haR4.top:_haTop2;
+      var _slots4=hpRest(_n2+1);
+      var _dropGapCx4=_slots4[_latGapInsert];
+      // Reposition drag clone if bounds drifted since phase 2.
+      if(dragEls[0]&&Math.abs(_dropGapCx4-_dropGapCx2)>0.5){
+        dragEls[0].style.transition='none';
+        dragEls[0].style.left=(_dropGapCx4-34)+'px';
+      }
+      if(activeDrag){
+        activeDrag.cx=_dropGapCx4;activeDrag.cy=_haTop4;
+        activeDrag.funnelInsertIdx=_latGapInsert;activeDrag._prevGapRef=undefined;
+        activeDrag.gapLeft=_dropGapCx4;activeDrag.gapRight=_dropGapCx4;
+        activeDrag.multiCount=0.5;
+      }
+      if(dragEls[0]){
+        dragEls[0].style.transition='top 0.13s ease-in';
+        dragEls[0].style.top=(_haTop4-34)+'px';
+      }
+      _latDescentTimer=setTimeout(_doLatDrop,140);
+    },220);
+  }
+
+  // Called every pointermove while _latMode is active. Only handles escape to free flight.
+  // Gap detection and descent are handled by _triggerLatPhase2 (timeout-driven).
+  function _updateLatMove(me){
+    if(_latDescending)return;
+    var haEl=document.getElementById('hand-area');
+    var haR=haEl?haEl.getBoundingClientRect():null;
+    if(haR&&me.clientY<haR.top-80){
+      if(_latRiseTimer){clearTimeout(_latRiseTimer);_latRiseTimer=null;}
+      if(_latPhantomEl&&_latPhantomEl.parentNode)_latPhantomEl.parentNode.removeChild(_latPhantomEl);
+      _latPhantomEl=null;_latMode=false;_firePhase2();
+    }
+  }
+
+  // Called from up() when _latMode is active.
+  function _doLatDrop(){
+    // Capture float X before removing elements
+    var _floatLeft=dragEls[0]?parseFloat(dragEls[0].style.left||'0')+34:_lastCx;
+    for(var _di=0;_di<dragEls.length;_di++){if(dragEls[_di]&&dragEls[_di].parentNode)dragEls[_di].parentNode.removeChild(dragEls[_di]);}
+    if(_latPhantomEl&&_latPhantomEl.parentNode)_latPhantomEl.parentNode.removeChild(_latPhantomEl);
+    _latPhantomEl=null;
+    activeDrag=null;
+    var dragTile=selTiles[0].t;
+
+    // Use origin slot as fallback when cursor wasn't over a gap zone.
+    var _insertIdx=_latGapInsert>=0?_latGapInsert:_latOriginInsert;
+    setTileState(dragTile,'hand');
+    var _keep=[];for(var k=0;k<S.hand.length;k++){if(S.hand[k]!==dragTile)_keep.push(S.hand[k]);}
+    var _ins=Math.max(0,Math.min(_insertIdx,_keep.length));
+    S.hand=_keep.slice(0,_ins).concat([dragTile]).concat(_keep.slice(_ins));
+    HP.settleDur=0;HP.settleAt=0;
+    renderHand();
+    // Spring dragged tile from its visual X to its new rest slot.
+    for(var _vi=0;_vi<HP.tiles.length;_vi++){
+      if(HP.tiles[_vi].t===dragTile){HP.x[_vi]=_floatLeft;HP.vx[_vi]=0;break;}
+    }
+    HP.fromX=HP.x.slice();HP.toX=hpRest(HP.tiles.length);
+    HP.settleDur=160;HP.settleAt=performance.now();
+    hpDraw();
+    _playTileClick('land');
+  }
+
   function _onRightPD(e){if(e.button!==2)return;e.preventDefault();_toggleDir();}
   function _preventCM(e){e.preventDefault();}
   function _onMultiDragKey(e){
@@ -372,9 +562,18 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
       document.removeEventListener('pointerdown',_onRightPD);document.removeEventListener('contextmenu',_preventCM);
       document.removeEventListener('keydown',_onMultiDragKey);
       HP.held=-1;_clearMHL();
+      if(_latExitTimer){clearTimeout(_latExitTimer);_latExitTimer=null;}
+      if(_latRiseTimer){clearTimeout(_latRiseTimer);_latRiseTimer=null;}
+      if(_latDescentTimer){clearTimeout(_latDescentTimer);_latDescentTimer=null;}
+      _latDescending=false;
+      if(_surfaceDwellTimer){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
+      _surfaceDwellSlotIdx=-1;_surfaceGapOpen=false;_wasAtSurface=false;
+      if(_springSlowed){HP.SPRING=0.14;HP.DAMP=0.55;_springSlowed=false;}
+      _gapOpenAt=-1;_gapWasOpen=false;
+      if(_latPhantomEl&&_latPhantomEl.parentNode)_latPhantomEl.parentNode.removeChild(_latPhantomEl);_latPhantomEl=null;
       for(var i=0;i<dragEls.length;i++){if(dragEls[i]&&dragEls[i].parentNode)dragEls[i].parentNode.removeChild(dragEls[i]);}
       for(var i=0;i<selTiles.length;i++){setTileState(selTiles[i].t,'hand');}
-      activeDrag=null;renderHand();
+      activeDrag=null;HP.settleDur=0;HP.settleAt=0;renderHand();
     }
   }
 
@@ -382,11 +581,27 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     var dx=me.clientX-sx,dy=me.clientY-sy;
     if(!moved&&Math.sqrt(dx*dx+dy*dy)>8){
       moved=true;HP.held=-1;
+      // Tiles can leave the hand between pointerdown and the drag threshold (a discard
+      // or landing arc re-renders mid-gesture). Dragging one would resurrect it into
+      // S.hand on drop, so keep only tiles still in state 'hand'; abort if none remain.
+      var _live=[];
+      for(var i=0;i<selTiles.length;i++)if(selTiles[i].t.state==='hand')_live.push(selTiles[i]);
+      if(!_live.length){
+        document.removeEventListener('pointermove',move);
+        document.removeEventListener('pointerup',up);
+        return;
+      }
+      selTiles=_live;
+      dragIdx=0;
+      for(var i=0;i<selTiles.length;i++){if(selTiles[i].oi===dragOi){dragIdx=i;break;}}
       _playTileClick('pick');
 
       // Capture hotbar rects, detach selected tiles, parent them to body.
+      // Look up elements by tile id, not data-hand-oi: hand indices go stale if S.hand
+      // was re-rendered mid-gesture, and a stale index match steals another tile's
+      // element — that tile then shows twice (drag proxy + its fresh hand element).
       for(var i=0;i<selTiles.length;i++){
-        var face=document.querySelector('.hand-tile[data-hand-oi="'+selTiles[i].oi+'"]');
+        var face=document.querySelector('.hand-tile[data-tile-id="'+selTiles[i].t.id+'"]');
         initRects.push(face?face.getBoundingClientRect():null);
         dragEls.push(face||null);
       }
@@ -423,47 +638,121 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
       _lastCx=me.clientX;_lastCy=me.clientY;
       var sq=sqAt(me.clientX,me.clientY);
       _overBoard=sq>=0||inBoardBounds(me.clientX,me.clientY);
-      // Funnel corridor: when cursor descends past a threshold 150px above the hotbar, commit
-      // to the nearest slot (computed directly from HP.x — no gap open yet at that height).
-      // A corridor then constrains tile X: 400px wide at threshold, collapses to exactly the
-      // slot centre at hotbar level. Cursor can roam freely inside the corridor; bumpers push
-      // it back if it tries to leave. Gap locked at committed slot so hotbar tiles stay still.
-      // Dragging back above threshold + 20px hysteresis releases the commit.
       var _haElF=document.getElementById('hand-area');
       var _haRF=_haElF?_haElF.getBoundingClientRect():null;
-      var _threshY=_haRF?_haRF.top-250:-Infinity;
-      if(_phase2Fired&&!_overBoard&&_haRF&&me.clientY>_threshY){
-        if(_committedSlotX===null){
-          // Tiles are at natural rest (no gap yet). Count how many are left of cursor.
-          var _insIdx=0;
-          for(var _ki=0;_ki<HP.tiles.length;_ki++){if(me.clientX>HP.x[_ki])_insIdx=_ki+1;}
-          var _gapCntC=selTiles.length+0.5;
-          var _midXC=(HP.aL+HP.aR)/2;
-          _committedSlotX=_midXC-(HP.tiles.length+_gapCntC)*HP.TILE_W/2+(_insIdx+dragIdx+0.75)*HP.TILE_W;
-          // Store exact insertIdx on activeDrag so physics uses it directly, bypassing the
-          // direction-aware heuristic that can open the gap at the wrong slot on commitment.
-          if(activeDrag){activeDrag.funnelInsertIdx=_insIdx;activeDrag._prevGapRef=undefined;}
+      // Unified surface-mode funnelling for single and multi-tile drags.
+      // Above hotbar: free movement, gap follows cursor.
+      // At hotbar surface (cy >= haR.top-29): tile slides along top; gap only opens after
+      // cursor dwells in a slot zone (within 1/3 tile-width of boundary) for 800ms.
+      var _ecx,_ecy,_gapCx,_gapCy;
+      if(_phase2Fired&&!_overBoard&&_haRF){
+        var _surfaceY=_haRF.top-29; // tile bottom flush with top of hotbar tiles
+        if(me.clientY>=_surfaceY){
+          // SURFACE MODE — tile(s) slide along hotbar top.
+          hpBounds();
+          // Quarter-based detection using rest positions, not HP.x.
+          // Rest positions are stable — using animated HP.x causes jitter because the
+          // detection zone moves as tiles spring apart, toggling the gap every frame.
+          var _n=HP.tiles.length,_Q2=HP.TILE_W/4,_cxS=me.clientX;
+          var _restP=hpRest(_n);
+          var _nearInsertIdx=-1,_nearAnchorX=0;
+          if(_n>0){
+            if(_cxS<_restP[0]-34){
+              _nearInsertIdx=0; // left of all tiles
+            }else if(_cxS>=_restP[_n-1]+34){
+              _nearInsertIdx=_n; // right of all tiles
+            }else{
+              for(var _nsi=0;_nsi<_n;_nsi++){
+                if(_cxS>=_restP[_nsi]-34&&_cxS<_restP[_nsi]+34){
+                  if(_cxS<_restP[_nsi]-_Q2){_nearInsertIdx=_nsi;}       // left quarter
+                  else if(_cxS>=_restP[_nsi]+_Q2){_nearInsertIdx=_nsi+1;} // right quarter
+                  break; // middle half leaves _nearInsertIdx=-1
+                }
+              }
+            }
+          }
+          // When tile descended from above, lock the slot — lateral cursor movement has no effect.
+          if(_cameFromAbove&&_surfaceDwellSlotIdx>=0){_nearInsertIdx=_surfaceDwellSlotIdx;}
+          // Anchor slot X: rest position of anchor tile after insertion.
+          if(_nearInsertIdx>=0){
+            var _nTotalS=_n+selTiles.length;
+            _nearAnchorX=hpRest(_nTotalS)[Math.min(_nearInsertIdx+dragIdx,_nTotalS-1)];
+          }
+          // 800ms dwell when sliding laterally; immediate gap when arriving from above.
+          if(_nearInsertIdx>=0){
+            if(!_wasAtSurface){
+              // Arrived from free mode above — open gap immediately, no dwell.
+              if(_surfaceDwellTimer!==null){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
+              _surfaceDwellSlotIdx=_nearInsertIdx;_surfaceGapOpen=true;_cameFromAbove=true;
+            }else if(_surfaceDwellSlotIdx!==_nearInsertIdx){
+              // Sliding to a new slot — restart 800ms dwell timer.
+              if(_surfaceDwellTimer!==null){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
+              _surfaceDwellSlotIdx=_nearInsertIdx;_surfaceGapOpen=false;
+              (function(_capturedIdx){
+                _surfaceDwellTimer=setTimeout(function(){
+                  if(_surfaceDwellSlotIdx===_capturedIdx){_surfaceGapOpen=true;}
+                  _surfaceDwellTimer=null;
+                },800);
+              })(_nearInsertIdx);
+            }
+            // else: same slot already, let timer run (or gap already open)
+          }else{
+            // Not in any slot zone — cancel dwell and close gap.
+            if(_surfaceDwellTimer!==null){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
+            _surfaceDwellSlotIdx=-1;_surfaceGapOpen=false;
+          }
+          _wasAtSurface=true;
+          if(_nearInsertIdx>=0&&_surfaceGapOpen){
+            // First frame gap is open: record entry Y and slow HP spring for a soft opening.
+            if(!_gapWasOpen){
+              _gapOpenAt=Date.now();_gapOpenFromY=_surfaceY;
+              HP.SPRING=0.07;HP.DAMP=0.60;_springSlowed=true;
+            }
+            // Restore normal spring once tiles have finished spreading (~480ms).
+            if(_springSlowed&&Date.now()-_gapOpenAt>480){HP.SPRING=0.14;HP.DAMP=0.55;_springSlowed=false;}
+            // Y: ease tile down from surface to cursor over 300ms (no snap on gap open).
+            var _tgtY=Math.min(me.clientY,_haRF.top+39);
+            var _gapE=Date.now()-_gapOpenAt,_Y_DUR=300;
+            if(_gapE<_Y_DUR){
+              var _yt=1-Math.pow(1-_gapE/_Y_DUR,2); // ease-out quad
+              _ecy=_gapOpenFromY+(_tgtY-_gapOpenFromY)*_yt;
+            }else{_ecy=_tgtY;}
+            // X: funnel based on tile's animated depth — zero pull at surface, centred at bottom.
+            var _descent=_ecy-_surfaceY; // follows animated Y, not raw cursor
+            var _funnelT=Math.max(0,Math.min(1,_descent/68));
+            _ecx=me.clientX+(_nearAnchorX-me.clientX)*(_funnelT*_funnelT);
+            _gapCx=_nearAnchorX;_gapCy=_haRF.top;
+            if(activeDrag){activeDrag.funnelInsertIdx=_nearInsertIdx;activeDrag._prevGapRef=undefined;}
+          }else{
+            // Waiting for dwell / no slot near — slide freely at surface, suppress gap.
+            if(_springSlowed){HP.SPRING=0.14;HP.DAMP=0.55;_springSlowed=false;}
+            _gapOpenAt=-1;_gapWasOpen=false;
+            _ecx=me.clientX;_ecy=_surfaceY;
+            _gapCx=me.clientX;_gapCy=_haRF.top-100; // outside ph.inArea → no gap
+            if(activeDrag){activeDrag.funnelInsertIdx=undefined;activeDrag._prevGapRef=undefined;}
+          }
+          _gapWasOpen=_nearInsertIdx>=0&&_surfaceGapOpen;
+          if(_committedSlotX!==null){_committedSlotX=null;}
+        }else{
+          // FREE MODE above surface: tile and gap both follow cursor directly.
+          if(_surfaceDwellTimer!==null){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
+          _surfaceDwellSlotIdx=-1;_surfaceGapOpen=false;_wasAtSurface=false;_cameFromAbove=false;
+          if(_springSlowed){HP.SPRING=0.14;HP.DAMP=0.55;_springSlowed=false;}
+          _gapOpenAt=-1;_gapWasOpen=false;
+          if(_committedSlotX!==null){_committedSlotX=null;if(activeDrag){activeDrag.funnelInsertIdx=undefined;activeDrag._prevGapRef=undefined;}}
+          // Anchor _gapCy to hotbar top so ph.inArea() returns true and HP opens a gap.
+          // Using me.clientY here made gaps impossible (free-mode y < r.top-29, but
+          // ph.inArea requires y >= r.top-20 — ranges never overlap).
+          _ecx=me.clientX;_ecy=me.clientY;_gapCx=me.clientX;_gapCy=_haRF.top;
         }
-      } else if(me.clientY<_threshY-20||_overBoard){
-        if(_committedSlotX!==null){
-          _committedSlotX=null;
-          if(activeDrag){activeDrag.funnelInsertIdx=undefined;activeDrag._prevGapRef=undefined;}
-        }
+      }else{
+        // BOARD drag or phase 1: pass through cursor position unchanged.
+        _wasAtSurface=false;
+        if(_springSlowed){HP.SPRING=0.14;HP.DAMP=0.55;_springSlowed=false;}
+        _gapOpenAt=-1;_gapWasOpen=false;
+        _ecx=me.clientX;_ecy=me.clientY;_gapCx=me.clientX;_gapCy=me.clientY;
       }
-      var _inFunnel=_committedSlotX!==null;
-      var _ecx,_ecy;
-      if(_inFunnel&&_haRF){
-        // Corridor half-width: 400px at threshold, 0 at hotbar level — more gradual now.
-        var _ft=Math.max(0,Math.min(1,(me.clientY-_threshY)/250));
-        var _halfW=400*(1-_ft);
-        _ecx=Math.max(_committedSlotX-_halfW,Math.min(_committedSlotX+_halfW,me.clientX));
-        _ecy=Math.min(me.clientY,_haRF.top+39); // tile stops flush with hotbar tile centres
-      } else {
-        _ecx=me.clientX; _ecy=me.clientY;
-      }
-      // Gap locked at committed slot; activeDrag.cy=haRF.top keeps ph.inArea true in funnel.
-      var _gapCx=_inFunnel?_committedSlotX:me.clientX;
-      activeDrag.cx=_gapCx; activeDrag.cy=_inFunnel&&_haRF?_haRF.top:_ecy;
+      activeDrag.cx=_gapCx;activeDrag.cy=_gapCy;
       // Track full group extent for the hotbar spring gap (both edges push hotbar tiles).
       var _gapStep=_overBoard?(Math.ceil(68*0.75)+2):72;
       if(dir==='h'){
@@ -474,20 +763,45 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
         activeDrag.gapRight=_gapCx;
       }
       if(!_phase2Fired){
-        // Phase 1: all tiles (including anchor) locked to original hotbar x. Only y follows cursor.
-        // No lateral movement until vertical clearance is confirmed. Y clamped so tile can't
-        // descend back below hotbar tile line before Phase 2 fires.
-        var _p1cy=_haRF?Math.min(me.clientY,_haRF.top+39):me.clientY;
-        var _ty=(_p1cy-39)+'px';
-        for(var i=0;i<dragEls.length;i++){
-          if(!dragEls[i])continue;
-          dragEls[i].style.top=_ty;
-          if(initRects[i])dragEls[i].style.left=initRects[i].left+'px';
+        if(_latMode){
+          // Lateral slide mode: tile floats above hotbar following cursor X.
+          _updateLatMove(me);
+          // During rise, keep the origin gap open so the old spot stays clear.
+          // After rise, _triggerLatPhase2 updates activeDrag directly; move() no longer fires.
+          var _lhEl=document.getElementById('hand-area');
+          var _lhR=_lhEl?_lhEl.getBoundingClientRect():null;
+          if(_lhR){
+            hpBounds();
+            var _origGapCx=hpRest(HP.tiles.length+1)[_latOriginInsert];
+            activeDrag.cx=_origGapCx;activeDrag.cy=_lhR.top;
+            activeDrag.funnelInsertIdx=_latOriginInsert;activeDrag._prevGapRef=undefined;
+            activeDrag.gapLeft=_origGapCx;activeDrag.gapRight=_origGapCx;
+            activeDrag.multiCount=0.5;
+          }
+        } else {
+          // Phase 1: all tiles locked to original hotbar x; only y follows cursor.
+          var _p1cy=_haRF?Math.min(me.clientY,_haRF.top+39):me.clientY;
+          var _ty=(_p1cy-39)+'px';
+          for(var i=0;i<dragEls.length;i++){
+            if(!dragEls[i])continue;
+            dragEls[i].style.top=_ty;
+            if(initRects[i])dragEls[i].style.left=initRects[i].left+'px';
+          }
+          // Phase 2 fires when dragged tiles clear the hotbar vertically.
+          var _haEl=document.getElementById('hand-area');
+          var _haR=_haEl?_haEl.getBoundingClientRect():null;
+          if(_haR&&me.clientY<_haR.top-34){_firePhase2();}
+          // Lateral-exit detection: single tile only. Start 200ms timer when cursor
+          // leaves the tile's X bounds. Cancel if cursor returns inside.
+          if(!_phase2Fired&&selTiles.length===1&&initRects[0]){
+            var _outside=me.clientX<initRects[0].left||me.clientX>initRects[0].left+68;
+            if(_outside&&_latExitTimer===null){
+              _latExitTimer=setTimeout(_activateLatMode,200);
+            }else if(!_outside&&_latExitTimer!==null){
+              clearTimeout(_latExitTimer);_latExitTimer=null;
+            }
+          }
         }
-        // Phase 2 fires only when dragged tiles have fully cleared the hotbar vertically.
-        var _haEl=document.getElementById('hand-area');
-        var _haR=_haEl?_haEl.getBoundingClientRect():null;
-        if(_haR&&me.clientY<_haR.top-34){_firePhase2();}
       } else if(Date.now()<_animUntil){
         // Phase 2: y follows cursor for all tiles; non-anchor x eases to cluster (CSS transition
         // for left is undisturbed since we only set top here). Y clamped same as Phase 1.
@@ -511,25 +825,58 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     document.removeEventListener('contextmenu',_preventCM);
     document.removeEventListener('keydown',_onMultiDragKey);
     HP.held=-1;_clearMHL();
+    if(_latExitTimer){clearTimeout(_latExitTimer);_latExitTimer=null;}
+    if(_surfaceDwellTimer){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
+    var _dropLockedSlot=(_cameFromAbove&&_surfaceDwellSlotIdx>=0)?_surfaceDwellSlotIdx:-1;
+    // Phase-1 multi-tile: cursor never cleared the hotbar so _cameFromAbove is never set.
+    // Use the group's original insert index so lateral cursor movement doesn't affect the drop.
+    var _p1MultiIns=(!_phase2Fired&&selTiles.length>1)?Math.max(0,dragVi-dragIdx):-1;
+    _surfaceDwellSlotIdx=-1;_surfaceGapOpen=false;_cameFromAbove=false;
     if(!moved){
+      if(_latPhantomEl&&_latPhantomEl.parentNode)_latPhantomEl.parentNode.removeChild(_latPhantomEl);_latPhantomEl=null;
       activeDrag=null;
-      if(dragVi>0)HP.vx[dragVi-1]-=3;
-      if(dragVi<HP.tiles.length-1)HP.vx[dragVi+1]+=3;
-      toggleSel(dragOi);
+      // Re-resolve indices by tile identity — dragOi/dragVi go stale if the hand
+      // re-rendered between pointerdown and release, toggling the wrong tile.
+      var _ct=selTiles[dragIdx].t;
+      var _cvi=-1;for(var i=0;i<HP.tiles.length;i++){if(HP.tiles[i].t===_ct){_cvi=i;break;}}
+      if(_cvi>0)HP.vx[_cvi-1]-=3;
+      if(_cvi>=0&&_cvi<HP.tiles.length-1)HP.vx[_cvi+1]+=3;
+      var _coi=S.hand.indexOf(_ct);
+      if(_coi>=0)toggleSel(_coi);
       return;
     }
     _dragEndTime=Date.now();
+    if(_latMode){
+      if(_latRiseTimer){clearTimeout(_latRiseTimer);_latRiseTimer=null;}
+      if(!_latDescending){
+        // Released during rise — drop back to origin with a brief descent animation.
+        _latDescending=true;
+        _latGapInsert=_latOriginInsert;
+        var _uhEl=document.getElementById('hand-area');
+        var _uhR=_uhEl?_uhEl.getBoundingClientRect():null;
+        if(dragEls[0]&&_uhR){
+          dragEls[0].style.transition='top 0.11s ease-in';
+          dragEls[0].style.top=(_uhR.top-34)+'px';
+          _latDescentTimer=setTimeout(_doLatDrop,120);
+        } else {
+          _doLatDrop();
+        }
+      }
+      return;
+    }
     for(var i=0;i<dragEls.length;i++){if(dragEls[i]&&dragEls[i].parentNode)dragEls[i].parentNode.removeChild(dragEls[i]);}
     activeDrag=null;
     var sq=sqAt(me.clientX,me.clientY);
     if(sq>=0&&_computeFree(_startSq(sq))){
       for(var i=0;i<selTiles.length;i++){setTileState(selTiles[i].t,'hand');}
-      var selOis=selTiles.map(function(s){return s.oi;});
+      // Recompute indices from current S.hand position to avoid stale-index bug
+      // (S.hand may have shifted if a recall arc landed between drag start and drop).
+      var selOis=selTiles.map(function(s){var fi=S.hand.indexOf(s.t);return fi>=0?fi:s.oi;});
       multiPlaceSelected(selOis,_startSq(sq),dir);
     } else if(inHand(me.clientX,me.clientY)){
       // Dropped in hotbar — reorder tiles at cursor position.
       // Compute insert position in HP.tiles (dragging tiles already excluded).
-      var _ins=Math.max(0,Math.min(computeInsert(me.clientX,-1),S.hand.length));
+      var _ins=Math.max(0,Math.min(_dropLockedSlot>=0?_dropLockedSlot:_p1MultiIns>=0?_p1MultiIns:computeInsert(me.clientX,-1),S.hand.length));
       // Restore tile states so renderHand includes them in vis.
       for(var i=0;i<selTiles.length;i++) setTileState(selTiles[i].t,'hand');
       // Build new S.hand order: existing (non-dragged) tiles with dragged group inserted at _ins.
@@ -568,7 +915,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
 }
 
 function placeTile(t,sqIdx){
-  var idx=S.hand.indexOf(t);if(idx>=0)S.hand.splice(idx,1);
+  if(t)S.hand=S.hand.filter(function(x){return x!==t;});
   setTileState(t,'board',{boardSq:sqIdx,isNew:true});
   if(S.bt[sqIdx]&&!S.bt[sqIdx].isNew&&!(S.btTop&&S.btTop[sqIdx])){
     if(!S.btTop)S.btTop=Array(B*B).fill(null);
@@ -578,8 +925,6 @@ function placeTile(t,sqIdx){
   }
   _playTileClick('place');
 }
-
-function _btFindTile(bt){return bt;}
 
 // Computes the destination screen coords and bezier control point for a tile
 // that will land at slot (nBefore+idx) in a hand of nTotal tiles.
@@ -749,9 +1094,13 @@ function _landTile(tile){
   if(!tile||tile.state!=='moving')return;
   hpBounds();
   var landX=HP.nextLandX();
-  // Ensure tile is last in S.hand so HP.x.push aligns with vis order in renderHand.
+  // Ensure tile appears exactly once at the end of S.hand so HP.x.push aligns with vis order.
+  // Using filter+push (not indexOf+splice+push) guards against duplicates: if the tile
+  // somehow appears at more than one position, all occurrences are removed before the single
+  // re-insert, preventing the old splice+push from creating a third copy when the tile was
+  // already at the last position AND somewhere else simultaneously.
   var idx=S.hand.indexOf(tile);
-  if(idx>=0&&idx<S.hand.length-1){S.hand.splice(idx,1);S.hand.push(tile);}
+  if(idx>=0){S.hand=S.hand.filter(function(x){return x!==tile;});S.hand.push(tile);}
   HP.movingCount=Math.max(0,HP.movingCount-1);
   if(HP.movingCount===0)_nextArcAt=0;
   setTileState(tile,'hand');
@@ -759,87 +1108,58 @@ function _landTile(tile){
   renderHand();
 }
 
-function recallTile(sqIdx){
-  _playTileClick('pick');
+// Shared recall core: lifts the isNew tile at sqIdx (jenga top first) off the
+// board and spiral-arcs it back to the hand. driftDx/driftDy set the phase-1
+// launch direction. render=true re-renders the board immediately (single
+// recalls); sweeps skip it so other in-flight tiles keep their DOM elements.
+function _recallTileCore(sqIdx,driftDx,driftDy,render){
+  var _JENGA_ELEV=6;
+  var useTop=!!(S.btTop&&S.btTop[sqIdx]&&S.btTop[sqIdx].isNew);
+  var bt=useTop?S.btTop[sqIdx]:S.bt[sqIdx];
+  if(!bt||!bt.isNew)return;
+  var elev=useTop?((S.bt[sqIdx]&&S.bt[sqIdx]._stackLevel||0)+1)*_JENGA_ELEV:0;
+  var sqEl=document.querySelector('[data-sq-idx="'+sqIdx+'"]');
+  var tEl=sqEl?sqEl.querySelector('.board-tile.is-new'):null;
+  var savedSr=tEl?tEl.getBoundingClientRect():null;
+  if(useTop){S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
+  if(S.hand.indexOf(bt)<0)S.hand.push(bt);
+  setTileState(bt,'moving',{movingFrom:'board',movingTo:'hand'});
+  HP.movingCount++;
+  if(render){
+    if(tEl&&tEl.parentNode)tEl.parentNode.removeChild(tEl);
+    renderBoard();
+  }
+  if(!tEl||!savedSr||savedSr.width===0){_landTile(bt);return;}
+  var sr=elev>0?{left:savedSr.left,top:savedSr.top+elev,width:savedSr.width,height:savedSr.height}:savedSr;
+  var cx=sr.left+sr.width/2,cy=sr.top+sr.height/2;
+  var holdUntil=_allocArcSlot();
   var ha=document.getElementById('hand-area');var hr=ha?ha.getBoundingClientRect():null;
   var destY=hr?(hr.top+34):(window.innerHeight-60);
-  // Jenga: recall top stacked tile first
-  if(S.btTop&&S.btTop[sqIdx]&&S.btTop[sqIdx].isNew){
-    var btt=S.btTop[sqIdx];
-    var sqEl0=document.querySelector('[data-sq-idx="'+sqIdx+'"]');
-    var tEl0=sqEl0?sqEl0.querySelector('.board-tile.is-new'):null;
-    var savedSr0=tEl0?tEl0.getBoundingClientRect():null;
-    if(tEl0&&tEl0.parentNode)tEl0.parentNode.removeChild(tEl0);
-    S.btTop[sqIdx]=null;
-    S.hand.push(btt);setTileState(btt,'moving',{movingFrom:'board',movingTo:'hand'});
-    HP.movingCount++;
-    renderBoard();
-    if(!tEl0||!savedSr0||savedSr0.width===0){_landTile(btt);return;}
-    var _hu0=_allocArcSlot();
-    var _destX0=HP.nextLandX();
-    var _c0x=savedSr0.left+savedSr0.width/2,_c0y=savedSr0.top+savedSr0.height/2;
-    var _recallS0=S;
-    _flyTileSpiral(tEl0,_hu0,_c0x,_c0y,_destX0,destY,function(){
-      if(S!==_recallS0){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;return;}
-      _landTile(btt);_playTileClick('land');
-    },savedSr0,0,-50);
-    return;
-  }
-  var bt=S.bt[sqIdx];if(!bt||!bt.isNew)return;
-  var sqEl=document.querySelector('[data-sq-idx="'+sqIdx+'"]');
-  var tEl=sqEl?sqEl.querySelector('.board-tile'):null;
-  var savedSr=tEl?tEl.getBoundingClientRect():null;
-  if(tEl&&tEl.parentNode)tEl.parentNode.removeChild(tEl);
-  S.bt[sqIdx]=null;
-  S.hand.push(bt);setTileState(bt,'moving',{movingFrom:'board',movingTo:'hand'});
-  HP.movingCount++;
-  renderBoard();
-  if(!tEl||!savedSr||savedSr.width===0){_landTile(bt);return;}
-  var _hu=_allocArcSlot();
-  var _destX=HP.nextLandX();
-  var _pCx=savedSr.left+savedSr.width/2,_pCy=savedSr.top+savedSr.height/2;
+  var destX=HP.nextLandX();
   var _recallS=S;
-  _flyTileSpiral(tEl,_hu,_pCx,_pCy,_destX,destY,function(){
+  _flyTileSpiral(tEl,holdUntil,cx,cy,destX,destY,function(){
     if(S!==_recallS){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;return;}
     _landTile(bt);_playTileClick('land');
-  },savedSr,0,-50);
+  },sr,driftDx,driftDy);
+}
+
+function recallTile(sqIdx){
+  _playTileClick('pick');
+  _recallTileCore(sqIdx,0,-50,true);
 }
 
 function _recallTileSweep(sqIdx,swipeVx,swipeVy){
   _playTileClick('pick');
-  var _JENGA_ELEV=6;
-  var useTop=!!(S.btTop&&S.btTop[sqIdx]&&S.btTop[sqIdx].isNew);
-  var _btopElev=useTop?((S.bt[sqIdx]&&S.bt[sqIdx]._stackLevel||0)+1)*_JENGA_ELEV:0;
-  var bt=useTop?S.btTop[sqIdx]:S.bt[sqIdx];if(!bt||!bt.isNew)return;
-  if(useTop){S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
-  S.hand.push(bt);setTileState(bt,'moving',{movingFrom:'board',movingTo:'hand'});
-  HP.movingCount++;
-  var t=bt;
-  var sqEl=document.querySelector('[data-sq-idx="'+sqIdx+'"]');
-  if(!sqEl){_landTile(bt);return;}
-  var tEl=sqEl.querySelector('.board-tile.is-new');
-  if(!tEl){_landTile(bt);return;}
-  var savedSr=tEl.getBoundingClientRect();
-  var effectiveSr=_btopElev>0?{left:savedSr.left,top:savedSr.top+_btopElev,width:savedSr.width,height:savedSr.height}:savedSr;
-  var tileCx=effectiveSr.left+effectiveSr.width/2,tileCy=effectiveSr.top+effectiveSr.height/2;
-  var holdUntil=_allocArcSlot();
-  var ha=document.getElementById('hand-area');var hr=ha?ha.getBoundingClientRect():null;
-  var destY=hr?(hr.top+34):(window.innerHeight-60);
-  var _destX=HP.nextLandX();
-  var _swSpeed=Math.sqrt((swipeVx||0)*(swipeVx||0)+(swipeVy||0)*(swipeVy||0));
-  var _swDx,_swDy;
-  if(_swSpeed<0.3){_swDx=0;_swDy=-60;}
-  else{var _sd=Math.max(60,Math.min(180,_swSpeed*30));_swDx=((swipeVx||0)/_swSpeed)*_sd;_swDy=((swipeVy||0)/_swSpeed)*_sd;}
-  var _sweepS=S;
-  _flyTileSpiral(tEl,holdUntil,tileCx,tileCy,_destX,destY,function(){
-    if(S!==_sweepS){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;return;}
-    _landTile(t);_playTileClick('land');
-  },effectiveSr,_swDx,_swDy);
+  var speed=Math.sqrt((swipeVx||0)*(swipeVx||0)+(swipeVy||0)*(swipeVy||0));
+  var dx,dy;
+  if(speed<0.3){dx=0;dy=-60;}
+  else{var d=Math.max(60,Math.min(180,speed*30));dx=((swipeVx||0)/speed)*d;dy=((swipeVy||0)/speed)*d;}
+  _recallTileCore(sqIdx,dx,dy,false);
 }
 
 function recallAll(){
-  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){setTileState(S.btTop[i],'hand');S.hand.push(S.btTop[i]);S.btTop[i]=null;}}}
-  for(var i=0;i<B*B;i++){var bt=S.bt[i];if(bt&&bt.isNew){setTileState(bt,'hand');S.hand.push(bt);S.bt[i]=null;}}
+  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){setTileState(S.btTop[i],'hand');if(S.hand.indexOf(S.btTop[i])<0)S.hand.push(S.btTop[i]);S.btTop[i]=null;}}}
+  for(var i=0;i<B*B;i++){var bt=S.bt[i];if(bt&&bt.isNew){setTileState(bt,'hand');if(S.hand.indexOf(bt)<0)S.hand.push(bt);S.bt[i]=null;}}
 }
 
 // Animated recallAll: recalled tiles arc in staggered from left to right.
@@ -853,7 +1173,7 @@ function _recallAllAnimated(){
         var sqEl2=document.querySelector('[data-sq-idx="'+i+'"]');
         var tEl2=sqEl2?sqEl2.querySelector('.board-tile.is-new'):null;
         var t2=S.btTop[i];S.btTop[i]=null;
-        S.hand.push(t2);
+        if(S.hand.indexOf(t2)<0)S.hand.push(t2);
         if(tEl2){tRects.push(tEl2.getBoundingClientRect());if(tEl2.parentNode)tEl2.parentNode.removeChild(tEl2);tEls.push(tEl2);setTileState(t2,'moving',{movingFrom:'board',movingTo:'hand'});tTiles.push(t2);}
         else{setTileState(t2,'hand');}
       }
@@ -864,7 +1184,7 @@ function _recallAllAnimated(){
     if(bt&&bt.isNew){
       var sqEl=document.querySelector('[data-sq-idx="'+i+'"]');
       var tEl=sqEl?sqEl.querySelector('.board-tile'):null;
-      S.bt[i]=null;S.hand.push(bt);
+      S.bt[i]=null;if(S.hand.indexOf(bt)<0)S.hand.push(bt);
       if(tEl){
         tRects.push(tEl.getBoundingClientRect());
         if(tEl.parentNode)tEl.parentNode.removeChild(tEl);
@@ -910,6 +1230,13 @@ function _recallAllAnimated(){
   }
 }
 
+// Tile ids currently represented by an in-flight bag-burst clone. Drawn tiles are
+// state 'hand' in S.hand during the burst, so any renderHand that fires mid-flight
+// (e.g. clicking a tile to select it right after a discard) would create their real
+// elements while the clones are still visible — each incoming tile shown twice.
+// renderHand skips these ids until the burst completes.
+var _burstTileIds=null;
+
 // Creates full-size hand tiles at the bag position and flies them to their slots.
 // No hidden originals — the flying element IS the tile while in transit.
 // nKept: tiles already in hand. nTotal: expected hand size after draw. bagEl: the bag button element.
@@ -923,6 +1250,8 @@ function _burstNewTilesFromBag(nKept,nTotal,bagEl,onDone){
   hpBounds();var fullRest=hpRest(nTotal);
   while(HP.x.length<nTotal){HP.x.push(fullRest[HP.x.length]);HP.vx.push(0);}
   if(nNew<=0){renderHand();if(onDone)onDone();return;}
+  _burstTileIds={};
+  for(var _bm=0;_bm<nNew;_bm++)_burstTileIds[afterVis[nKept+_bm].id]=true;
   var bagR=bagEl.getBoundingClientRect();
   var bx=bagR.left+bagR.width/2,by=bagR.top+bagR.height/2;
   bagEl.classList.add('bag-vacuuming');
@@ -949,6 +1278,7 @@ function _burstNewTilesFromBag(nKept,nTotal,bagEl,onDone){
           flyEl.style.left=(p.destX-34)+'px';flyEl.style.top=(p.destY-34)+'px';
           done++;
           if(done===nNew){
+            _burstTileIds=null;
             bagEl.classList.remove('bag-vacuuming');
             renderHand();
             for(var _fi=0;_fi<allFlyEls.length;_fi++){if(allFlyEls[_fi].parentNode)allFlyEls[_fi].parentNode.removeChild(allFlyEls[_fi]);}
@@ -959,14 +1289,6 @@ function _burstNewTilesFromBag(nKept,nTotal,bagEl,onDone){
       },idx*130);
     })(afterVis[nKept+_j],_j);
   }
-}
-
-// Moves tile t to the rightmost slot of S.hand so renderHand places it on the right.
-// Updates handIdx on any remaining board tiles displaced by the move.
-function _moveToEndOfHand(t){
-  var oldIdx=S.hand.indexOf(t);
-  if(oldIdx<0||oldIdx===S.hand.length-1)return;
-  S.hand.splice(oldIdx,1);S.hand.push(t);
 }
 
 function clearBoardLetters(){

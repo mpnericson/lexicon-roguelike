@@ -1,6 +1,6 @@
 // ── CHESS HELPERS ─────────────────────────────────────────────────────────────
 // Shared utilities used by chess piece onBuildCtx hooks and by render.js for
-// hover preview. _applyChessAura is called from scoring.js bracket 5.
+// hover preview. Scoring goes through the aura system (see _chessRegister).
 
 function chessGetAura(sqIdx, pieceId) {
   var r = Math.floor(sqIdx / B), c = sqIdx % B;
@@ -47,36 +47,35 @@ function _chessHoverOff() {
   for (var i = 0; i < els.length; i++) els[i].classList.remove('sq-chess-hover');
 }
 
-// Called from scoring.js bracket 5 for every tile in every word.
-// Iterates ctx.chessPieces (populated by onBuildCtx below) and applies ×3 letter
-// score to any tile whose square falls within a piece's aura. The King (tile
-// sticker) upgrades all aura squares to Triple Word via ctx.chessKingActive.
-function _applyChessAura(tile, ctx, ts, sqIdx) {
-  for (var ci = 0; ci < ctx.chessPieces.length; ci++) {
-    var aura = ctx.chessPieces[ci].aura;
-    var inAura = false;
-    for (var cj = 0; cj < aura.length; cj++) if (sqIdx === aura[cj]) { inAura = true; break; }
-    if (inAura) {
+// Shared onBuildCtx body: each piece registers its own multiplicative aura
+// over its attack squares. Overlapping pieces STACK — a tile covered by two
+// pieces scores ×3 twice (×9). The King (tile sticker) upgrades every aura
+// square to Triple Word via ctx.chessKingActive.
+function _chessRegister(ctx, p) {
+  var pieceSq = p.sqIdx;
+  ctx.auras.push({
+    id: p.id,
+    squares: chessGetAura(pieceSq, p.id),
+    onTileMult: function (tile, ctx2, ts, sqIdx) {
       ts *= 3;
-      ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'♟ ×3',floatSqIdx:ctx.chessPieces[ci].sqIdx});
-      if (ctx.chessKingActive && tile.isNew) {
-        ctx.xmults.push(3);
-        ctx.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'♚ King ×3',floatTsId:'chess_king'});
+      ctx2.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'♟ ×3',floatSqIdx:pieceSq});
+      if (ctx2.chessKingActive && tile.isNew) {
+        ctx2.xmults.push(3);
+        ctx2.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'♚ King ×3',floatTsId:'chess_king'});
       }
-      break;
+      return ts;
     }
-  }
-  return ts;
+  });
 }
 
 // ── KNIGHT ────────────────────────────────────────────────────────────────────
 // type: board · rarity: rare · cost: $8
-// onBuildCtx: registers this piece's L-shape aura in ctx.chessPieces so that
-// _applyChessAura (bracket 5) can apply ×3 to any tile landing on an aura square.
+// onBuildCtx (_chessRegister): registers a ×3 mult aura over this piece's
+// L-shape squares.
 SQ.push({id:'chess_knight',name:'Knight',
   desc:'×3 letter score to any word tile on an L-shape square from here. Comes as a pair.',
   rarity:'rare',cost:8,qty:2,bg:'#1a1a2a',fg:'#d0d0f0',icon:'♞',type:'board',perishable:true,
-  onBuildCtx:function(ctx,p){ctx.chessPieces.push({sqIdx:p.sqIdx,id:p.id,aura:chessGetAura(p.sqIdx,p.id)});}});
+  onBuildCtx:_chessRegister});
 
 // ── BISHOP ────────────────────────────────────────────────────────────────────
 // type: board · rarity: rare · cost: $8
@@ -84,7 +83,7 @@ SQ.push({id:'chess_knight',name:'Knight',
 SQ.push({id:'chess_bishop',name:'Bishop',
   desc:'×3 letter score to any word tile on a diagonal from here. Blocked by occupied squares. Comes as a pair.',
   rarity:'rare',cost:8,qty:2,bg:'#2a1a08',fg:'#f0d080',icon:'♝',type:'board',perishable:true,
-  onBuildCtx:function(ctx,p){ctx.chessPieces.push({sqIdx:p.sqIdx,id:p.id,aura:chessGetAura(p.sqIdx,p.id)});}});
+  onBuildCtx:_chessRegister});
 
 // ── ROOK ──────────────────────────────────────────────────────────────────────
 // type: board · rarity: rare · cost: $8
@@ -92,7 +91,7 @@ SQ.push({id:'chess_bishop',name:'Bishop',
 SQ.push({id:'chess_rook',name:'Rook',
   desc:'×3 letter score to any word tile on the same row or column. Blocked by occupied squares. Comes as a pair.',
   rarity:'rare',cost:8,qty:2,bg:'#0a2a0a',fg:'#80f080',icon:'♜',type:'board',perishable:true,
-  onBuildCtx:function(ctx,p){ctx.chessPieces.push({sqIdx:p.sqIdx,id:p.id,aura:chessGetAura(p.sqIdx,p.id)});}});
+  onBuildCtx:_chessRegister});
 
 // ── QUEEN ─────────────────────────────────────────────────────────────────────
 // type: board · rarity: rare · cost: $8
@@ -100,13 +99,13 @@ SQ.push({id:'chess_rook',name:'Rook',
 SQ.push({id:'chess_queen',name:'Queen',
   desc:'×3 letter score to any word tile in all 8 directions. Not blocked by tiles.',
   rarity:'rare',cost:8,qty:1,bg:'#2a0a2a',fg:'#f080f0',icon:'♛',type:'board',perishable:true,
-  onBuildCtx:function(ctx,p){ctx.chessPieces.push({sqIdx:p.sqIdx,id:p.id,aura:chessGetAura(p.sqIdx,p.id)});}});
+  onBuildCtx:_chessRegister});
 
 // ── PROLETARIAT ───────────────────────────────────────────────────────────────
 // type: board · rarity: uncommon · cost: $5
-// onPostWord: adds +0.25 mult per Proletariat on board (fires once, guarded by
-// ctx._proletariatDone). Spread logic lives in _proletariatSpread() below,
-// called from play.js after each word commits.
+// Post-word additive bracket (onPostWordAdd): adds +0.25 mult per Proletariat
+// on board (fires once, guarded by ctx._proletariatDone). Spread logic lives
+// in _proletariatSpread() below, called from play.js after each word commits.
 SQ.push({id:'proletariat',name:'The Proletariat',
   desc:'+0.25 mult per Proletariat on board. While gold < $4: 50% chance after each word to spread to a random adjacent empty square.',
   rarity:'uncommon',cost:5,qty:1,bg:'#2a0808',fg:'#ff6040',icon:'PR',type:'board',perishable:true,
@@ -116,10 +115,10 @@ SQ.push({id:'proletariat',name:'The Proletariat',
     return n+' on board → <span style="color:#f0e040">+'+v+' mult</span> per word.'
       +(S.gold<4?' <span style="color:#f0d060">Gold < $4</span>: 50% chance to spread after each word.':'');
   },
-  onPostWord:function(w,wt,ctx){
+  onPostWordAdd:function(w,wt,ctx){
     if(ctx._proletariatDone)return;
     ctx._proletariatDone=true;
-    var n=0;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='proletariat')n++;
+    var n=0;for(var i=0;i<ctx.placed.length;i++)if(ctx.placed[i].id==='proletariat')n++;
     if(n===0)return;
     var delta=parseFloat((0.25*n).toFixed(2));
     ctx.plusMults.push(delta);

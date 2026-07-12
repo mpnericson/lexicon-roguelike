@@ -5,6 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node tests/run_tests.js",
     "forge": "electron-forge start",
     "dev:web": "npx serve .",
     "update-dictionary": "bash scripts/update-dictionary.sh",

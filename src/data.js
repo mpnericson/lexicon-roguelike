@@ -64,11 +64,6 @@ function currentConstraint(){
   if(S.bi!==2)return null;
   return S.constraintOrder[S.ai]||null;
 }
-function constraintDef(){
-  var cid=currentConstraint();if(!cid)return null;
-  for(var i=0;i<CONSTRAINTS.length;i++)if(CONSTRAINTS[i].id===cid)return CONSTRAINTS[i];
-  return null;
-}
 
 // Stickers The Thing cannot copy (utility / non-scoring mechanics).
 // Add copyable:false to a sticker definition to block it without editing this list.

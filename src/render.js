@@ -1,6 +1,129 @@
 // =====================================================================
 // RENDER — board, HUD, hand, sticker hand
 // =====================================================================
+function _makeBountyScroll(bounty){
+  // Background-image approach: padding-top sets height via aspect-ratio trick.
+  // Furled = 30% of width tall (shows only the roll area of the 60×60 sprite).
+  // Open   = 100% of width tall (square, full sprite visible).
+  var scrollW=Math.round(window.innerWidth*0.25*0.95);
+  var titleSz=Math.max(11,Math.min(16,Math.round(scrollW*0.046)));
+
+  var div=document.createElement('div');
+  div.className='bounty-scroll';
+  div.style.cssText='position:relative;width:95%;margin:0 auto;overflow:hidden;'
+    +'background-image:url(\'Assets/animations/bounty scroll/bounty_scroll1.png\');'
+    +'background-size:100% auto;background-repeat:no-repeat;background-position:top center;'
+    +'image-rendering:pixelated;padding-top:30%';
+
+  if(bounty.theme){
+    var titleEl=document.createElement('div');
+    titleEl.style.cssText='position:absolute;top:5px;left:0;right:0;'
+      +'display:flex;justify-content:center;align-items:center;'
+      +'pointer-events:none;z-index:3';
+    var titleTag=document.createElement('span');
+    titleTag.style.cssText='font-family:\'Jersey 10\',Georgia,serif;font-size:'+titleSz+'px;color:#2e1800;'
+      +'background:rgba(238,210,155,0.92);border:1px solid rgba(110,65,10,0.6);'
+      +'border-radius:3px;padding:2px 7px;line-height:1;white-space:nowrap;'
+      +'max-width:88%;overflow:hidden;text-overflow:ellipsis';
+    titleTag.textContent=bounty.theme;
+    titleEl.appendChild(titleTag);
+    div.appendChild(titleEl);
+  }
+
+  var content=document.createElement('div');
+  content.style.cssText='position:absolute;top:0;left:0;right:0;bottom:0;'
+    +'padding:8% 9% 15% 11%;display:flex;flex-direction:column;justify-content:space-evenly;'
+    +'opacity:0;overflow:hidden;box-sizing:border-box;pointer-events:none;z-index:2';
+
+  var contentW=Math.round(scrollW*0.78);
+  var sz=Math.max(14,Math.min(32,Math.floor(contentW/9))); // fixed at 7-letter word scale
+  var words=bounty.words||(bounty.word?[{word:bounty.word,reward:bounty.reward}]:[]);
+  for(var i=0;i<words.length;i++){
+    var row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:2px;flex-shrink:0;min-width:0';
+    row.innerHTML=wordAsTilesHTML(words[i].word.toUpperCase(),sz,null)
+      +'<span style="color:#3a2510;font-family:\'Jersey 10\',Georgia,serif;flex-shrink:0;margin-left:auto;line-height:1;font-size:'+Math.max(12,Math.round(sz*0.85))+'px">$'+words[i].reward+'</span>';
+    content.appendChild(row);
+  }
+  div.appendChild(content);
+
+  function _bImg(f){div.style.backgroundImage='url(\'Assets/animations/bounty scroll/bounty_scroll'+f+'.png\')';}
+
+  function _getSiblings(){
+    var brow=document.getElementById('bounty-row');if(!brow)return [];
+    var all=brow.querySelectorAll('.bounty-scroll'),r=[];
+    for(var k=0;k<all.length;k++)if(all[k]!==div)r.push(all[k]);
+    return r;
+  }
+
+  div.addEventListener('mouseenter',function(){if(!div._unfurled&&!div._anim)_bImg(2);});
+  div.addEventListener('mouseleave',function(){if(!div._unfurled&&!div._anim)_bImg(1);});
+
+  div.addEventListener('click',function(){
+    if(div._anim)return;
+
+    if(div._unfurled){
+      // CLOSE (reverse at 60% faster):
+      // 1. Hide content; 2. Play frames 10→1 (24ms each); 3. Slide back + shrink; 4. Siblings fade in
+      content.style.opacity='0';
+      div._unfurled=false;
+      div._anim=true;
+      var f=10;
+      (function nf(){
+        _bImg(f);
+        if(f>1){f--;setTimeout(nf,24);}
+        else{
+          // Slide back to original DOM position and shrink simultaneously
+          div.style.transition='transform 0.12s ease,padding-top 0.12s ease';
+          div.style.paddingTop='30%';
+          div.style.transform='';
+          setTimeout(function(){
+            div.style.transition='';
+            div._anim=false;
+            var sibs=_getSiblings();
+            for(var j=0;j<sibs.length;j++){
+              void sibs[j].offsetHeight;
+              sibs[j].style.transition='opacity 0.2s';
+              sibs[j].style.opacity='';
+              sibs[j].style.pointerEvents='';
+            }
+          },130);
+        }
+      })();
+
+    }else{
+      // OPEN:
+      // 1. Siblings disappear instantly; 2. Scroll slides up to bounty-row top + expands; 3. Play frames 3→11
+      var sibs=_getSiblings();
+      for(var j=0;j<sibs.length;j++){
+        sibs[j].style.transition='none';
+        sibs[j].style.opacity='0';
+        sibs[j].style.pointerEvents='none';
+      }
+      var brow=document.getElementById('bounty-row');
+      var browTop=brow?brow.getBoundingClientRect().top:0;
+      var divTop=div.getBoundingClientRect().top;
+      div._slideUp=divTop-browTop; // pixels to translate up
+      void div.offsetHeight;
+      div.style.transition='transform 0.3s ease,padding-top 0.3s ease';
+      div.style.paddingTop='100%';
+      div.style.transform='translateY(-'+div._slideUp+'px)';
+      div._anim=true;
+      setTimeout(function(){
+        div.style.transition='';
+        var f=3;
+        (function nf(){
+          _bImg(f);
+          if(f<11){f++;setTimeout(nf,60);}
+          else{content.style.opacity='1';div._unfurled=true;div._anim=false;}
+        })();
+      },300);
+    }
+  });
+
+  return div;
+}
+
 function renderAll(){renderHUD();renderBoard();renderHand();renderTileStickerBar();document.getElementById('bag-count').textContent=S.bag.length;_tooltipRefreshIfOpen();}
 
 function renderHUD(){
@@ -32,12 +155,10 @@ function renderHUD(){
     d.className='stage-dot'+(g<cg?' done':g===cg?' cur':'');
     if(b2===2)d.style.marginRight='8px';dots.appendChild(d);
   }}}
-  var brow=document.getElementById('bounty-row');if(brow){brow.innerHTML='';var blist=S.bounties||[];for(var bi=0;bi<blist.length;bi++){var bc=document.createElement('div');bc.className='bounty-chip';bc.innerHTML=wordAsTilesHTML(blist[bi].word,24,null)+'<span class="bounty-chip-reward">+$'+(blist[bi].reward||'?')+'</span>';brow.appendChild(bc);}}
+  var brow=document.getElementById('bounty-row');if(brow){brow.innerHTML='';var blist=S.bounties||[];for(var bi=0;bi<blist.length;bi++)brow.appendChild(_makeBountyScroll(blist[bi]));}
   var _sp=document.getElementById('hud-stage-prog'),_bl=document.getElementById('hud-boards-left');
   if(_sp){if(S.endless){_sp.textContent='∞';}else{_sp.textContent=(S.bi+1)+'/3'+(S.bi===2?' ★':'');}}
   if(_bl){if(S.endless){_bl.textContent='∞';}else{_bl.textContent=STAGES.length-S.ai;}}
-  var _cb=document.getElementById('constraint-banner');
-  if(_cb){var _cdef=constraintDef();if(_cdef){var _isPal=(currentConstraint()==='c_pal');var _cbTxt=_isPal?(S.palUnlocked?'Unlocked! '+_cdef.desc:'🔒 '+_cdef.desc):_cdef.desc;_cb.textContent='Constraint: '+_cbTxt;_cb.style.display='';}else{_cb.style.display='none';}}
   var _ptSpr=document.getElementById('progress-tracker-sprite');
   if(_ptSpr){var _ptF=(S.endless||S.ai>=STAGES.length)?13:(S.ai*3+S.bi+1);_ptSpr.src='Assets/animations/progress tracker/progress_tracker'+_ptF+'.png';}
   var _scrb=document.getElementById('stat-rounds-box'),_scru=document.getElementById('stat-constraint-upcoming');
@@ -77,7 +198,7 @@ function renderBoard(){
     } else {
       sq.style.background=ss.bg;sq.style.color=ss.fg;
     }
-    var bt=S.bt[i];var showTile=bt&&bt.state!=='dragging'&&!viewingBoard;
+    var bt=S.bt[i];var showTile=bt&&bt.state!=='dragging';
     if(showTile){
         var spr=(bt.isBlank&&bt.blankAs)?blankTileSpr(bt.blankAs,bt.variant||null,sz):tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,bt.variant||null,sz);
       var _stkCls=(!bt.isNew&&bt._stackLevel>0)?(bt._stackLevel>=2?' jenga-stacked-2':' jenga-stacked'):'';
@@ -108,7 +229,6 @@ function renderBoard(){
         var img=document.createElement('img');img.src=_sqd.iconPng;img.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;image-rendering:pixelated;pointer-events:none';sq.appendChild(img);
       } else if(lbl){var s=document.createElement('div');s.className='sq-lbl';s.textContent=lbl;sq.appendChild(s);}
       if(_stickerLocked&&sid&&!bt){var _sov=document.createElement('div');_sov.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;background:rgba(180,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:'+Math.round(sz*0.65)+'px;font-weight:bold;color:#ff3333;pointer-events:none;z-index:5;font-family:monospace;';_sov.textContent='×';sq.appendChild(_sov);}
-      if(bt&&viewingBoard)sq.style.opacity='0.4';
       if(S.phase==='play'&&!bt){
         (function(sqI){
           sq.addEventListener('click',function(ev){
@@ -147,7 +267,7 @@ function renderBoard(){
       }
     }
     // Jenga: render stacked top tile with elevation
-    if(S.btTop&&S.btTop[i]&&S.btTop[i].state!=='dragging'&&!viewingBoard){
+    if(S.btTop&&S.btTop[i]&&S.btTop[i].state!=='dragging'){
       var btt=S.btTop[i];
       var sprT=(btt.isBlank&&btt.blankAs)?blankTileSpr(btt.blankAs,btt.variant||null,sz):tileSpr(btt.isBlank?null:btt.letter,btt.isBlank,btt.variant||null,sz);
       var _btopLvl=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;
@@ -258,7 +378,7 @@ function _sqTooltipFreeze(sqIdx,id){
   var sellBtn=document.getElementById('sqht-sell-btn');
   if(sellBtn){
     sellBtn.textContent='Sell $'+sell;
-    sellBtn.onclick=(function(si,di,sv,dn){return function(){
+    sellBtn.onclick=(function(si,_di,sv,dn){return function(){
       S.gold+=sv;S.board[si]=null;S.placed=S.placed.filter(function(p){return p.sqIdx!==si;});
       if(currentConstraint()==='c_stickers')S.stickersSoldThisStage=(S.stickersSoldThisStage||0)+1;
       _sqTooltipUnfreeze();renderBoard();renderHUD();toast(dn+' sold for $'+sv);
@@ -344,11 +464,15 @@ function renderHand(){
   hpRebuild(vis);
   for(var vi=0;vi<vis.length;vi++){
     var t=vis[vi].t,oi=vis[vi].oi;
+    // Tiles mid-flight from the bag are drawn by their burst clone — creating the real
+    // element too would show the tile twice until the burst lands.
+    if(_burstTileIds&&_burstTileIds[t.id])continue;
     var spr=(t.isBlank&&t.blankAs)?blankTileSpr(t.blankAs,t.variant||null,68):tileSpr(t.isBlank?null:t.letter,t.isBlank,t.variant||null,68);
     var face=document.createElement('div');
     face.className='tile hand-tile'+(t.isBlank?' blank-t':'')+(t.sel?' selected':'')+(t.variant?' var-'+t.variant:'')+' tile-spr';
     face.style.cssText='width:68px;height:68px;left:'+(HP.x[vi]-34-HP.left)+'px;top:0;'+spr;
     face.dataset.spr=spr;
+    face.dataset.tileId=t.id;
     var isDragging=activeDrag&&activeDrag.src==='hand'&&activeDrag.vi===vi;
     if(isDragging)face.style.opacity='0';
     area.appendChild(face);

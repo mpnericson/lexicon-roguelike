@@ -1,43 +1,64 @@
 // =====================================================================
 // GAME STATE — global state, lifecycle, modals, utilities
 // =====================================================================
+var _BOUNTY_BASE_REWARDS={3:4,4:5,5:8,6:12,7:15,8:18};
+function _bountyWordReward(word){
+  var base=_BOUNTY_BASE_REWARDS[word.length]||(word.length>=9?20:4);
+  var ls=0;for(var i=0;i<word.length;i++)ls+=(LS[word[i].toUpperCase()]||0);
+  return Math.round((base+ls)/2);
+}
+// Returns count scroll objects, each with theme + 6 {word,reward} entries.
+// Uses themed sets from BOUNTY_THEMES (bounties.txt) when available.
+function _generateBounties(count,exclude){
+  if(BOUNTY_THEMES&&BOUNTY_THEMES.length){
+    // Build valid themes, filtering words against DICT if loaded
+    var available=[];
+    for(var ti=0;ti<BOUNTY_THEMES.length;ti++){
+      var t=BOUNTY_THEMES[ti];
+      var valid=DICT?t.words.filter(function(w){return DICT.has(w.toUpperCase());}):t.words.slice();
+      if(valid.length>=3)available.push({theme:t.theme,words:valid.slice(0,6)});
+    }
+    // Shuffle using seeded rng
+    for(var ai=available.length-1;ai>0;ai--){
+      var aj=Math.floor(_rng()*(ai+1));
+      var tmp=available[ai];available[ai]=available[aj];available[aj]=tmp;
+    }
+    var result=[];
+    for(var ri=0;ri<available.length&&result.length<count;ri++){
+      var th=available[ri];
+      var words=th.words.map(function(w){return{word:w,reward:_bountyWordReward(w)};});
+      result.push({theme:th.theme,words:words});
+    }
+    if(result.length>0)return result;
+  }
+  // Fallback: random words from dictionary by length tier
+  return _generateBountiesRandom(count,exclude);
+}
 var _bountyWordBuckets=null;
 var _BOUNTY_TIERS=[
-  {len:3,w:0.20,reward:4},
-  {len:4,w:0.20,reward:5},
-  {len:5,w:0.30,reward:8},
-  {len:6,w:0.20,reward:12},
-  {len:7,w:0.10,reward:15}  // 7+ letters
+  {len:3,w:0.15,reward:4},{len:4,w:0.20,reward:5},{len:5,w:0.25,reward:8},
+  {len:6,w:0.20,reward:12},{len:7,w:0.12,reward:15},{len:8,w:0.08,reward:18}
 ];
-function _getBountyBuckets(){
-  if(_bountyWordBuckets)return _bountyWordBuckets;
-  _bountyWordBuckets={3:[],4:[],5:[],6:[],7:[]};
-  if(DICT)DICT.forEach(function(w){
-    var l=w.length;
-    if(l>=3&&l<=6)_bountyWordBuckets[l].push(w);
-    else if(l>=7)_bountyWordBuckets[7].push(w);
-  });
-  for(var k in _bountyWordBuckets)_bountyWordBuckets[k].sort();
-  return _bountyWordBuckets;
-}
-function _generateBounties(count,exclude){
-  var buckets=_getBountyBuckets();
+function _generateBountiesRandom(count,exclude){
+  if(!_bountyWordBuckets){
+    _bountyWordBuckets={3:[],4:[],5:[],6:[],7:[],8:[]};
+    if(DICT)DICT.forEach(function(w){var l=w.length;if(l>=3&&l<=8)_bountyWordBuckets[l].push(w);});
+    for(var k in _bountyWordBuckets)_bountyWordBuckets[k].sort();
+  }
   var excSet={};for(var _i=0;_i<(exclude||[]).length;_i++)excSet[exclude[_i]]=true;
-  // Pre-filter each bucket (copy so we can splice safely)
-  var filtered={};for(var k in buckets)filtered[k]=buckets[k].filter(function(w){return!excSet[w];});
-  var result=[];
-  for(var att=0;att<count*30&&result.length<count;att++){
-    // Pick length tier by weight
-    var r=_rng(),cum=0,tier=_BOUNTY_TIERS[_BOUNTY_TIERS.length-1];
-    for(var wi=0;wi<_BOUNTY_TIERS.length;wi++){cum+=_BOUNTY_TIERS[wi].w;if(r<cum){tier=_BOUNTY_TIERS[wi];break;}}
-    var pool=filtered[tier.len];
-    if(!pool||!pool.length)continue;
-    var idx=Math.floor(_rng()*pool.length);
-    var word=pool.splice(idx,1)[0];
-    excSet[word]=true;
-    var _wls=0;for(var _wli=0;_wli<word.length;_wli++)_wls+=(LS[word[_wli].toUpperCase()]||0);
-    var _wr=Math.round((tier.reward+_wls)/2);
-    result.push({word:word,reward:_wr});
+  var filtered={};for(var k in _bountyWordBuckets)filtered[k]=_bountyWordBuckets[k].filter(function(w){return!excSet[w];});
+  var result=[];var WORDS_PER=6;
+  for(var s=0;s<count;s++){
+    var scrollWords=[];
+    for(var att=0;att<WORDS_PER*30&&scrollWords.length<WORDS_PER;att++){
+      var r=_rng(),cum=0,tier=_BOUNTY_TIERS[_BOUNTY_TIERS.length-1];
+      for(var wi=0;wi<_BOUNTY_TIERS.length;wi++){cum+=_BOUNTY_TIERS[wi].w;if(r<cum){tier=_BOUNTY_TIERS[wi];break;}}
+      var pool=filtered[tier.len];if(!pool||!pool.length)continue;
+      var idx=Math.floor(_rng()*pool.length);var word=pool.splice(idx,1)[0];
+      excSet[word]=true;
+      scrollWords.push({word:word,reward:_bountyWordReward(word)});
+    }
+    if(scrollWords.length>0)result.push({words:scrollWords});
   }
   return result;
 }
@@ -46,8 +67,7 @@ var DICT=null;
 var activeDrag=null;
 var _dragEndTime=0;
 var _hl=-1;
-var viewingBoard=false;
-var shopPool={sq:[],tileCards:[],packs:[],bounties:[]};
+var shopPool={sq:[],packs:[],bounties:[]};
 
 function buildBag(){
   var bag=[];var ks=Object.keys(DIST);
@@ -68,13 +88,13 @@ function startGame(seed){
   for(var _ci=_co.length-1;_ci>0;_ci--){var _cj=Math.floor(_rng()*(_ci+1));var _ct=_co[_ci];_co[_ci]=_co[_cj];_co[_cj]=_ct;}
   S={bag:_bag,hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),btTop:Array(B*B).fill(null),
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,palUnlocked:false,devMode:false,
-     phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,_slotMachineRoll:null,bhMult:1,palMult:1,playerMult:1,palWords:[],localCooldowns:new Set(),
+     phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,bhMult:1,palMult:1,playerMult:1,palWords:[],localCooldowns:new Set(),
      lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,
      constraintOrder:_co.slice(0,STAGES.length),usedLetters:new Set(),stickersSoldThisStage:0,crossroadsCount:0,
      tileStickers:[],bagBlueAnchors:{},pool:_bag.slice(),
      bounties:_generateBounties(3,[])};
   window._easyHint=null;
-  shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};activeDrag=null;
+  shopPool={sq:[],packs:[],bounties:[]};activeDrag=null;
   document.getElementById('shop-screen').style.display='none';
   document.getElementById('play-controls').style.display='flex';
   document.getElementById('placing-controls').style.display='none';
@@ -184,11 +204,11 @@ function roundComplete(){
   var reward=2+S.bi*2+(S.ai*2);
   var playsBonus=S.plays>0?S.plays:0;
   S.gold+=reward+playsBonus;
-  var hasSheriff=false;for(var _si=0;_si<S.tileStickers.length;_si++)if(S.tileStickers[_si].id==='sheriffs_office'){hasSheriff=true;break;}
+  var hasSheriff=hasTileSticker('sheriffs_office');
   var sheriffWord='';
   if(hasSheriff){
-    var _activeWords=(S.bounties||[]).map(function(b){return b.word;});
-    var _newB=_generateBounties(1,_activeWords);if(_newB.length){S.bounties=S.bounties||[];S.bounties.push(_newB[0]);sheriffWord=_newB[0].word;}
+    var _activeWords=[];(S.bounties||[]).forEach(function(sc){(sc.words||[]).forEach(function(w){_activeWords.push(w.word);});});
+    var _newB=_generateBounties(1,_activeWords);if(_newB.length){S.bounties=S.bounties||[];S.bounties.push(_newB[0]);sheriffWord=_newB[0].words[0].word;}
   }
   document.getElementById('round-title').textContent=(cb()[0]?cb()[0]+' cleared!':'Round complete!');
   var msg='You scored '+S.score.toLocaleString()+', beating '+tgt().toLocaleString()+'.';
@@ -225,11 +245,6 @@ function advanceRound(){
   _doStageAnimation(newStage,_pbBlanks);
 }
 
-function _clearBoardStickers(){
-  for(var i=0;i<B*B;i++)S.board[i]=null;
-  S.placed=[];
-}
-
 function _doStageAnimation(newStage,pbBlanks){
   animBoardToShop(function(){
     if(newStage){
@@ -244,47 +259,11 @@ function _doStageAnimation(newStage,pbBlanks){
     S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
     S.usedLetters=new Set();S.stickersSoldThisStage=0;
     var _rc=currentConstraint();if(_rc==='c_oneplay')S.plays=1;if(_rc==='c_nodisc')S.disc=0;
-    var _insatN=0;for(var _ii=0;_ii<(S.tileStickers||[]).length;_ii++)if(S.tileStickers[_ii].id==='insatiable')_insatN++;
+    var _insatN=countTileSticker('insatiable');
     if(_insatN)S.disc+=_insatN;
     S.sqHand=[];S.sqStaged={};
-    recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],tileCards:[],tilePack:null,bounties:[]};enterShopPhase();
+    recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],packs:[],bounties:[]};enterShopPhase();
   });
-}
-
-var _saveStickerItems=[];
-var _saveStickerCallback=null;
-
-function _showSaveStickersModal(boardStickers,onDone){
-  _saveStickerCallback=onDone;
-  _saveStickerItems=boardStickers.map(function(p){return{id:p.id,chosen:false};});
-  var list=document.getElementById('save-stickers-list');if(!list)return onDone([]);
-  list.innerHTML='';
-  for(var i=0;i<_saveStickerItems.length;i++){
-    var item=_saveStickerItems[i];var d=sqd(item.id);if(!d)continue;
-    var card=document.createElement('div');card.className='prc';
-    card.style.cssText='min-width:90px;max-width:120px;cursor:pointer';
-    var iconHtml=d.iconPng?'<img src="'+d.iconPng+'" style="max-width:48px;max-height:48px;image-rendering:pixelated;display:block;margin:0 auto">':sqIconHTML(d,36);
-    var hint=document.createElement('div');hint.style.cssText='font-size:30px;color:#8880a8;margin-top:4px';hint.textContent='Click to save';
-    card.innerHTML='<div style="margin-bottom:4px">'+iconHtml+'</div>'+'<div style="font-size:28px;color:'+d.fg+'">'+d.name+'</div>';
-    card.appendChild(hint);
-    (function(it,hintEl,cardEl){cardEl.addEventListener('click',function(){
-      it.chosen=!it.chosen;
-      cardEl.style.borderColor=it.chosen?'#5aaa5a':'';
-      cardEl.style.background=it.chosen?'#1a3a1a':'';
-      hintEl.style.color=it.chosen?'#5aaa5a':'#8880a8';
-      hintEl.textContent=it.chosen?'✓ Saving':'Click to save';
-    });})(item,hint,card);
-    list.appendChild(card);
-  }
-  document.getElementById('save-stickers-modal').style.display='flex';
-}
-
-function _saveStickerModalConfirm(){
-  document.getElementById('save-stickers-modal').style.display='none';
-  var savedIds=_saveStickerItems.filter(function(x){return x.chosen;}).map(function(x){return x.id;});
-  _saveStickerItems=[];
-  var cb=_saveStickerCallback;_saveStickerCallback=null;
-  if(cb)cb(savedIds);
 }
 
 function showGO(msg){
@@ -300,14 +279,48 @@ function showGO(msg){
   }
   document.getElementById('gameover-modal').style.display='flex';
 }
-function showWin(){clearSave();achvCheck('win');document.getElementById('win-modal').style.display='flex';}
 
 function closeAllModals(){
-  ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','gameover-modal','win-modal','hammer-modal','forge-modal','board-preview-modal','collection-modal','achv-modal','seed-modal','save-stickers-modal'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
+  ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','gameover-modal','board-preview-modal','collection-modal','achv-modal','seed-modal'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
   document.getElementById('shop-screen').style.display='none';
 }
 
 function toast(msg){var el=document.getElementById('toast');el.textContent=msg;el.style.display='block';clearTimeout(toast._t);toast._t=setTimeout(function(){el.style.display='none';},2500);}
+
+// Hover animation for a bag button: rolls the highlight frames 0→4 on
+// mouseenter and back down on mouseleave. Shared by the play bag (init.js)
+// and the shop bag. onFrame (optional) is called with the frame each tick.
+// Returns {reset} to snap the sprite back to the idle frame.
+function attachBagHover(btn,spr,onFrame){
+  var frame=0,dir=0,timer=null,MAX=4,MS=70;
+  function tick(){
+    timer=null;
+    frame=Math.max(0,Math.min(MAX,frame+dir));
+    if(onFrame)onFrame(frame);
+    spr.src='Assets/animations/bag/bag-hl-frame'+frame+'.png';
+    if(dir===1&&frame<MAX)timer=setTimeout(tick,MS);
+    else if(dir===-1&&frame>0)timer=setTimeout(tick,MS);
+    else if(dir===-1&&frame===0)spr.src='Assets/animations/bag/bag-frame0.png';
+  }
+  btn.addEventListener('mouseenter',function(){
+    if(timer){clearTimeout(timer);timer=null;}
+    dir=1;
+    spr.src='Assets/animations/bag/bag-hl-frame'+frame+'.png';
+    if(frame<MAX)timer=setTimeout(tick,MS);
+  });
+  btn.addEventListener('mouseleave',function(){
+    if(timer){clearTimeout(timer);timer=null;}
+    dir=-1;
+    if(frame>0)timer=setTimeout(tick,MS);
+    else spr.src='Assets/animations/bag/bag-frame0.png';
+  });
+  return {reset:function(){
+    if(timer){clearTimeout(timer);timer=null;}
+    frame=0;dir=0;
+    if(onFrame)onFrame(0);
+    spr.src='Assets/animations/bag/bag-frame0.png';
+  }};
+}
 
 function _animBagFrames(imgEl,fromFrame,toFrame,ms,onDone,prefix){
   var pre=prefix||'Assets/animations/bag/bag-frame';
@@ -790,6 +803,20 @@ function _bagCollapseLetter(container,speedMult){
   });});
 }
 
+// Full-screen colour overlay that fades out over ms — masks the seam when a
+// bag transition swaps what's underneath. Appended immediately (covering the
+// swap), fade starts on the next frame, removed when done.
+function _fadeBridge(color,ms){
+  var bridge=document.createElement('div');
+  bridge.style.cssText='position:fixed;inset:0;background:'+color+';z-index:9990;pointer-events:none;transition:opacity '+(ms/1000)+'s ease;';
+  document.body.appendChild(bridge);
+  requestAnimationFrame(function(){requestAnimationFrame(function(){
+    bridge.style.opacity='0';
+    setTimeout(function(){if(bridge.parentNode)bridge.parentNode.removeChild(bridge);},ms);
+  });});
+  return bridge;
+}
+
 // Frame 5 measurements: bag is 30px tall, center at (238.5, 96.5) within 288×160 frame.
 // Scale is set so the bag in frame 5 matches the rendered bag sprite size on screen.
 var _BAG_FW=288,_BAG_FFH=160,_BAG_F5X=238.5,_BAG_F5Y=96.5,_BAG_F5H=30;
@@ -823,16 +850,10 @@ function _bagTransitionOpen(srcSprId,onDone,onNearDone){
     if(!nearFired&&cur>=17&&onNearDone){nearFired=true;onNearDone();}
     if(cur===19){
       clearInterval(timer);
-      var bridge=document.createElement('div');
-      bridge.style.cssText='position:fixed;inset:0;background:#323c39;z-index:9990;pointer-events:none;transition:opacity 0.5s ease;';
-      document.body.appendChild(bridge);
+      _fadeBridge('#323c39',500);
       if(s.el.parentNode)s.el.parentNode.removeChild(s.el);
       if(s.spr)s.spr.style.visibility='';
       if(onDone)onDone();
-      requestAnimationFrame(function(){requestAnimationFrame(function(){
-        bridge.style.opacity='0';
-        setTimeout(function(){if(bridge.parentNode)bridge.parentNode.removeChild(bridge);},500);
-      });});
     }
   },64);
 }
@@ -888,15 +909,9 @@ function closeBagUI(){
   ovr.style.visibility='';ovr.style.pointerEvents='';
   var _bst=document.getElementById('_bag-expand-stack');if(_bst&&_bst.parentNode)_bst.parentNode.removeChild(_bst);
   var _btd=document.getElementById('bag-ui-tiles');if(_btd)delete _btd.dataset.expandedLetter;
-  var bridge=document.createElement('div');
-  bridge.style.cssText='position:fixed;inset:0;background:#0f2018;z-index:9990;pointer-events:none;transition:opacity 0.35s ease;';
-  document.body.appendChild(bridge);
+  _fadeBridge('#0f2018',350);
   ovr.style.display='none';
   _bagTransitionClose('bag-sprite',function(){delete ovr.dataset.closing;});
-  requestAnimationFrame(function(){requestAnimationFrame(function(){
-    bridge.style.opacity='0';
-    setTimeout(function(){if(bridge.parentNode)bridge.parentNode.removeChild(bridge);},350);
-  });});
 }
 
 // ─── Tile Audio ───────────────────────────────────────────────────────────────
@@ -1033,6 +1048,14 @@ function _playSpringBoing(){
     osc2.start(now);osc2.stop(now+0.33);
   }catch(e){}
 }
+
+// ── Tile-sticker (hotbar) lookup helpers ──
+function countTileSticker(id){
+  var n=0,ts=S.tileStickers||[];
+  for(var i=0;i<ts.length;i++)if(ts[i].id===id)n++;
+  return n;
+}
+function hasTileSticker(id){return countTileSticker(id)>0;}
 
 // ── Shared gold-spend helper ──
 // Returns true and deducts gold on success; toasts and returns false if insufficient.

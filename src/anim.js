@@ -2,76 +2,6 @@
 // ANIM — cinematic transitions between play and shop phases
 // =====================================================================
 
-function animBountyComplete(chipIndex, boardIdxs) {
-  return new Promise(function(resolve) {
-    // Phase 1: gold pulse on board tiles + the bounty chip in the list
-    var tileEls = [];
-    for (var i = 0; i < boardIdxs.length; i++) {
-      var sq = document.querySelector('[data-sq-idx="' + boardIdxs[i] + '"]');
-      if (!sq) continue;
-      var tileEl = sq.querySelector('.board-tile');
-      if (!tileEl) tileEl = sq;
-      tileEl.classList.add('bounty-gold-pulse');
-      tileEls.push(tileEl);
-    }
-    var brow = document.getElementById('bounty-row');
-    var chips = brow ? Array.prototype.slice.call(brow.children) : [];
-    var chip = chipIndex < chips.length ? chips[chipIndex] : null;
-    if (chip) chip.classList.add('bounty-chip-pulse');
-
-    // Phase 2: pulse (500ms) + pause (400ms) then slide
-    setTimeout(function() {
-      for (var i = 0; i < tileEls.length; i++) tileEls[i].classList.remove('bounty-gold-pulse');
-      if (chip) chip.classList.remove('bounty-chip-pulse');
-
-      if (!chip) { resolve(); return; }
-
-      var belowChips = chips.slice(chipIndex + 1);
-      var chipR = chip.getBoundingClientRect();
-      var slideUp = chipR.height + 4; // height + gap
-
-      // Fixed clone escapes any overflow clipping on the panel
-      var clone = chip.cloneNode(true);
-      clone.style.cssText = 'position:fixed;left:' + chipR.left + 'px;top:' + chipR.top + 'px;'
-        + 'width:' + chipR.width + 'px;height:' + chipR.height + 'px;'
-        + 'z-index:9998;pointer-events:none;';
-      document.body.appendChild(clone);
-      chip.style.visibility = 'hidden';
-
-      var slideOutDur = 600;
-      var slideOutDist = chipR.left + chipR.width + 20;
-      var slideStart = performance.now();
-
-      // Phase 3: slide chip off to the left (cubic ease-in)
-      function animateSlide(now) {
-        var tOut = Math.min(1, (now - slideStart) / slideOutDur);
-        var eOut = tOut * tOut * tOut;
-        clone.style.transform = 'translateX(-' + (eOut * slideOutDist) + 'px)';
-        clone.style.opacity   = Math.max(0, 1 - tOut * 1.4) + '';
-        if (tOut < 1) { requestAnimationFrame(animateSlide); return; }
-
-        clone.remove();
-
-        // Phase 4: below chips slam up only after bounty is fully off screen
-        if (!belowChips.length) { resolve(); return; }
-        var slideUpDur = 500;
-        var upStart = performance.now();
-        function animateUp(now2) {
-          var tUp = Math.min(1, (now2 - upStart) / slideUpDur);
-          var eUp = tUp * tUp * tUp; // cubic ease-in: locked at zero, then builds
-          for (var j = 0; j < belowChips.length; j++)
-            belowChips[j].style.transform = 'translateY(-' + (eUp * slideUp) + 'px)';
-          if (tUp < 1) { requestAnimationFrame(animateUp); return; }
-          for (var j = 0; j < belowChips.length; j++) belowChips[j].style.transform = '';
-          resolve();
-        }
-        requestAnimationFrame(animateUp);
-      }
-      requestAnimationFrame(animateSlide);
-    }, 900);
-  });
-}
-
 // Apply gold glow immediately (called before scoring so glow persists through anim)
 function _applyBountyGlow(boardIdxs, chipIndex) {
   for (var i = 0; i < boardIdxs.length; i++) {
@@ -83,7 +13,7 @@ function _applyBountyGlow(boardIdxs, chipIndex) {
   var brow = document.getElementById('bounty-row');
   var chips = brow ? Array.prototype.slice.call(brow.children) : [];
   var chip = chipIndex < chips.length ? chips[chipIndex] : null;
-  if (chip) chip.classList.add('bounty-chip-pulse');
+  if (chip) chip.classList.add('bounty-scroll-pulse');
 }
 
 // Slide the bounty chip out (called after scoring animation; skips the pulse phase)
@@ -95,7 +25,7 @@ function animBountySlideOut(chipIndex) {
     var brow = document.getElementById('bounty-row');
     var chips = brow ? Array.prototype.slice.call(brow.children) : [];
     var chip = chipIndex < chips.length ? chips[chipIndex] : null;
-    if (chip) chip.classList.remove('bounty-chip-pulse');
+    if (chip) chip.classList.remove('bounty-scroll-pulse');
     if (!chip) { resolve(); return; }
     var belowChips = chips.slice(chipIndex + 1);
     var chipR = chip.getBoundingClientRect();
@@ -564,6 +494,33 @@ function _burstHandTiles() {
   _burstTilesFromBag(handEls, bx, by, 180, null);
 }
 
+// Half-board clone used by the zoom in/out fold animations. The clone is a
+// full copy of the board clipped to one side of foldLine, with its
+// transform-origin on the fold line so it can rotate away in 3D.
+function _makeZoomHalf(boardEl, isTop, foldLine, W, BH) {
+  var wH = isTop ? foldLine : (BH - foldLine);
+  var wrap = document.createElement('div');
+  wrap.style.cssText = [
+    'position:absolute', 'left:0', 'top:' + (isTop ? 0 : foldLine) + 'px',
+    'width:' + W + 'px', 'height:' + wH + 'px',
+    'overflow:hidden',
+    'transform-origin:' + (isTop ? 'bottom' : 'top') + ' center',
+    'backface-visibility:hidden'
+  ].join(';');
+  var clone = boardEl.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.style.cssText = [
+    'position:absolute', 'left:0', 'top:' + (isTop ? '0' : '-' + foldLine + 'px'),
+    'width:' + W + 'px', 'display:inline-grid', 'gap:2px',
+    'background:#0a0a18', 'padding:6px', 'border-radius:8px',
+    'border:1px solid #2a2a4a',
+    'grid-template-columns:' + boardEl.style.gridTemplateColumns,
+    'box-sizing:border-box', 'margin:0'
+  ].join(';');
+  wrap.appendChild(clone);
+  return wrap;
+}
+
 function animBoardZoomIn(half, onDone) {
   var boardEl = document.getElementById('board-wrap');
   var boardAreaEl = boardEl.parentNode;
@@ -594,32 +551,8 @@ function animBoardZoomIn(half, onDone) {
   ].join(';');
   scaleEl.appendChild(perspEl);
 
-  function makeCloneHalf(isTop) {
-    var wH = isTop ? foldLine : (BH - foldLine);
-    var wrap = document.createElement('div');
-    wrap.style.cssText = [
-      'position:absolute', 'left:0', 'top:' + (isTop ? 0 : foldLine) + 'px',
-      'width:' + W + 'px', 'height:' + wH + 'px',
-      'overflow:hidden',
-      'transform-origin:' + (isTop ? 'bottom' : 'top') + ' center',
-      'backface-visibility:hidden'
-    ].join(';');
-    var clone = boardEl.cloneNode(true);
-    clone.removeAttribute('id');
-    clone.style.cssText = [
-      'position:absolute', 'left:0', 'top:' + (isTop ? '0' : '-' + foldLine + 'px'),
-      'width:' + W + 'px', 'display:inline-grid', 'gap:2px',
-      'background:#0a0a18', 'padding:6px', 'border-radius:8px',
-      'border:1px solid #2a2a4a',
-      'grid-template-columns:' + boardEl.style.gridTemplateColumns,
-      'box-sizing:border-box', 'margin:0'
-    ].join(';');
-    wrap.appendChild(clone);
-    return wrap;
-  }
-
-  var topWrap = makeCloneHalf(true);
-  var botWrap = makeCloneHalf(false);
+  var topWrap = _makeZoomHalf(boardEl, true, foldLine, W, BH);
+  var botWrap = _makeZoomHalf(boardEl, false, foldLine, W, BH);
   perspEl.appendChild(topWrap);
   perspEl.appendChild(botWrap);
   boardEl.style.visibility = 'hidden';
@@ -692,32 +625,8 @@ function animBoardZoomOut(zoomState, onDone) {
     'perspective-origin:50% ' + foldLine + 'px'
   ].join(';');
 
-  function makeCloneHalf(isTop) {
-    var wH = isTop ? foldLine : (BH - foldLine);
-    var wrap = document.createElement('div');
-    wrap.style.cssText = [
-      'position:absolute', 'left:0', 'top:' + (isTop ? 0 : foldLine) + 'px',
-      'width:' + W + 'px', 'height:' + wH + 'px',
-      'overflow:hidden',
-      'transform-origin:' + (isTop ? 'bottom' : 'top') + ' center',
-      'backface-visibility:hidden'
-    ].join(';');
-    var clone = boardEl.cloneNode(true);
-    clone.removeAttribute('id');
-    clone.style.cssText = [
-      'position:absolute', 'left:0', 'top:' + (isTop ? '0' : '-' + foldLine + 'px'),
-      'width:' + W + 'px', 'display:inline-grid', 'gap:2px',
-      'background:#0a0a18', 'padding:6px', 'border-radius:8px',
-      'border:1px solid #2a2a4a',
-      'grid-template-columns:' + boardEl.style.gridTemplateColumns,
-      'box-sizing:border-box', 'margin:0'
-    ].join(';');
-    wrap.appendChild(clone);
-    return wrap;
-  }
-
-  var topWrap = makeCloneHalf(true);
-  var botWrap = makeCloneHalf(false);
+  var topWrap = _makeZoomHalf(boardEl, true, foldLine, W, BH);
+  var botWrap = _makeZoomHalf(boardEl, false, foldLine, W, BH);
   var otherWrap = half === 'top' ? botWrap : topWrap;
   // Start fully folded (backwards: -90 for top half, +90 for bot half)
   otherWrap.style.transform = 'rotateX(' + (half === 'top' ? -90 : 90) + 'deg)';

@@ -7,10 +7,24 @@ async function playWord(){
   _rankRunId++;
   var _capturedRankTop10=_rankTop10; _rankTop10=null;
   var nt=newTiles();if(!nt.length){toast('Place tiles on the board first!');return;}
+  // The tiles the player placed this turn have left S.hand (they sit on the
+  // board with isNew:true). Add them back so the snapshot hand is the FULL
+  // rack available before this play — otherwise the game-over reveal scores
+  // alternatives with too few tiles (e.g. 5-letter words falsely bingo).
+  var _snapBack=[];
+  for(var _sbi=0;_sbi<B*B;_sbi++){
+    var _sbt=(S.btTop&&S.btTop[_sbi]&&S.btTop[_sbi].isNew)?S.btTop[_sbi]:(S.bt[_sbi]&&S.bt[_sbi].isNew?S.bt[_sbi]:null);
+    if(_sbt)_snapBack.push(Object.assign({},_sbt,{onBoard:false,_boardSq:undefined,boardSq:undefined,blankAs:null}));
+  }
   window._lastPlaySnap={
-    hand:S.hand.map(function(t){return t?Object.assign({},t,{onBoard:false,_boardSq:undefined}):null;}),
+    hand:S.hand.map(function(t){return t?Object.assign({},t,{onBoard:false,_boardSq:undefined}):null;}).concat(_snapBack),
     bt:S.bt.map(function(bt){return(bt&&!bt.isNew)?Object.assign({},bt):null;}),
-    board:S.board.slice()
+    board:S.board.slice(),
+    // Pre-play values — the game-over reveal judges alternative words from
+    // this position, so the score/constraint state must predate this word.
+    score:S.score,
+    lastWordLen:S.lastWordLen||0,
+    palUnlocked:!!S.palUnlocked
   };
   var dir=wordDir(nt);if(!dir){toast('Tiles must be in a straight line!');return;}
   var a=nt[0];var main=extractAt(a.row,a.col,dir);
@@ -34,24 +48,24 @@ async function playWord(){
   if(_con==='c_long'&&main.word.length<5){scoreLocked=true;scoreLockMsg='Word scores 0 — only 5+ letter words score this round!';}
   if(_con==='c_longer'&&(S.lastWordLen||0)>0&&main.word.length<=(S.lastWordLen||0)){scoreLocked=true;scoreLockMsg='Word scores 0 — must be longer than your last ('+S.lastWordLen+' letters)!';}
   if(palLocked){scoreLocked=true;scoreLockMsg='Scoring locked — play a palindrome first!';}
-  S._slotMachineRoll=null;
   window._scoring=true;
   var _playBtn=document.querySelector('#play-controls .btn-icon-green');
   if(_playBtn)_playBtn.disabled=true;
-  var _hasDT=false;for(var _dti=0;_dti<S.tileStickers.length;_dti++)if(S.tileStickers[_dti].id==='drunk_text'){_hasDT=true;break;}
+  var _hasDT=hasTileSticker('drunk_text');
   var _words=getAllWords(nt,dir);
   var _eggWords={};for(var i=0;i<EASTER_EGGS.length;i++)_eggWords[EASTER_EGGS[i].word]=true;
+  var _bountyWords={};if(S.bounties&&S.bounties.length){for(var _bwi2=0;_bwi2<S.bounties.length;_bwi2++){var _bws=S.bounties[_bwi2].words||[];for(var _bwj=0;_bwj<_bws.length;_bwj++)_bountyWords[_bws[_bwj].word.toUpperCase()]=true;}}
   var _dtInvalid=false;
-  for(var i=0;i<_words.length;i++){if(_eggWords[_words[i]])continue;var v=await validWord(_words[i]);if(!v){if(_hasDT){_dtInvalid=true;}else{flashTiles(nt);window._scoring=false;if(_playBtn)_playBtn.disabled=false;if(!S.devMode){S.gold=Math.max(0,S.gold-1);renderHUD();toast('"'+_words[i]+'" is not a word — fined $1!');}else{toast('"'+_words[i]+'" is not a word.');}return;}}}
+  for(var i=0;i<_words.length;i++){if(_eggWords[_words[i]])continue;if(_words[i]===main.word&&_bountyWords[_words[i]])continue;var v=await validWord(_words[i]);if(!v){if(_hasDT){_dtInvalid=true;}else{flashTiles(nt);window._scoring=false;if(_playBtn)_playBtn.disabled=false;if(!S.devMode){S.gold=Math.max(0,S.gold-1);renderHUD();toast('"'+_words[i]+'" is not a word — fined $1!');}else{toast('"'+_words[i]+'" is not a word.');}return;}}}
   if(_hasDT){S._drunkValid=!_dtInvalid;if(_dtInvalid)flashTiles(nt);}
   // Easter egg effects (before scoring — can mutate tile variants)
   var _eggApplied=applyEasterEgg(main.word,nt);if(_eggApplied)await new Promise(function(r){setTimeout(r,420);});
   // Bounty check — glow starts NOW, reward applied inside scoring, slide-out happens after scoring
-  var _bountyIdx=-1;
-  if(S.bounties&&S.bounties.length){for(var _bi=S.bounties.length-1;_bi>=0;_bi--){if(S.bounties[_bi].word===main.word){_bountyIdx=_bi;break;}}}
-  var _hasBH=false;for(var _bhi=0;_bhi<S.tileStickers.length;_bhi++){if(S.tileStickers[_bhi].id==='bounty_hunter'){_hasBH=true;break;}}
+  var _bountyIdx=-1,_bountyWordIdx=-1;
+  if(S.bounties&&S.bounties.length){_bScan:for(var _bi=S.bounties.length-1;_bi>=0;_bi--){var _bscws=S.bounties[_bi].words||[];for(var _bwi=0;_bwi<_bscws.length;_bwi++){if(_bscws[_bwi].word.toUpperCase()===main.word){_bountyIdx=_bi;_bountyWordIdx=_bwi;break _bScan;}}}}
+  var _hasBH=hasTileSticker('bounty_hunter');
   var _wordBoardIdxs=main.tiles.map(function(t){return t.idx;});
-  var _bountyReward=_bountyIdx>=0?(S.bounties[_bountyIdx].reward||0):0;
+  var _bountyReward=_bountyIdx>=0?(S.bounties[_bountyIdx].words[_bountyWordIdx].reward||0):0;
   if(_bountyIdx>=0){
     _applyBountyGlow(_wordBoardIdxs,_bountyIdx);
     toast('Bounty complete! +$'+_bountyReward+' + '+bountyRewardLabel());
@@ -64,14 +78,14 @@ async function playWord(){
     if(_hasDT)delete S._drunkValid;
     await runScoreAnim(res.events,res.total);
     S.score+=res.total;S.gold+=res.tgold;
-    var _hasMT=false;for(var _mti=0;_mti<S.tileStickers.length;_mti++)if(S.tileStickers[_mti].id==='midas_touch'){_hasMT=true;break;}
+    var _hasMT=hasTileSticker('midas_touch');
     if(_hasMT&&main.word.length>=5){for(var _mj=0;_mj<main.tiles.length;_mj++){var _mIdx=main.tiles[_mj].idx;if(S.bt[_mIdx])transformTile(S.bt[_mIdx].id,{variant:'gold'});}}
     S.crossroadsCount=(S.crossroadsCount||0)+(res.crossWordCount||0);
     S._crossroadsLiveCount=null; // animation's display-only counter is now caught up — defer to the real one
     _proletariatSpread();
     _checkRankReward(res.total,_capturedRankTop10);
     achvCheck('word_played',{bingo:res.bingo,isPalin:isExtendedPalindrome(main.word)});
-    var _hasPE=false;for(var _pei=0;_pei<S.tileStickers.length;_pei++)if(S.tileStickers[_pei].id==='palindrome_engine'){_hasPE=true;break;}
+    var _hasPE=hasTileSticker('palindrome_engine');
     if(_hasPE&&isExtendedPalindrome(main.word)){
       if(!S.palWords)S.palWords=[];
       if(S.palWords.indexOf(main.word)<0){S.palWords.push(main.word);S.palMult=(S.palMult||1)+0.25;toast('Palindrome Engine: ×'+fmtMult(S.palMult)+'!');}
@@ -145,8 +159,6 @@ async function playWord(){
   for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){var _bt=S.bt[i];if(_bt.variant==='blue'){_bt.blueBonus=(_bt.blueBonus||0)+(_bt.isBlank?0:(LS[_bt.letter]||0));blueTiles.push(_bt);S.bt[i]=null;}else{setTileState(_bt,'board',{boardSq:i,isNew:false});}}}
   // Commit Jenga stacked tiles: btTop replaces bt at that square
   if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var _btt=S.btTop[i];if(_btt.variant==='blue'){_btt.blueBonus=(_btt.blueBonus||0)+(_btt.isBlank?0:(LS[_btt.letter]||0));blueTiles.push(_btt);S.btTop[i]=null;}else{setTileState(_btt,'board',{boardSq:i,isNew:false});_btt._stackLevel=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;S.bt[i]=_btt;S.btTop[i]=null;}}}}
-  for(var i=0;i<blueTiles.length;i++){setTileState(blueTiles[i],'stored',{storedIn:'bag'});S.bag.push(blueTiles[i]);}
-  if(blueTiles.length){S.bag=shuffle(S.bag);toast('Blue tile'+(blueTiles.length>1?'s':'')+' returned to bag!');}
   // Save positions of kept tiles before filtering
   var pwKept={};var _pwvi=0;for(var _pwki=0;_pwki<S.hand.length;_pwki++){var _pwt=S.hand[_pwki];if(_pwt){if(HP.x[_pwvi]!==undefined)pwKept[_pwt.id]=HP.x[_pwvi];_pwvi++;}}
   S.hand=S.hand.filter(function(t){return!t._done;});
@@ -172,17 +184,33 @@ async function playWord(){
       return;
     }
     showGO('Scored '+S.score.toLocaleString()+' / '+tgt().toLocaleString()+'.');
-    var needed=tgt()-S.score;
     if(window._lastPlaySnap&&DICT){
-      findBestMoveBackground(window._lastPlaySnap,function(best){
-        if(best&&best.score>=needed){
-          var el=document.getElementById('gameover-best-play');if(!el)return;
-          el.innerHTML='<div style="font-size:28px;color:#8880a8;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">You had this play:</div>'
-            +'<div style="font-size:28px;font-weight:normal;color:#f0e080;letter-spacing:4px;margin:4px 0">'+best.word+'</div>'
-            +'<div style="font-size:32px;color:#ff9090">for '+best.score.toLocaleString()+' pts — that would\'ve won.</div>';
-          el.style.display='block';
+      // Judge alternatives from the position BEFORE the final word: the
+      // points it needed are measured against the pre-play score.
+      var needed=tgt()-window._lastPlaySnap.score;
+      var _showWins=function(top){
+        var wins=[];
+        for(var _wi=0;_wi<(top||[]).length&&wins.length<5;_wi++){if(top[_wi].score>=needed)wins.push(top[_wi]);}
+        if(!wins.length)return;
+        var el=document.getElementById('gameover-best-play');if(!el)return;
+        var html='<div style="font-size:28px;color:#8880a8;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">'
+          +(wins.length>1?'These plays would\'ve won:':'This play would\'ve won:')+'</div>';
+        for(var _hi=0;_hi<wins.length;_hi++){
+          var _w=wins[_hi],_pos=rcl(_w.r*B+_w.c)+(_w.isH?'→':'↓');
+          html+='<div style="display:flex;align-items:baseline;gap:10px;margin:3px 0">'
+            +'<span style="font-size:28px;color:#f0e080;letter-spacing:4px">'+_w.word+'</span>'
+            +'<span style="font-size:24px;color:#7070a0">'+_pos+'</span>'
+            +'<span style="font-size:26px;color:#80ff80;margin-left:auto">'+_w.score.toLocaleString()+' pts</span>'
+            +'</div>';
         }
-      });
+        el.innerHTML=html;
+        el.style.display='block';
+      };
+      // The background rank solver already evaluated this exact position (full
+      // pre-play hand, committed board) — reuse its top 10 rather than re-solve.
+      // Fall back to a fresh solve only if it hadn't finished before this play.
+      if(_capturedRankTop10&&_capturedRankTop10.length)_showWins(_capturedRankTop10);
+      else findBestMoveBackground(window._lastPlaySnap,_showWins);
     }
   },700);
 }
@@ -247,8 +275,7 @@ function discardTiles(){
     var _discardIds={};
     for(var _di=0;_di<S.hand.length;_di++){if(S.hand[_di]&&S.hand[_di].sel){_discardIds[S.hand[_di].id]=true;setTileState(S.hand[_di],'stored',{storedIn:'discard'});}}
     S.hand=S.hand.filter(function(t){return!t||!_discardIds[t.id];});HP.x=[];HP.vx=[];window._easyHint=null;S.disc--;
-    var hasCooker=false;for(var i=0;i<S.tileStickers.length;i++)if(S.tileStickers[i].id==='pressure_cooker'){hasCooker=true;break;}
-    if(hasCooker)S.discPressure=(S.discPressure||0)+1;
+    if(hasTileSticker('pressure_cooker'))S.discPressure=(S.discPressure||0)+1;
     saveGame();
     var keptCount=S.hand.filter(Boolean).length;
     var _hm2=handMax();var _drawCap2=(currentConstraint()==='c_draw3')?3:_hm2;var _dcDrawN=S.devMode?Math.min(sel.length,_drawCap2):Math.min(Math.min(sel.length,_drawCap2),S.bag.length);

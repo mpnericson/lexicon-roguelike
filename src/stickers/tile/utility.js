@@ -45,24 +45,24 @@ SQ.push({id:'the_thing',name:'The Thing',
     return base;
   },
   onBuildCtx:function(ctx,ts){
-    var myIdx=-1;for(var _i=0;_i<S.tileStickers.length;_i++){if(S.tileStickers[_i]===ts){myIdx=_i;break;}}
-    if(myIdx<0||myIdx>=S.tileStickers.length-1)return;
-    var rTs=S.tileStickers[myIdx+1];var rDef=sqd(rTs.id);
+    var myIdx=ctx.hotbar.indexOf(ts);
+    if(myIdx<0||myIdx>=ctx.hotbar.length-1)return;
+    var rTs=ctx.hotbar[myIdx+1];var rDef=sqd(rTs.id);
     if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return;
     if(rDef.onBuildCtx)rDef.onBuildCtx(ctx,rTs);
   },
   onPerTile:function(tile,ctx,ts,ts_inst){
-    var myIdx=-1;for(var _i=0;_i<S.tileStickers.length;_i++){if(S.tileStickers[_i]===ts_inst){myIdx=_i;break;}}
-    if(myIdx<0||myIdx>=S.tileStickers.length-1)return ts;
-    var rTs=S.tileStickers[myIdx+1];var rDef=sqd(rTs.id);
+    var myIdx=ctx.hotbar.indexOf(ts_inst);
+    if(myIdx<0||myIdx>=ctx.hotbar.length-1)return ts;
+    var rTs=ctx.hotbar[myIdx+1];var rDef=sqd(rTs.id);
     if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return ts;
     if(rDef.onPerTile)ts=rDef.onPerTile(tile,ctx,ts,rTs);
     return ts;
   },
   onPostWord:function(w,wt,ctx,ts){
-    var myIdx=-1;for(var _i=0;_i<S.tileStickers.length;_i++){if(S.tileStickers[_i]===ts){myIdx=_i;break;}}
-    if(myIdx<0||myIdx>=S.tileStickers.length-1)return;
-    var rTs=S.tileStickers[myIdx+1];var rDef=sqd(rTs.id);
+    var myIdx=ctx.hotbar.indexOf(ts);
+    if(myIdx<0||myIdx>=ctx.hotbar.length-1)return;
+    var rTs=ctx.hotbar[myIdx+1];var rDef=sqd(rTs.id);
     if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return;
     if(rDef.onPostWord)rDef.onPostWord(w,wt,ctx,rTs);
   },

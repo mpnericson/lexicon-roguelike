@@ -222,32 +222,6 @@ function openCollection(){
   document.getElementById('collection-modal').style.display='flex';
 }
 
-function openSqInspect(sqIdx,defId){
-  var d=sqd(defId);if(!d)return;var sell=Math.floor(d.cost/2);
-  document.getElementById('sq-icon').innerHTML=sqIconHTML(d,32);document.getElementById('sq-name').textContent=d.name;document.getElementById('sq-name').style.color=d.fg;
-  document.getElementById('sq-rarity').textContent=d.rarity;document.getElementById('sq-rarity').style.color=d.fg;
-  document.getElementById('sq-desc').textContent=d.desc;document.getElementById('sq-pos').textContent='Position: '+rcl(sqIdx);
-  var btn=document.getElementById('sq-sell-btn');btn.textContent='Sell for $'+sell;
-  btn.onclick=function(){S.gold+=sell;S.board[sqIdx]=null;S.placed=S.placed.filter(function(p){return p.sqIdx!==sqIdx;});document.getElementById('sq-modal').style.display='none';renderBoard();renderHUD();toast(d.name+' sold for $'+sell);};
-  document.getElementById('sq-modal').style.display='flex';
-}
-
-function devGiveSquare(sqId){
-  if(!S.devMode)return;
-  var d=sqd(sqId);
-  if(S.phase==='placing'){
-    S.sqHand.push({id:sqId,placed:false});
-    renderSqHand();
-  } else {
-    S.stickerInventory.push({id:sqId});
-    if(S.phase==='shop')renderShop();
-  }
-  renderHUD();
-  var dp=document.getElementById('dev-palette');
-  if(_devTab==='stickers'&&dp&&dp.style.display!=='none')devRenderPalette();
-  toast((d?d.name:sqId)+' added to sticker inventory!');
-}
-
 function toggleDevMode(){
   S.devMode=!S.devMode;
   document.getElementById('devmode-item').textContent='Dev Mode: '+(S.devMode?'ON':'Off');
@@ -273,6 +247,9 @@ function toggleMenu(){
   if(dd.style.display==='none'){
     var sd=document.getElementById('seed-display');
     if(sd)sd.textContent='Seed: '+(S.seed||'—');
+    var r=document.getElementById('menu-wrap').getBoundingClientRect();
+    dd.style.top=(r.bottom+4)+'px';
+    dd.style.right=(window.innerWidth-r.right)+'px';
     dd.style.display='block';
   } else {
     dd.style.display='none';
@@ -291,10 +268,6 @@ function confirmSeedRun(){
   document.getElementById('seed-modal').style.display='none';
   startGame(n);
 }
-// Returns an <img> tag pointing to Assets/ui/{name}.svg. Use for SVG UI icons.
-function uiSvg(name,size){size=size||24;return '<img src="Assets/ui/'+name+'.svg" width="'+size+'" height="'+size+'" class="ui-icon" draggable="false">';}
-
-
 async function checkWordCost(){
   if(!S.devMode&&S.gold<1){toast('Need $1 to check a word!');return;}
   var nt=newTiles();if(!nt.length){toast('Place tiles on the board first!');return;}

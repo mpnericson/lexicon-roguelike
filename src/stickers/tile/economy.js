@@ -7,31 +7,31 @@ SQ.push({id:'inkwell',name:'Inkwell',desc:'+$1 every word played.',
 
 // ── PRESSURE COOKER ───────────────────────────────────────────────────────────
 // type: tile · rarity: common · cost: $3
-// onPostWord: reads S.discPressure (incremented by play.js on each discard) and
-// dumps it as a flat mult, then zeroes it for the next word.
+// onPostWord: reads ctx.state.discPressure (incremented by play.js on each
+// discard, zeroed after each word) and dumps it as a flat mult.
 SQ.push({id:'pressure_cooker',name:'Pressure Cooker',
   desc:'Each discard this round adds +1 mult to the next word.',
   rarity:'common',cost:3,bg:'#2a0a0a',fg:'#f08060',icon:'PC',type:'tile',
   liveDesc:function(p){var dp=S.discPressure||0;return 'Each discard adds +1 mult to the next word. Stored: <span style="color:#f0e040">+'+dp+' mult</span>.';},
-  onPostWord:function(w,wt,ctx){var dp=S.discPressure||0;if(dp>0){ctx.plusMults.push(dp);ctx.events.push({type:'plus-mult',delta:dp,label:'Pressure Cooker +'+dp+' mult'});}}});
+  onPostWord:function(w,wt,ctx){var dp=ctx.state.discPressure||0;if(dp>0){ctx.plusMults.push(dp);ctx.events.push({type:'plus-mult',delta:dp,label:'Pressure Cooker +'+dp+' mult'});}}});
 
 // ── THE MISER ─────────────────────────────────────────────────────────────────
 // type: tile · rarity: uncommon · cost: $5
-// onPostWord: counts coloured tiles in the bag and applies ×(1 + n×0.1) mult.
+// onPostWord: reads ctx.state.bagColouredCount and applies ×(1 + n×0.1) mult.
 SQ.push({id:'the_miser',name:'The Miser',desc:'+×0.1 mult for each coloured tile in your bag.',
   rarity:'uncommon',cost:5,bg:'#1a1a0a',fg:'#d4af37',icon:'MS',
   liveDesc:function(p){var n=S.bag.filter(function(t){return t.variant;}).length;var f=parseFloat((1+n*0.1).toFixed(2));return n+' coloured tile'+(n!==1?'s':'')+' in bag → <span style="color:#f0e040">×'+f.toFixed(2)+' mult</span>';},
-  onPostWord:function(w,wt,ctx){var n=S.bag.filter(function(t){return t.variant;}).length;if(n>0){var f=parseFloat((1+n*0.1).toFixed(2));ctx.xmults.push(f);ctx.events.push({type:'x-mult',factor:f,label:'The Miser ×'+f.toFixed(2)});}}});
+  onPostWord:function(w,wt,ctx){var n=ctx.state.bagColouredCount||0;if(n>0){var f=parseFloat((1+n*0.1).toFixed(2));ctx.xmults.push(f);ctx.events.push({type:'x-mult',factor:f,label:'The Miser ×'+f.toFixed(2)});}}});
 
 // ── BOUNTY HUNTER ─────────────────────────────────────────────────────────────
 // type: tile · rarity: uncommon · cost: $5
 // onPostWord: applies the permanent ×mult accumulated from completed bounties
-// (S.bhMult is incremented by +0.25 in play.js each time a bounty resolves).
+// (ctx.state.bhMult — incremented by +0.25 in play.js each time a bounty resolves).
 SQ.push({id:'bounty_hunter',name:'Bounty Hunter',
   desc:'Each completed bounty permanently adds ×0.25 to your score multiplier.',
   rarity:'uncommon',cost:5,bg:'#1a2a0a',fg:'#c0e080',icon:'BH',type:'tile',
   liveDesc:function(p){var bh=parseFloat((S.bhMult||1).toFixed(2));return 'Each completed bounty: permanent +×0.25 mult. Currently applying <span style="color:#f0e040">×'+bh+' mult</span>.';},
-  onPostWord:function(w,wt,ctx){var bh=S.bhMult||1;if(bh>1){ctx.xmults.push(bh);ctx.events.push({type:'x-mult',factor:parseFloat(bh.toFixed(2)),label:'Bounty Hunter ×'+bh.toFixed(2)});}}});
+  onPostWord:function(w,wt,ctx){var bh=ctx.state.bhMult||1;if(bh>1){ctx.xmults.push(bh);ctx.events.push({type:'x-mult',factor:parseFloat(bh.toFixed(2)),label:'Bounty Hunter ×'+bh.toFixed(2)});}}});
 
 // ── SHERIFF'S OFFICE ──────────────────────────────────────────────────────────
 // type: tile · rarity: uncommon · cost: $5

@@ -6,31 +6,9 @@ window.addEventListener('resize',function(){hpBounds();renderBoard();});
 (function(){
   var btn=document.getElementById('bag-btn');
   var spr=document.getElementById('bag-sprite');
-  var frame=0,dir=0,timer=null;
-  var MAX=4,MS=70;
   window._bagHoverFrame=0;
-  function tick(){
-    timer=null;
-    frame=Math.max(0,Math.min(MAX,frame+dir));
-    window._bagHoverFrame=frame;
-    spr.src='Assets/animations/bag/bag-hl-frame'+frame+'.png';
-    if(dir===1&&frame<MAX)timer=setTimeout(tick,MS);
-    else if(dir===-1&&frame>0)timer=setTimeout(tick,MS);
-    else if(dir===-1&&frame===0)spr.src='Assets/animations/bag/bag-frame0.png';
-  }
-  btn.addEventListener('mouseenter',function(){
-    if(timer){clearTimeout(timer);timer=null;}
-    dir=1;
-    spr.src='Assets/animations/bag/bag-hl-frame'+frame+'.png';
-    if(frame<MAX)timer=setTimeout(tick,MS);
-  });
-  btn.addEventListener('mouseleave',function(){
-    if(timer){clearTimeout(timer);timer=null;}
-    dir=-1;
-    if(frame>0)timer=setTimeout(tick,MS);
-    else spr.src='Assets/animations/bag/bag-frame0.png';
-  });
-  window._bagSpriteReset=function(){frame=0;dir=0;window._bagHoverFrame=0;spr.src='Assets/animations/bag/bag-frame0.png';};
+  var hover=attachBagHover(btn,spr,function(f){window._bagHoverFrame=f;});
+  window._bagSpriteReset=hover.reset;
 })();
 // Play/Discard sprite interactions
 (function(){
@@ -74,6 +52,29 @@ document.addEventListener('keydown',function(e){
   if((e.key==='Delete'||e.key==='Backspace')&&S.phase==='play'&&!e.target.closest('input,textarea')){if(window._pdFlash)_pdFlash(5);discardTiles();}
   if(e.key==='Escape'){var _bt=document.getElementById('bag-ui-tiles');if(_bt&&_bt.dataset.expandedLetter)_bagCollapseLetter(_bt);}
 });
+// Main UI background animation — normal swell (24 frames) or volatile/constraint (18 frames)
+(function(){
+  var FRAMES=24,FRAMES_V=18,frame=0,SWELL=12000,SWELL_V=3500;
+  var imgs=[],imgsV=[];
+  for(var i=1;i<=FRAMES;i++){var img=new Image();img.src='Assets/sprites/mainui/mainui'+i+'.png';imgs.push(img);}
+  for(var i=1;i<=FRAMES_V;i++){var img=new Image();img.src='Assets/sprites/mainui_volatile/mainui_volatile'+i+'.png';imgsV.push(img);}
+  var app=document.getElementById('app');
+  var lastVolatile=false;
+  function tick(){
+    var isVolatile=typeof currentConstraint==='function'&&!!currentConstraint();
+    if(isVolatile!==lastVolatile){frame=0;lastVolatile=isVolatile;}
+    var set=isVolatile?imgsV:imgs;
+    var count=isVolatile?FRAMES_V:FRAMES;
+    frame=(frame+1)%count;
+    app.style.backgroundImage='url('+set[frame].src+')';
+    var delay=isVolatile
+      ?300+200*Math.abs(Math.sin(Date.now()/SWELL_V*2*Math.PI))
+      :600+400*Math.sin(Date.now()/SWELL*2*Math.PI);
+    setTimeout(tick,delay);
+  }
+  setTimeout(tick,1100);
+})();
+
 document.addEventListener('pointerdown',function(e){
   var btn=e.target.closest('button');
   if(btn&&!btn.disabled)_playTileClick('select');
@@ -101,7 +102,12 @@ document.addEventListener('click',function(e){
 })();
 
 (async function(){
-  await loadDict();
+  await Promise.all([loadDict(),loadBountyThemes()]);
+  // Word index for the solver — chunked, ~0.5s. Solver features are inert
+  // until it finishes; the rank solve is kicked once it's ready.
+  buildGaddag(DICT,function(){
+    if(typeof S!=='undefined'&&S&&S.phase==='play')_scheduleRankSolve();
+  });
   buildSQMap();
   achvInit();
   if(hasSave()&&loadGame()){
