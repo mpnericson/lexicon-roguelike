@@ -106,6 +106,7 @@ function buildEngineState(freeHandCount){
     cartographerMult:S.cartographerMult||1,
     bhMult:S.bhMult||1,
     crossroadsCount:S.crossroadsCount||0,
+    ouroborosBonus:S.ouroborosBonus||0,
     discardsLeft:S.disc||0,
     discPressure:S.discPressure||0,
     bagColouredCount:S.bag?S.bag.filter(function(t){return t.variant;}).length:0
@@ -617,6 +618,17 @@ function _bounceStamp(id){
   }
 }
 
+// ── Shared "scale bounce" hook ────────────────────────────────────────────────
+// Scaling stamps (Crossroads, Bounty Hunter, Ouroboros, …) permanently grow a
+// counter in S each time some condition fires. This bounces the stamp's bar face
+// at the moment it scales, so the growth reads visually. Two ways to trigger it:
+//   • During scoring — put scaleBounce:'<stampId>' on the event that marks the
+//     scale. runScoreAnim fires the bounce on that event's beat (works on silent
+//     display ticks too, e.g. Crossroads' crossword-tick).
+//   • Outside scoring — call stampScaleBounce('<stampId>') directly (e.g. play.js
+//     when a bounty resolves for Bounty Hunter).
+function stampScaleBounce(id){if(id)_bounceStamp(id);}
+
 // Waits for the sticker peel+flatten to reach 'hold' before the ding fires.
 // Starts the peel now if it hasn't been started yet (handles events[0] edge case).
 async function _awaitPeelHold(sqIdx){
@@ -724,6 +736,7 @@ async function runScoreAnim(events,total){
     if(!ev._skip&&!ev.silent)_playScoreDing();
     if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
     if(ev.floatStampId&&!ev._skip)_bounceStamp(ev.floatStampId);
+    if(ev.scaleBounce&&!ev._skip)stampScaleBounce(ev.scaleBounce);
     return curDelay;
   }
 
@@ -834,6 +847,11 @@ async function runScoreAnim(events,total){
             _playScoreDing();
             if(ev.floatSqIdx!=null)_activateStickerFloat(ev.floatSqIdx);
             if(ev.floatStampId)_bounceStamp(ev.floatStampId);
+            // Scaling stamps riding this tile's beat (Ouroboros per O, Cartographer
+            // per corner): bump the persistent counter LIVE, in sync with the bounce
+            // above and the tile's bink below. Score is already locked in res.total,
+            // so this only advances the stored value + tooltip.
+            if(ev.scaleField){S[ev.scaleField]=(S[ev.scaleField]||0)+(ev.scaleDelta||0);_tooltipRefreshIfOpen();}
             _binkEl(tileEl);
             _applyCoApply(ev); // merged +mult / bonus land on this same bounce
             // Gold this tile earned (gold/Gilded +$1) ticks on the same bounce.
@@ -881,7 +899,9 @@ async function runScoreAnim(events,total){
       // Display-only: bumps Crossroads' live preview counter so a hovered tooltip steps up
       // as each crossword finishes scoring, even though the real mult applies later as one
       // event in the post-word phase (see crossroads' onPostWord in data.js).
+      // Bounce Crossroads' bar face as each crossword scales it (scaleBounce hook).
       S._crossroadsLiveCount=(S._crossroadsLiveCount||0)+1;
+      if(ev.scaleBounce)stampScaleBounce(ev.scaleBounce);
       _tooltipRefreshIfOpen();
 
     }else if(ev.type==='x-mult'){

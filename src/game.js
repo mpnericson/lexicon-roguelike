@@ -90,7 +90,7 @@ function startGame(seed){
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,palUnlocked:false,devMode:false,
      phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,bhMult:1,palMult:1,playerMult:1,cartographerMult:1,palWords:[],localCooldowns:new Set(),
      lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,
-     constraintOrder:_co.slice(0,STAGES.length),usedLetters:new Set(),stickersSoldThisStage:0,crossroadsCount:0,
+     constraintOrder:_co.slice(0,STAGES.length),usedLetters:new Set(),stickersSoldThisStage:0,crossroadsCount:0,ouroborosBonus:0,
      stamps:[],bagBlueAnchors:{},pool:_bag.slice(),
      bounties:_generateBounties(3,[])};
   window._easyHint=null;

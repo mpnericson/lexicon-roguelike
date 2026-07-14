@@ -469,7 +469,7 @@ function _checkRankReward(score, top10) {
   }
   if (rank <= 10) _showRankReward(rank);
   if (rank === 1 && hasStamp('the_player')) {
-    S.playerMult=parseFloat(((S.playerMult||1)+0.5).toFixed(2));toast('The Player: ×'+S.playerMult.toFixed(1)+' mult!');
+    S.playerMult=parseFloat(((S.playerMult||1)+0.5).toFixed(2));stampScaleBounce('the_player');toast('The Player: ×'+S.playerMult.toFixed(1)+' mult!');
   }
 }
 

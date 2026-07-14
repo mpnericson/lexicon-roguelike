@@ -113,6 +113,10 @@ async function playWord(){
     if(_hasMT&&main.word.length>=5){for(var _mj=0;_mj<main.tiles.length;_mj++){var _mIdx=main.tiles[_mj].idx;var _mGt=(S.btTop&&S.btTop[_mIdx]&&S.btTop[_mIdx].isNew)?S.btTop[_mIdx]:S.bt[_mIdx];if(_mGt)transformTile(_mGt.id,{variant:'gold'});}}
     S.crossroadsCount=(S.crossroadsCount||0)+(res.crossWordCount||0);
     S._crossroadsLiveCount=null; // animation's display-only counter is now caught up — defer to the real one
+    // Ouroboros & Cartographer grow LIVE during the score animation (their
+    // per-tile events carry a scaleField, applied in scoring.js on the tile's
+    // bink) so their counters climb the instant an O / corner tile scores — no
+    // post-scoring lump commit needed here.
     _proletariatSpread();
     _checkRankReward(res.total,_capturedRankTop10);
     achvCheck('word_played',{bingo:res.bingo,isPalin:isExtendedPalindrome(main.word)});
@@ -125,12 +129,7 @@ async function playWord(){
         if(_peSeen[_pw]||S.palWords.indexOf(_pw)>=0)continue;
         _peSeen[_pw]=1;S.palWords.push(_pw);S.palMult=(S.palMult||1)+0.25;
       }
-      if(Object.keys(_peSeen).length)toast('Palindrome Engine: ×'+fmtMult(S.palMult)+'!');
-    }
-    if(hasStamp('cartographer')){
-      var _corners={};_corners[0]=1;_corners[B-1]=1;_corners[(B-1)*B]=1;_corners[B*B-1]=1;
-      var _cn=0;for(var _cti=0;_cti<nt.length;_cti++){if(_corners[nt[_cti].idx])_cn++;}
-      if(_cn>0){S.cartographerMult=(S.cartographerMult||1)+0.5*_cn;toast('Cartographer: ×'+fmtMult(S.cartographerMult)+'!');}
+      if(Object.keys(_peSeen).length){stampScaleBounce('palindrome_engine');toast('Palindrome Engine: ×'+fmtMult(S.palMult)+'!');}
     }
   }else{toast(scoreLockMsg);}
   // Spring trap: eject tile(s) into bag before commit
@@ -215,7 +214,7 @@ async function playWord(){
     for(var _mbo=0;_mbo<_bDesc.length;_mbo++){
       await animBountySlideOut(_bDesc[_mbo].scrollIdx);
       S.bounties.splice(_bDesc[_mbo].scrollIdx,1);
-      if(_hasBH)S.bhMult=(S.bhMult||1)+0.25;
+      if(_hasBH){S.bhMult=(S.bhMult||1)+0.25;stampScaleBounce('bounty_hunter');}
     }
     if(_bGold)await animGoldTick(_bGold);
     renderHUD();
@@ -344,7 +343,7 @@ function discardTiles(){
     var _discardIds={};
     for(var _di=0;_di<S.hand.length;_di++){if(S.hand[_di]&&S.hand[_di].sel){_discardIds[S.hand[_di].id]=true;setTileState(S.hand[_di],'stored',{storedIn:'discard'});}}
     S.hand=S.hand.filter(function(t){return!t||!_discardIds[t.id];});HP.x=[];HP.vx=[];window._easyHint=null;S.disc--;
-    if(hasStamp('pressure_cooker'))S.discPressure=(S.discPressure||0)+1;
+    if(hasStamp('pressure_cooker')){S.discPressure=(S.discPressure||0)+1;stampScaleBounce('pressure_cooker');}
     saveGame();
     var keptCount=S.hand.filter(Boolean).length;
     var _hm2=handMax();var _drawCap2=(currentConstraint()==='c_draw3')?3:_hm2;var _dcDrawN=S.devMode?Math.min(sel.length,_drawCap2):Math.min(Math.min(sel.length,_drawCap2),S.bag.length);

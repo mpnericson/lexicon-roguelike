@@ -32,8 +32,8 @@
 //   state          plain values that influence scoring:
 //     freeHandCount, constraint, usedLetters, stickersSold,
 //     pendingBountyReward, drunkValid, magicStreak, drunkStreak, palMult,
-//     playerMult, cartographerMult, bhMult, crossroadsCount, discardsLeft,
-//     discPressure, bagColouredCount
+//     playerMult, cartographerMult, bhMult, crossroadsCount, ouroborosBonus,
+//     discardsLeft, discPressure, bagColouredCount
 // }
 //
 // Bracket order:
@@ -46,7 +46,8 @@
 //                hooks left → right
 //             3. multiplicative — board onTileMult on this square
 //                (DL/TL/DW/TW), then multiplicative aura hooks
-//             4. retrigger — def.retrigger squares, then red tile variant
+//             4. retrigger — def.retrigger squares, then red tile variant,
+//                then stamp onRetrigger hooks left → right (Khoomiich)
 //   POST      1. bingo +50
 //             2. board onPostWordAdd, all placed instances
 //             3. board onPostWordMult, all placed instances
@@ -214,7 +215,10 @@ function _engAuraHits(aura, sqIdx) {
 // ts = tile's running score coming in (0 on first pass, current value on
 // retrigger). Returns updated tile score. Does NOT touch ctx.letters.
 
-function _engTilePasses(tile, ctx, ts, skipRetrigger) {
+// retrigFloat (optional): stamp id to attach to this pass's base-letter event
+// so the stamp bounces on the tile's re-score bounce (Khoomiich), not a beat
+// earlier on the retrigger announce event.
+function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
   var sqIdx = tile.idx;
   var sid = ctx.boardStickers[sqIdx];
   var def = sid ? sqd(sid) : null;
@@ -230,8 +234,10 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger) {
     && ctx.state.usedLetters && ctx.state.usedLetters.has(tile.letter);
   if (_letterUsed) baseSc = 0;
   ts += baseSc;
-  ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,
-    label:tile.letter+(tile.isBlank?' (blank)':'')+(_letterUsed?' (used-0)':'')});
+  var _baseEv = {type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,
+    label:tile.letter+(tile.isBlank?' (blank)':'')+(_letterUsed?' (used-0)':'')};
+  if (retrigFloat) _baseEv.floatStampId = retrigFloat;
+  ctx.events.push(_baseEv);
 
   // 2. Additive — board sticker on this square (cooldown-gated)
   if (sqActive && def && def.onTileAdd && !ctx.stickerLocked && !ju) {
@@ -279,6 +285,21 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger) {
     if (tile.variant === 'red') {
       ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:'Red'});
       ts = _engTilePasses(tile, ctx, ts, true);
+    }
+    // Stamp-driven retriggers (Khoomiich), left → right. onRetrigger returns
+    // how many extra times this tile should re-score.
+    if (!ctx.stickerLocked) {
+      for (var _sri = 0; _sri < ctx.stamps.length; _sri++) {
+        var _srd = sqd(ctx.stamps[_sri].id);
+        if (!_srd || !_srd.onRetrigger) continue;
+        var _srn = _srd.onRetrigger(tile, ctx, ctx.stamps[_sri]) || 0;
+        for (var _srj = 0; _srj < _srn; _srj++) {
+          // Announce event binks the tile only; the stamp bounce rides the
+          // re-score pass's base-letter event so it lands with the score bump.
+          ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:_srd.name});
+          ts = _engTilePasses(tile, ctx, ts, true, ctx.stamps[_sri].id);
+        }
+      }
     }
   }
   return ts;

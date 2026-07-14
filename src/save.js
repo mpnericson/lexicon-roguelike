@@ -45,6 +45,7 @@ function saveGame() {
       usedLetters: Array.from(S.usedLetters||[]),
       stickersSoldThisStage: S.stickersSoldThisStage||0,
       crossroadsCount: S.crossroadsCount||0,
+      ouroborosBonus: S.ouroborosBonus||0,
       stamps: (S.stamps||[]).map(function(ts){return{id:ts.id};}),
       stickerInventory: (S.stickerInventory||[]).map(function(p){return{id:p.id};}),
       pool: (S.pool||[]).map(function(t){return{letter:t.letter,isBlank:!!t.isBlank,id:t.id,variant:t.variant||null};})
@@ -110,6 +111,7 @@ function loadGame() {
       usedLetters: new Set(d.usedLetters||[]),
       stickersSoldThisStage: d.stickersSoldThisStage||0,
       crossroadsCount: d.crossroadsCount||0,
+      ouroborosBonus: d.ouroborosBonus||0,
       stamps: ((d.stamps||d.tileStickers)||[]).map(function(ts){return(ts&&ts.id)?{id:ts.id}:null;}).filter(Boolean), // d.tileStickers: pre-rename saves
       devMode: false,
       pool: d.pool || (function(){

@@ -209,16 +209,16 @@ Mushrooms & Fungi
 cap, mold, spore, lichen, truffle, mycelium
 
 Rivers
-bank, bend, delta, rapids, estuary, riverbed
+nile, amazon, seine, thames, ganges, yangtze\
 
 Waterfalls
-mist, drop, gorge, basin, plunge, cataract
+niagra, angel, yosemite, victoria, iguazu, kaieteur\
 
 Migratory Birds
 tern, goose, roost, flyway, migrate, wingspan
 
 Mountains
-peak, crag, ridge, valley, glacier, altitude
+everest, aoraki, fuji, etna, orodruin, erebor
 
 Deserts
 dry, sand, dune, cactus, mirage, drought

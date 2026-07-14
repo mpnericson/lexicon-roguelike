@@ -82,7 +82,7 @@ SQ.push({id:'magic_number',name:'Magic Number',
     if(w.length===3){
       var n=(ctx.state.magicStreak||0)+1;
       ctx.plusMults.push(n);
-      ctx.events.push({type:'plus-mult',delta:n,label:'Magic Number +'+n+' mult'});
+      ctx.events.push({type:'plus-mult',delta:n,label:'Magic Number +'+n+' mult',scaleBounce:'magic_number'});
     }
   },
   onWordPlayed:function(w,wt){
@@ -110,10 +110,40 @@ SQ.push({id:'the_purist',name:'The Purist',
 SQ.push({id:'crossroads',name:'Crossroads',desc:'Every crossword you form permanently adds +2 mult to this stamp.',
   rarity:'uncommon',cost:5,bg:'#2a1800',fg:'#f0c040',icon:'CR',type:'stamp',
   liveDesc:function(p){var n=(S._crossroadsLiveCount!=null)?S._crossroadsLiveCount:(S.crossroadsCount||0);return 'Each crossword adds +2 permanent mult. Currently: <span style="color:#f0e040">+'+(n*2)+' mult</span> ('+n+' crossword'+(n!==1?'s':'')+').';},
-  onCrossword:function(ctx){ctx.events.push({type:'crossword-tick',isSilent:true});},
+  onCrossword:function(ctx){ctx.events.push({type:'crossword-tick',isSilent:true,scaleBounce:'crossroads'});},
   onPostWord:function(w,wt,ctx){
     var n=(ctx.state.crossroadsCount||0)+(ctx.crossWordCount||0);
     if(n>0){ctx.plusMults.push(n*2);ctx.events.push({type:'plus-mult',delta:n*2,label:'Crossroads +'+(n*2)+' mult'});}
+  }});
+
+// ── OUROBOROS ─────────────────────────────────────────────────────────────────
+// type: stamp · rarity: rare · cost: $8
+// A snowball: it stores a permanent letter-score bonus (S.ouroborosBonus) that
+// grows +5 for every O that scores — committed board O's and newly-played O's
+// alike, once per word the O scores in; blanks assigned O count too (the engine
+// tile carries the display letter). The growth commits LIVE as each O scores
+// (its tile event's scaleField → scoring.js applies it on the O's bink), so the
+// bonus visibly climbs during the animation. onPostWord adds the CURRENT stored bonus as flat letter
+// score once per play — the engine reads the pre-play value, so the O you score
+// this turn feeds the next play, not this one.
+SQ.push({id:'ouroboros',name:'Ouroboros',
+  desc:'Each O you score permanently adds +5 letter score to Ouroboros, applied to every word. Board O\'s count too.',
+  rarity:'rare',cost:8,bg:'#0a1a0a',fg:'#80e080',icon:'OU',type:'stamp',
+  onAcquire:function(){if(!S.ouroborosBonus)S.ouroborosBonus=0;},
+  liveDesc:function(p){var n=S.ouroborosBonus||0;return 'Each O scored: permanent +5 letter score. Currently at <span style="color:#f0e040">+'+n+' letter score</span> per word.';},
+  onPostWord:function(w,wt,ctx){
+    var bonus=ctx.state.ouroborosBonus||0;
+    if(bonus>0){ctx.letters+=bonus;ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Ouroboros +'+bonus,floatStampId:'ouroboros'});}
+  },
+  // Each O that scores rides that tile's OWN scoring beat: push a tile-local
+  // letter event (adds 0 score) that becomes the tile's binking event, carrying
+  // floatStampId (bounce) + scaleField (bump S.ouroborosBonus +5). scoring.js
+  // fires both exactly when the O binks — every pass, so a retrigger or a second
+  // O stays in sync. No dedup ("any time an O scores"); the engine stays pure and
+  // onPostWord still applied the pre-play value this turn.
+  onPerTile:function(tile,ctx,ts){
+    if(tile.letter==='O')ctx.events.push({type:'letter',sqIdx:tile.idx,lettersAfter:ts,isTileLocal:true,floatStampId:'ouroboros',scaleField:'ouroborosBonus',scaleDelta:5});
+    return ts;
   }});
 
 // ── MIRROR ────────────────────────────────────────────────────────────────────
@@ -191,7 +221,7 @@ SQ.push({id:'drunk_text',name:'Drunk Text',
     }else{
       var dm=Math.round((1+streak*0.1)*10)/10;
       ctx.xmults.push(dm);
-      ctx.events.push({type:'x-mult',factor:dm,label:'Drunk Text ×'+dm.toFixed(1)});
+      ctx.events.push({type:'x-mult',factor:dm,label:'Drunk Text ×'+dm.toFixed(1),scaleBounce:'drunk_text'});
     }
   },
   onWordPlayed:function(w,wt){
@@ -212,13 +242,23 @@ SQ.push({id:'the_player',name:'The Player',desc:'Each best play permanently adds
 
 // ── CARTOGRAPHER ──────────────────────────────────────────────────────────────
 // type: stamp · rarity: rare · cost: $8
-// onPostWord: applies ctx.state.cartographerMult (accumulated in play.js — grows
-// by +0.5 for every tile played on one of the board's four corners). Starts ×1.
+// onPerTile: each newly-played corner tile pushes a tile-local letter event
+// (adds 0 score) carrying floatStampId + scaleField, deduped by square so a corner
+// tile in two words / on retrigger grows once. scoring.js bumps S.cartographerMult
+// +0.5 and bounces the stamp in sync with that tile's bink. onPostWord applies the
+// CURRENT (pre-play) mult, so this play's corners feed the next play.
 SQ.push({id:'cartographer',name:'Cartographer',
   desc:'Each tile you play in a corner of the board permanently adds ×0.5 mult. Starts at ×1.',
   rarity:'rare',cost:8,bg:'#0a1a14',fg:'#60e0a0',icon:'CG',type:'stamp',
   onAcquire:function(){if(!S.cartographerMult)S.cartographerMult=1;},
   liveDesc:function(p){var cm=parseFloat((S.cartographerMult||1).toFixed(2));var n=Math.round((cm-1)*2);return n>0?n+' corner tile'+(n!==1?'s':'')+' played → <span style="color:#f0e040">×'+cm.toFixed(1)+' mult</span>.':'Play a tile on any board corner to start stacking ×0.5 mult.';},
+  onPerTile:function(tile,ctx,ts){
+    if(tile.isNew&&(tile.idx===0||tile.idx===B-1||tile.idx===(B-1)*B||tile.idx===B*B-1)){
+      if(!ctx._cartoScored)ctx._cartoScored={};
+      if(!ctx._cartoScored[tile.idx]){ctx._cartoScored[tile.idx]=1;ctx.events.push({type:'letter',sqIdx:tile.idx,lettersAfter:ts,isTileLocal:true,floatStampId:'cartographer',scaleField:'cartographerMult',scaleDelta:0.5});}
+    }
+    return ts;
+  },
   onPostWord:function(w,wt,ctx){var cm=ctx.state.cartographerMult||1;if(cm>1){ctx.xmults.push(cm);ctx.events.push({type:'x-mult',factor:parseFloat(cm.toFixed(2)),label:'Cartographer ×'+fmtMult(cm),floatStampId:'cartographer'});}}});
 
 // ── THE KING ──────────────────────────────────────────────────────────────────
@@ -230,6 +270,20 @@ SQ.push({id:'chess_king',name:'The King',
   desc:'Every square in any chess piece aura becomes a Triple Word square.',
   rarity:'rare',cost:8,qty:1,bg:'#1a1500',fg:'#ffd700',icon:'♚',type:'stamp',
   onBuildCtx:function(ctx){ctx.chessKingActive=true;}});
+
+// ── KHOOMIICH ─────────────────────────────────────────────────────────────────
+// type: stamp · rarity: uncommon · cost: $5
+// Bracket 4 (onRetrigger): returns 1 for every played vowel (A/E/I/O/U,
+// including blanks assigned a vowel), so the engine re-runs that tile's whole
+// per-tile pass one extra time — re-scoring its letter value, per-tile stamp
+// bonuses, and any DL/TL/chess mults on its square.
+SQ.push({id:'khoomiich',name:'Khoomiich',
+  desc:'Retriggers every vowel (A, E, I, O, U) played in scoring.',
+  rarity:'uncommon',cost:5,bg:'#0a1a1a',fg:'#60e0d0',icon:'᚛',type:'stamp',
+  onRetrigger:function(tile){
+    var L=(tile.letter||'').toUpperCase();
+    return (L==='A'||L==='E'||L==='I'||L==='O'||L==='U')?1:0;
+  }});
 
 // ── NATO PHONETIC ALPHABET ────────────────────────────────────────────────────
 // 12 stamps, one per letter. Each fires its onPerTile hook independently
@@ -259,12 +313,13 @@ SQ.push({id:'chess_king',name:'The King',
       // ── NATO: [name] ──────────────────────────────────────────────────────
       // Bracket 3 (onPerTile): fires once per stamp instance per matching tile.
       // With 2 copies: each matching tile gets ls*2 bonus points and lm*2 mult.
+      // tile.letter is the DISPLAY letter, so a blank assigned this letter counts.
       SQ.push({
         id:id,name:d.n,
         desc:'Each '+d.l+' in the word: +'+ls+' letter score, +'+lm+' mult.',
         rarity:'common',cost:3,bg:c.bg,fg:c.fg,icon:d.l,type:'stamp',
         onPerTile:function(tile,ctx,ts){
-          if(!tile.isBlank&&tile.letter===d.l){
+          if(tile.letter===d.l){
             ts+=ls;
             ctx.events.push({type:'letter',sqIdx:tile.idx,lettersAfter:ts,isTileLocal:true,label:d.n+' +'+ls,floatStampId:id});
             ctx.plusMults.push(lm);
