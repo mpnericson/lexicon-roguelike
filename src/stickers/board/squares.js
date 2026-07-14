@@ -64,8 +64,14 @@ SQ.push({id:'gilded',name:'Gilded',desc:'Transforms tile to gold before scoring 
   onPreScore:function(tile,ctx,sqIdx){
     if(tile.variant==='gold')return;
     tile.variant='gold';
-    if(!ctx.preview&&S.bt[sqIdx]&&S.bt[sqIdx].id)transformTile(S.bt[sqIdx].id,{variant:'gold'});
-    ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Gilded → Gold',floatSqIdx:sqIdx});
+    // Gild the tile actually played on this square. With a Jenga stack the
+    // played tile is the fresh top (S.btTop), not the buried committed tile in
+    // S.bt — gilding the buried one would leave the visible tile ungilded.
+    if(!ctx.preview){
+      var _gt=(S.btTop&&S.btTop[sqIdx]&&S.btTop[sqIdx].isNew)?S.btTop[sqIdx]:S.bt[sqIdx];
+      if(_gt&&_gt.id)transformTile(_gt.id,{variant:'gold'});
+    }
+    ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Gilded → Gold',floatSqIdx:sqIdx,goldifySq:sqIdx});
   }});
 
 // ── VOID ──────────────────────────────────────────────────────────────────────

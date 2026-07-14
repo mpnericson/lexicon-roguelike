@@ -34,6 +34,25 @@ SQ.push({id:'whack_a_mole',name:'Whack-a-Mole',
     return ts;
   }});
 
+// ── VIRUS ────────────────────────────────────────────────────────────────────
+// type: board · rarity: rare · cost: $8
+// Per-tile additive bracket (onTileAdd): a tile landing here gains +10 letter
+// score and +2 mult but costs $1. After scoring, play.js consumes the square
+// (perishable) and spawns two fresh Virus stickers on the nearest free squares,
+// so the infection spreads.
+SQ.push({id:'virus',name:'Virus',
+  desc:'Tile here: +10 letter score, +2 mult, −$1. After scoring it spreads to the 2 closest free squares.',
+  rarity:'rare',cost:8,qty:3,bg:'#0a1a0a',fg:'#60ff40',icon:'☣',type:'board',perishable:true,
+  onTileAdd:function(tile,ctx,ts,baseSc,sqIdx){
+    ts+=10;
+    ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Virus +10',floatSqIdx:sqIdx});
+    ctx.plusMults.push(2);
+    ctx.events.push({type:'plus-mult',delta:2,sqIdx:sqIdx,label:'Virus +2 mult',floatSqIdx:sqIdx});
+    ctx.tgold-=1;
+    ctx.events.push({type:'gold',delta:-1,sqIdx:sqIdx,label:'Virus −$1',floatSqIdx:sqIdx});
+    return ts;
+  }});
+
 // ── SLOT MACHINE ─────────────────────────────────────────────────────────────
 // type: board · rarity: rare · cost: $8
 // Per-tile additive bracket (onTileAdd): rolls all random effects once per
@@ -60,11 +79,12 @@ SQ.push({id:'slot_machine',name:'Slot Machine',
     }
     return ts;
   },
-  onPostWordMult:function(w,wt,ctx){
+  onPostWordMult:function(w,wt,ctx,inst){
     if(ctx._slotApplied||!ctx.slotRoll)return;
     ctx._slotApplied=true;
     var smr=ctx.slotRoll;
-    if(smr.wm_mult>1){ctx.xmults.push(smr.wm_mult);ctx.events.push({type:'x-mult',factor:smr.wm_mult,label:'Slot ×'+smr.wm_mult});}
-    if(smr.gold>0){ctx.tgold+=smr.gold;ctx.events.push({type:'gold',delta:smr.gold,label:'Slot +$'+smr.gold});}
-    if(smr.variant){for(var _si=0;_si<wt.length;_si++){if(S.bt[wt[_si].idx]&&S.bt[wt[_si].idx].id)transformTile(S.bt[wt[_si].idx].id,{variant:smr.variant});}ctx.events.push({type:'letter',lettersAfter:ctx.letters,isTileLocal:true,label:'Slot: All '+smr.variant+'!'});}
+    var _slotSq=inst?inst.sqIdx:null;
+    if(smr.wm_mult>1){ctx.xmults.push(smr.wm_mult);ctx.events.push({type:'x-mult',factor:smr.wm_mult,label:'Slot ×'+smr.wm_mult,floatSqIdx:_slotSq});}
+    if(smr.gold>0){ctx.tgold+=smr.gold;ctx.events.push({type:'gold',delta:smr.gold,label:'Slot +$'+smr.gold,floatSqIdx:_slotSq});}
+    if(smr.variant){if(!ctx.preview){for(var _si=0;_si<wt.length;_si++){var _sIdx=wt[_si].idx;var _sGt=(S.btTop&&S.btTop[_sIdx]&&S.btTop[_sIdx].isNew)?S.btTop[_sIdx]:S.bt[_sIdx];if(_sGt&&_sGt.id)transformTile(_sGt.id,{variant:smr.variant});}}ctx.events.push({type:'letter',lettersAfter:ctx.letters,isTileLocal:true,label:'Slot: All '+smr.variant+'!'});}
   }});

@@ -49,7 +49,7 @@ function _chessHoverOff() {
 
 // Shared onBuildCtx body: each piece registers its own multiplicative aura
 // over its attack squares. Overlapping pieces STACK — a tile covered by two
-// pieces scores ×3 twice (×9). The King (tile sticker) upgrades every aura
+// pieces scores ×3 twice (×9). The King (stamp) upgrades every aura
 // square to Triple Word via ctx.chessKingActive.
 function _chessRegister(ctx, p) {
   var pieceSq = p.sqIdx;
@@ -61,7 +61,7 @@ function _chessRegister(ctx, p) {
       ctx2.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'♟ ×3',floatSqIdx:pieceSq});
       if (ctx2.chessKingActive && tile.isNew) {
         ctx2.xmults.push(3);
-        ctx2.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'♚ King ×3',floatTsId:'chess_king'});
+        ctx2.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'♚ King ×3',floatStampId:'chess_king'});
       }
       return ts;
     }

@@ -6,7 +6,9 @@
 // between callers:
 //   1. GENERATE  _solverGenMoves() — GADDAG anchor traversal (gaddag.js)
 //                emits every legal placement spellable with the rack.
-//                Synchronous and fast (ms).
+//                Synchronous and fast (ms). When the Jenga stamp is owned
+//                (hook at the top of generation) the walk also emits stacked
+//                plays: rack tiles placed on committed tiles (isTop).
 //   2. SCORE     _solverScoreMove() per candidate through the real
 //                scoring engine (runScoreEngine, preview mode), chunked
 //                via setTimeout so the UI stays responsive.
@@ -67,7 +69,9 @@ function _solverCrossMasks(pre) {
 
 // Anchor squares: empty squares 4-adjacent to a tile (centre square when the
 // board is empty). Every legal move covers at least one anchor.
-function _solverAnchors() {
+// Jenga: stackable (occupied) squares join the anchor set — pure-stack moves
+// place on no empty square, so they must be generated from the stack square.
+function _solverAnchors(stackable) {
   var list = [], is = new Uint8Array(B * B), hasTiles = false;
   for (var i = 0; i < B * B; i++) {
     if (!S.bt[i]) continue;
@@ -82,34 +86,84 @@ function _solverAnchors() {
     }
   }
   if (!hasTiles) { var mid = Math.floor(B / 2) * B + Math.floor(B / 2); is[mid] = 1; list.push(mid); }
+  if (stackable) for (var si = 0; si < B * B; si++) { if (stackable[si] && !is[si]) { is[si] = 1; list.push(si); } }
   return { list: list, is: is };
 }
 
 // ---- GADDAG move generation (Gordon's algorithm) ----
 // Returns every legal placement as {word, r, c, isH, placements} where
-// placements = [{idx, letter, isBlank}] covers only the NEW tiles.
+// placements = [{idx, letter, isBlank, isTop}] covers only the NEW tiles.
 // Each move is generated exactly once — from its leftmost/topmost covered
 // anchor: the leftward walk never places a tile on another anchor square
 // (moves doing so are found from that anchor instead). Blanks are used
 // greedily only when the rack letter is unavailable, like the old solver.
-function _solverGenMoves(handCounts, blankCount) {
+//
+// Jenga (jengaActive): committed tiles gain an "override" branch — a rack
+// tile stacked on top replaces the letter in the main word (isTop:true).
+// Overrides carry no cross-word constraint (the buried letter keeps the
+// perpendicular run) and stackable squares join the anchor set. Uniqueness
+// extends naturally: a move is generated from its leftmost placed-on anchor,
+// so overrides are offered only at the walk's own anchor (leftward) or on the
+// rightward extension — never left of the anchor.
+function _solverGenMoves(handCounts, blankCount, jengaActive) {
+  // ---- Jenga hook — everything below is classic Gordon when this is null.
+  var stackable = null;
+  if (jengaActive) {
+    stackable = new Uint8Array(B * B);
+    for (var sqi = 0; sqi < B * B; sqi++) {
+      if (S.bt[sqi] && !S.bt[sqi].isNew && !S.bt[sqi]._stackLevel && !(S.btTop && S.btTop[sqi])) stackable[sqi] = 1;
+    }
+  }
   var pre = _solverPrecompute();
   var masks = _solverCrossMasks(pre);
-  var an = _solverAnchors();
+  var an = _solverAnchors(stackable);
   var moves = [];
   var rack = {}; for (var rl in handCounts) rack[rl] = handCounts[rl];
   var blanks = blankCount;
-  var pend = {}, pendN = 0; // idx -> {letter, isBlank} placed along the current path
+  var pend = {}, pendN = 0; // idx -> {letter, isBlank, isTop} placed along the current path
 
   function record(loIdx, hiIdx, stride, isH) {
     var word = '';
     for (var i = loIdx; i <= hiIdx; i += stride) {
-      var t = S.bt[i];
-      word += t ? tileDisplayLetter(t) : pend[i].letter;
+      word += pend[i] ? pend[i].letter : tileDisplayLetter(S.bt[i]);
     }
     var pl = [];
-    for (var k in pend) pl.push({ idx: +k, letter: pend[k].letter, isBlank: pend[k].isBlank });
+    for (var k in pend) pl.push({ idx: +k, letter: pend[k].letter, isBlank: pend[k].isBlank, isTop: !!pend[k].isTop });
+    // A single stacked tile: play-time direction comes from _engWordDir
+    // (horizontal wins when the square has any horizontal neighbour), so only
+    // emit the direction the engine will actually judge the play in.
+    if (pl.length === 1 && pl[0].isTop) {
+      var pi = pl[0].idx, pr = Math.floor(pi / B), pc = pi % B;
+      var hasH = !!((pc > 0 && S.bt[pi - 1]) || (pc < B - 1 && S.bt[pi + 1]));
+      var hasV = !!((pr > 0 && S.bt[pi - B]) || (pr < B - 1 && S.bt[pi + B]));
+      var engH = !(hasV && !hasH);
+      if (engH !== isH) return;
+    }
     moves.push({ word: word, r: Math.floor(loIdx / B), c: loIdx % B, isH: isH, placements: pl });
+  }
+
+  // Enumerate every rack letter with a GADDAG child at `node`, place it on
+  // `cur` (m gates letters; GD_ALLMASK for overrides since they carry no
+  // cross-word constraint) and continue the walk. side 0 = afterLeft,
+  // side 1 = afterRight. Restores rack/blank/pend state after each branch.
+  function tryLetters(cur, node, m, isTop, side, aIdx, aCo, off, loIdx, isH, stride, mask) {
+    var arr = GADDAG.arr, k = arr[node * 3 + 1];
+    while (k) {
+      var c = arr[k * 3] & 255;
+      if (c >= 65 && c <= 90 && (m >> (c - 65) & 1)) {
+        var L = String.fromCharCode(c);
+        var useBlank = !(rack[L] > 0);
+        if (!useBlank || blanks > 0) {
+          if (useBlank) blanks--; else rack[L]--;
+          pend[cur] = { letter: L, isBlank: useBlank, isTop: isTop }; pendN++;
+          if (side === 0) afterLeft(aIdx, aCo, off, k, isH, stride, mask);
+          else afterRight(aIdx, aCo, off, k, loIdx, isH, stride, mask);
+          delete pend[cur]; pendN--;
+          if (useBlank) blanks++; else rack[L]++;
+        }
+      }
+      k = arr[k * 3 + 2];
+    }
   }
 
   // Walk leftwards from the anchor consuming board tiles / placing rack tiles.
@@ -118,27 +172,21 @@ function _solverGenMoves(handCounts, blankCount) {
     if (co < 0) return;
     var cur = aIdx + off * stride, bt = S.bt[cur];
     if (bt) {
-      var nx = gdChild(node, tileDisplayLetter(bt).charCodeAt(0));
-      if (nx) afterLeft(aIdx, aCo, off, nx, isH, stride, mask);
+      var stk = stackable && stackable[cur];
+      // Consume the board letter — except at a stack-anchor's own square
+      // (off 0): a walk that doesn't override its start anchor duplicates a
+      // move owned by the anchors of its actual placements.
+      if (!(stk && off === 0)) {
+        var nx = gdChild(node, tileDisplayLetter(bt).charCodeAt(0));
+        if (nx) afterLeft(aIdx, aCo, off, nx, isH, stride, mask);
+      }
+      // Jenga override — leftward only at the walk's own anchor; overriding
+      // further left would duplicate a move owned by that stack-anchor.
+      if (stk && off === 0) tryLetters(cur, node, GD_ALLMASK, true, 0, aIdx, aCo, off, 0, isH, stride, mask);
       return;
     }
     if (off < 0 && an.is[cur]) return; // dedupe: another anchor owns those moves
-    var arr = GADDAG.arr, k = arr[node * 3 + 1], m = mask[cur];
-    while (k) {
-      var c = arr[k * 3] & 255;
-      if (c >= 65 && c <= 90 && (m >> (c - 65) & 1)) {
-        var L = String.fromCharCode(c);
-        var useBlank = !(rack[L] > 0);
-        if (!useBlank || blanks > 0) {
-          if (useBlank) blanks--; else rack[L]--;
-          pend[cur] = { letter: L, isBlank: useBlank }; pendN++;
-          afterLeft(aIdx, aCo, off, k, isH, stride, mask);
-          delete pend[cur]; pendN--;
-          if (useBlank) blanks++; else rack[L]++;
-        }
-      }
-      k = arr[k * 3 + 2];
-    }
+    tryLetters(cur, node, mask[cur], false, 0, aIdx, aCo, off, 0, isH, stride, mask);
   }
 
   function afterLeft(aIdx, aCo, off, node, isH, stride, mask) {
@@ -160,24 +208,12 @@ function _solverGenMoves(handCounts, blankCount) {
     if (bt) {
       var nx = gdChild(node, tileDisplayLetter(bt).charCodeAt(0));
       if (nx) afterRight(aIdx, aCo, off, nx, loIdx, isH, stride, mask);
+      // Jenga override — rightward overrides always belong to this walk (the
+      // dedupe rule only restricts squares left of the anchor).
+      if (stackable && stackable[cur]) tryLetters(cur, node, GD_ALLMASK, true, 1, aIdx, aCo, off, loIdx, isH, stride, mask);
       return;
     }
-    var arr = GADDAG.arr, k = arr[node * 3 + 1], m = mask[cur];
-    while (k) {
-      var c = arr[k * 3] & 255;
-      if (c >= 65 && c <= 90 && (m >> (c - 65) & 1)) {
-        var L = String.fromCharCode(c);
-        var useBlank = !(rack[L] > 0);
-        if (!useBlank || blanks > 0) {
-          if (useBlank) blanks--; else rack[L]--;
-          pend[cur] = { letter: L, isBlank: useBlank }; pendN++;
-          afterRight(aIdx, aCo, off, k, loIdx, isH, stride, mask);
-          delete pend[cur]; pendN--;
-          if (useBlank) blanks++; else rack[L]++;
-        }
-      }
-      k = arr[k * 3 + 2];
-    }
+    tryLetters(cur, node, mask[cur], false, 1, aIdx, aCo, off, loIdx, isH, stride, mask);
   }
 
   function afterRight(aIdx, aCo, off, node, loIdx, isH, stride, mask) {
@@ -219,6 +255,18 @@ function _solverHandMaps(tiles) {
 // Returns {score, letters, mult, gold, word, r, c, isH, wt} or null.
 function _solverScoreMove(mv, hm) {
   var overlay = S.bt.slice(), newIdxs = [], blankUsed = 0, firstUse = {};
+  var jengaTops = null, jengaUnder = null;
+  // Committed stacks from previous plays keep a buried tile that still scores in
+  // any word the move forms through them.
+  for (var _ci = 0; _ci < B * B; _ci++) {
+    var _cb = S.bt[_ci];
+    if (_cb && _cb._buried) {
+      if (!jengaUnder) jengaUnder = {};
+      var _bu = _cb._buried;
+      jengaUnder[_ci] = { letter: tileDisplayLetter(_bu), isBlank: !!_bu.isBlank,
+        sc: _bu.isBlank ? (_bu._alchSc || 0) : (LS[_bu.letter] || 0), variant: _bu.variant || null };
+    }
+  }
   for (var i = 0; i < mv.placements.length; i++) {
     var p = mv.placements[i], variant = null, alch = 0;
     if (p.isBlank) {
@@ -227,6 +275,16 @@ function _solverScoreMove(mv, hm) {
     } else if (!firstUse[p.letter]) {
       firstUse[p.letter] = 1;
       variant = hm.handBestVariant[p.letter] || null;
+    }
+    // Jenga: remember the buried tile so the engine scores its letter value
+    // and (when valid) its cross word — the same inputs live play feeds it.
+    if (p.isTop) {
+      var un = S.bt[p.idx];
+      if (!jengaTops) jengaTops = new Set();
+      if (!jengaUnder) jengaUnder = {};
+      jengaTops.add(p.idx);
+      jengaUnder[p.idx] = { letter: tileDisplayLetter(un), isBlank: !!un.isBlank,
+        sc: un.isBlank ? (un._alchSc || 0) : (LS[un.letter] || 0), variant: un.variant || null };
     }
     overlay[p.idx] = {
       letter: p.letter, isNew: true, isBlank: p.isBlank,
@@ -240,19 +298,23 @@ function _solverScoreMove(mv, hm) {
   var _bingoHit = (hm.handTileCount > 0) ? (newCount >= hm.handTileCount) : (newCount === 7);
   var res = runScoreEngine({
     tiles: overlay, newIdxs: newIdxs, dir: mv.isH ? 'h' : 'v',
-    boardStickers: S.board, placed: S.placed, hotbar: S.tileStickers,
+    jengaTops: jengaTops, jengaUnder: jengaUnder,
+    jengaCrossIdxs: jengaTops ? _engJengaCrossIdxs(overlay, jengaTops, mv.isH ? 'h' : 'v', function (w) { return DICT.has(w); }) : null,
+    mirrorWords: (typeof hasStamp === 'function' && hasStamp('mirror')) ? _engMirrorWords(overlay, newIdxs, mv.isH ? 'h' : 'v', jengaTops, function (w) { return DICT.has(w); }) : null,
+    boardStickers: S.board, placed: S.placed, stamps: S.stamps,
     cooldowns: S.localCooldowns || new Set(), bounties: S.bounties || [],
     preview: true,
     state: buildEngineState(_bingoHit ? 0 : Math.max(1, (hm.handTileCount || 7) - newCount))
   });
   if (!res) return null;
-  // wt spans the full main word — used by highlight and auto-play
+  // wt spans the full main word — used by highlight and auto-play. Keyed on
+  // overlay isNew (not board occupancy) so Jenga tops read as new tiles.
   var startIdx = mv.r * B + mv.c, stride = mv.isH ? 1 : B, wt = [];
   for (var k = 0; k < mv.word.length; k++) {
-    var idx = startIdx + k * stride, ov = overlay[idx], ex = S.bt[idx];
-    wt.push(ex
-      ? { idx: idx, letter: mv.word[k], isNew: false, isBlank: !!ex.isBlank, variant: ex.variant || null }
-      : { idx: idx, letter: mv.word[k], isNew: true, isBlank: ov.isBlank, variant: ov.variant });
+    var idx = startIdx + k * stride, ov = overlay[idx];
+    wt.push((ov && ov.isNew)
+      ? { idx: idx, letter: mv.word[k], isNew: true, isBlank: ov.isBlank, variant: ov.variant, isTop: !!(jengaTops && jengaTops.has(idx)) }
+      : { idx: idx, letter: mv.word[k], isNew: false, isBlank: !!S.bt[idx].isBlank, variant: S.bt[idx].variant || null });
   }
   return { score: res.total, letters: res.letters, mult: res.mult, gold: res.tgold, word: mv.word, r: mv.r, c: mv.c, isH: mv.isH, wt: wt };
 }
@@ -292,9 +354,38 @@ function _solverInflateBounty(res, bounties) {
 //   shouldAbort()   optional — checked each chunk; true → onDone(null)
 //   onProgress(frac, best, total) optional — per-chunk UI hook
 //   onDone(best|null) — ranked results, or null if aborted
+// Palindrome-lock helper: a move unlocks scoring if its main word OR any cross
+// word it forms is an (extended) palindrome. Cross words are walked from the
+// placements over an S.bt-backed letter lookup. Only called during the c_pal
+// round, so the perpendicular walk stays off the normal hot path.
+function _solverFormsPal(mv) {
+  if (isExtendedPalindrome(mv.word)) return true;
+  function letAt(idx) {
+    for (var j = 0; j < mv.placements.length; j++) if (mv.placements[j].idx === idx) return mv.placements[j].letter;
+    var b = S.bt[idx];
+    return b ? tileDisplayLetter(b) : null;
+  }
+  for (var i = 0; i < mv.placements.length; i++) {
+    var p = mv.placements[i];
+    if (p.isTop) continue; // stacked tile keeps the buried tile's perpendicular run
+    var r = Math.floor(p.idx / B), c = p.idx % B, word = '';
+    if (mv.isH) { // main word horizontal → cross word runs vertically
+      var y0 = r; while (y0 > 0 && letAt((y0 - 1) * B + c) != null) y0--;
+      for (var y = y0; y < B && letAt(y * B + c) != null; y++) word += letAt(y * B + c);
+    } else {
+      var x0 = c; while (x0 > 0 && letAt(r * B + (x0 - 1)) != null) x0--;
+      for (var x = x0; x < B && letAt(r * B + x) != null; x++) word += letAt(r * B + x);
+    }
+    if (word.length > 1 && isExtendedPalindrome(word)) return true;
+  }
+  return false;
+}
+
 function _solverCore(opts) {
   var hm = _solverHandMaps(opts.handTiles);
-  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length);
+  // Jenga hook: stacked-play generation only when the stamp is owned.
+  var _jengaOn = typeof hasStamp === 'function' && hasStamp('jenga');
+  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length, _jengaOn);
   var cs = opts.constraintState || {};
   var _con = currentConstraint();
   var _palUnlocked = cs.palUnlocked != null ? cs.palUnlocked : S.palUnlocked;
@@ -309,7 +400,7 @@ function _solverCore(opts) {
     for (; mi < end; mi++) {
       var mv = moves[mi];
       if (mv.word.length < _minLen) continue;
-      if (_palLock && !isExtendedPalindrome(mv.word)) continue;
+      if (_palLock && !_solverFormsPal(mv)) continue;
       var res = _solverScoreMove(mv, hm);
       if (!res) continue;
       res = _solverInflateBounty(res, bounties);
@@ -377,7 +468,7 @@ function _checkRankReward(score, top10) {
     if (score >= top10[i].score) { rank = i + 1; break; }
   }
   if (rank <= 10) _showRankReward(rank);
-  if (rank === 1 && hasTileSticker('the_player')) {
+  if (rank === 1 && hasStamp('the_player')) {
     S.playerMult=parseFloat(((S.playerMult||1)+0.5).toFixed(2));toast('The Player: ×'+S.playerMult.toFixed(1)+' mult!');
   }
 }

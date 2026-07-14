@@ -15,7 +15,7 @@ function makePhysics(opts) {
     RAF: null, aL: 0, aR: 0, left: 0,
     fromX: [], toX: [], settleAt: 0, settleDur: 150,
     settleCallback: null,
-    movingCount: 0   // tiles in 'moving' state heading back to hotbar (phantom slots)
+    movingCount: 0   // tiles in 'moving' state heading back to hand (phantom slots)
   };
 
   ph.bounds = function() {
@@ -43,7 +43,7 @@ function makePhysics(opts) {
     var n = vis.length;
     if (ph.x.length !== n) {
       // Remap positions by item ID so tiles don't snap when count changes.
-      // Works for both hand-tile vis entries ({t,oi}) and raw sticker items ({id,...}).
+      // Works for both hand-tile vis entries ({t,oi}) and raw stamp items ({id,...}).
       var old = {};
       for (var i = 0; i < ph.tiles.length; i++) {
         var it = ph.tiles[i]; var tid = (it.t && it.t.id) || it.id || null;
@@ -104,7 +104,7 @@ function makePhysics(opts) {
         insertIdx = activeDrag.funnelInsertIdx;
       } else {
         // Unified gap trigger for single and multi drag.
-        // The hotbar tile switches sides when the leading edge of the dragged group has gone
+        // The hand tile switches sides when the leading edge of the dragged group has gone
         // halfway through its hitbox (TILE_W/2 past its centre).
         // Moving right → leading edge is the right side of gapRight; moving left → left side of gapLeft.
         var _grL = activeDrag.gapLeft !== undefined ? activeDrag.gapLeft : (activeDrag.cx || 0);
@@ -115,7 +115,7 @@ function makePhysics(opts) {
         var _ref = _movingRight ? _grR + ph.TILE_W / 2 : _grL - ph.TILE_W / 2;
         for (var j = 0; j < active.length; j++) { if (_ref > ph.x[active[j]]) insertIdx = j + 1; }
       }
-      // Gap sizes: n+0.5 for all hand drags (single tile = multiCount 1 → 1.5). Sticker drags stay at 1.
+      // Gap sizes: n+0.5 for all hand drags (single tile = multiCount 1 → 1.5). Stamp drags stay at 1.
       var gapCount = dragVi >= 0 ? 1 : multiCount + 0.5;
       var totalW = (active.length + gapCount) * ph.TILE_W + (active.length + gapCount - 1) * ph.GAP;
       var startX = midX - totalW / 2; var col = 0;
@@ -140,7 +140,10 @@ function makePhysics(opts) {
     for (var i = 0; i < n; i++) {
       if (i === dragVi) continue;
       var f = (restX[i] - ph.x[i]) * ph.SPRING;
-      if (ph.held >= 0 && ph.held !== i) {
+      // Press-spread on hold — stamp bars only. The hand row uses real
+      // collision instead (block below); the old proximity push was the
+      // "click bounce" the physical model replaces.
+      if (ph.held >= 0 && ph.held !== i && _dragSrc !== 'hand') {
         var hx = ph.x[ph.held], d = ph.x[i] - hx, dist = Math.abs(d);
         if (dist < ph.TILE_W * 1.5) f += (d > 0 ? 1 : -1) * (1 - dist / (ph.TILE_W * 1.5)) * 5;
       }
@@ -208,8 +211,8 @@ function makePhysics(opts) {
 }
 
 var HP = makePhysics({ areaId: 'hand-area', tileClass: 'hand-tile', dragSrc: 'hand' });
-var SP = makePhysics({ areaId: 'tile-sticker-bar', tileClass: 'sticker-tile', dragSrc: 'sticker' });
-var SSP = makePhysics({ areaId: 'shop-sticker-bar', tileClass: 'sticker-tile', dragSrc: 'shop-sticker', tileW: 111 });
+var SP = makePhysics({ areaId: 'stamp-bar', tileClass: 'stamp-tile', dragSrc: 'stamp' });
+var SSP = makePhysics({ areaId: 'shop-stamp-bar', tileClass: 'stamp-tile', dragSrc: 'shop-stamp', tileW: 111 });
 
 // Backward-compat wrappers so existing callers in drag.js / render.js / init.js keep working.
 function hpBounds() { HP.bounds(); }

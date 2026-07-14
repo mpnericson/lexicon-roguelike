@@ -11,8 +11,8 @@ var ACHIEVEMENTS = [
   {id:'stage_1',       name:'Getting Started',  desc:'Complete Stage 1.',                           icon:'1️⃣'},
   {id:'stage_2',       name:'Halfway There',    desc:'Complete Stage 2.',                           icon:'2️⃣'},
   {id:'win',           name:'Champion',         desc:'Beat all 9 rounds.',                          icon:'🏆'},
-  {id:'collect_5',     name:'Collector',        desc:'Own 5 or more stickers at once.',             icon:'🔵'},
-  {id:'collect_10',    name:'Hoarder',          desc:'Own 10 or more stickers at once.',            icon:'🟣'},
+  {id:'collect_5',     name:'Collector',        desc:'Own 5 or more stickers and stamps at once.',             icon:'🔵'},
+  {id:'collect_10',    name:'Hoarder',          desc:'Own 10 or more stickers and stamps at once.',            icon:'🟣'},
   {id:'gold_50',       name:'Golden Touch',     desc:'Hold $50 gold at once.',                      icon:'💰'},
   {id:'bounty_5',      name:'Bounty Hunter',    desc:'Complete 5 bounties across all runs.',        icon:'🎯'},
   {id:'seeded_win',    name:'Seed of Destiny',  desc:'Win a seeded run.',                           icon:'🌱'},
@@ -79,7 +79,7 @@ function achvCheck(event, data) {
       if (S.seed) achvUnlock('seeded_win');
       break;
     case 'shop_exit':
-      var _stickerCount=(S.placed||[]).length+(S.tileStickers||[]).length;
+      var _stickerCount=(S.placed||[]).length+(S.stamps||[]).length;
       if (_stickerCount >= 5)  achvUnlock('collect_5');
       if (_stickerCount >= 10) achvUnlock('collect_10');
       if (S.gold >= 50) achvUnlock('gold_50');

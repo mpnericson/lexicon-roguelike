@@ -1,5 +1,5 @@
 // =====================================================================
-// RENDER — board, HUD, hand, sticker hand
+// RENDER — board, HUD, hand, sticker hand, stamp bar
 // =====================================================================
 function _makeBountyScroll(bounty){
   // Background-image approach: padding-top sets height via aspect-ratio trick.
@@ -32,7 +32,7 @@ function _makeBountyScroll(bounty){
 
   var content=document.createElement('div');
   content.style.cssText='position:absolute;top:0;left:0;right:0;bottom:0;'
-    +'padding:8% 9% 15% 11%;display:flex;flex-direction:column;justify-content:space-evenly;'
+    +'padding:8% 9% 15% 6%;display:flex;flex-direction:column;justify-content:space-evenly;'
     +'opacity:0;overflow:hidden;box-sizing:border-box;pointer-events:none;z-index:2';
 
   var contentW=Math.round(scrollW*0.78);
@@ -124,7 +124,7 @@ function _makeBountyScroll(bounty){
   return div;
 }
 
-function renderAll(){renderHUD();renderBoard();renderHand();renderTileStickerBar();document.getElementById('bag-count').textContent=S.bag.length;_tooltipRefreshIfOpen();}
+function renderAll(){renderHUD();renderBoard();renderHand();renderStampBar();document.getElementById('bag-count').textContent=S.bag.length;_tooltipRefreshIfOpen();}
 
 function renderHUD(){
   var dhb=document.getElementById('dev-hotbar');if(dhb)dhb.style.display=S.devMode?'flex':'none';
@@ -188,7 +188,9 @@ function renderBoard(){
   for(var i=0;i<B*B;i++){
     var sq=document.createElement('div');sq.className='sq';sq.dataset.sqIdx=i;
     sq.style.width=sz+'px';sq.style.height=sz+'px';
-    var sid=S.board[i];var ss=sqStyle(sid);
+    // Focus mode: strip all sticker art — bare board grid + tiles only.
+    var _fm=window._focusMode;
+    var sid=_fm?null:S.board[i];var ss=sqStyle(sid);
     if(!sid){
       sq.style.backgroundImage='url(Assets/sprites/board-tile.png)';
       sq.style.backgroundSize=sz+'px '+sz+'px';
@@ -201,13 +203,24 @@ function renderBoard(){
     var bt=S.bt[i];var showTile=bt&&bt.state!=='dragging';
     if(showTile){
         var spr=(bt.isBlank&&bt.blankAs)?blankTileSpr(bt.blankAs,bt.variant||null,sz):tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,bt.variant||null,sz);
+      // Committed Jenga stack: render the preserved buried tile at base so the
+      // top can slide aside to reveal (and score) it, like a fresh stack.
+      if(!bt.isNew&&bt._buried){
+        var _bu=bt._buried;
+        var _buSpr=(_bu.isBlank&&_bu.blankAs)?blankTileSpr(_bu.blankAs,_bu.variant||null,sz):tileSpr(_bu.isBlank?null:_bu.letter,_bu.isBlank,_bu.variant||null,sz);
+        var _buFace=document.createElement('div');
+        _buFace.className='tile board-tile'+(_bu.variant?' var-'+_bu.variant:'')+' tile-spr';
+        _buFace.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+_buSpr;
+        sq.appendChild(_buFace);
+      }
       var _stkCls=(!bt.isNew&&bt._stackLevel>0)?(bt._stackLevel>=2?' jenga-stacked-2':' jenga-stacked'):'';
-      var face=document.createElement('div');face.className='tile board-tile'+(bt.isNew?' is-new':'')+_stkCls+(bt.variant?' var-'+bt.variant:'')+' tile-spr';
+      var _topCls=(!bt.isNew&&bt._buried)?' jenga-top':'';
+      var face=document.createElement('div');face.className='tile board-tile'+(bt.isNew?' is-new':'')+_stkCls+_topCls+(bt.variant?' var-'+bt.variant:'')+' tile-spr';
       face.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+spr;
       face.dataset.spr=spr;face.dataset.tsz=sz;
-      if(bt.isNew)attachBoardTileDrag(face,i,sz);
+      if(bt.isNew){if(_fm)attachFocusBoardDrag(face,i,false);else attachBoardTileDrag(face,i,sz);}
       // Jenga: click on committed tile to stack a selected hand tile
-      if(!bt.isNew&&!(S.btTop&&S.btTop[i])&&S.phase==='play'&&typeof hasJenga==='function'&&hasJenga()){
+      if(!bt.isNew&&!bt._stackLevel&&!(S.btTop&&S.btTop[i])&&S.phase==='play'&&typeof hasJenga==='function'&&hasJenga()){
         (function(sqI){sq.addEventListener('click',function(ev){
           if(Date.now()-_dragEndTime<300)return;
           var sel=[];for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel)sel.push(_si);}
@@ -223,7 +236,7 @@ function renderBoard(){
       if(_lettersUsed&&!bt.isBlank&&bt.letter&&S.usedLetters.has(bt.letter)){var _lov=document.createElement('div');_lov.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;background:rgba(180,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:'+Math.round(sz*0.65)+'px;font-weight:bold;color:#ff3333;pointer-events:none;z-index:5;font-family:monospace;';_lov.textContent='×';sq.appendChild(_lov);}
     } else {
       var _sqd=sqd(sid);
-      var lbl=ss.lbl;if(i===center&&!sid)lbl='*';
+      var lbl=ss.lbl;if(i===center&&!sid&&!_fm)lbl='*';
       if(_sqd&&_sqd.iconPng){
         sq.style.border='none';sq.style.borderRadius='0';
         var img=document.createElement('img');img.src=_sqd.iconPng;img.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;image-rendering:pixelated;pointer-events:none';sq.appendChild(img);
@@ -272,10 +285,10 @@ function renderBoard(){
       var sprT=(btt.isBlank&&btt.blankAs)?blankTileSpr(btt.blankAs,btt.variant||null,sz):tileSpr(btt.isBlank?null:btt.letter,btt.isBlank,btt.variant||null,sz);
       var _btopLvl=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;
       var topFace=document.createElement('div');
-      topFace.className='tile board-tile is-new'+(btt.variant?' var-'+btt.variant:'')+' tile-spr '+(_btopLvl>=2?'jenga-stacked-2':'jenga-stacked');
+      topFace.className='tile board-tile is-new jenga-top'+(btt.variant?' var-'+btt.variant:'')+' tile-spr '+(_btopLvl>=2?'jenga-stacked-2':'jenga-stacked');
       topFace.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+sprT;
       topFace.dataset.spr=sprT;topFace.dataset.tsz=sz;
-      if(btt.isNew)attachBoardTileDrag(topFace,i,sz,true);
+      if(btt.isNew){if(_fm)attachFocusBoardDrag(topFace,i,true);else attachBoardTileDrag(topFace,i,sz,true);}
       sq.appendChild(topFace);
     }
     wrap.appendChild(sq);
@@ -309,10 +322,10 @@ var _sqTooltipFrozen=false;
 var _sqTooltipFrozenIdx=-1;
 var _sqTooltipFrozenId=null;
 // Tracks whatever tooltip is currently visible (hover or frozen) so it can be live-refreshed
-// when game state changes (e.g. a scaling sticker's counter ticks up) without re-triggering the fade-in.
+// when game state changes (e.g. a scaling sticker/stamp counter ticks up) without re-triggering the fade-in.
 var _sqTooltipOpenSqIdx=-1;
 var _sqTooltipOpenId=null;
-var _tsTooltipOpenTs=null;
+var _stampTooltipOpenTs=null;
 
 function _sqTooltipFillContent(id,p){
   var d=sqd(id);if(!d)return;
@@ -334,7 +347,7 @@ function _sqTooltipRender(sqIdx,id){
   var el=document.getElementById('sq-hover-tooltip');if(!el)return;
   var p=null;for(var i=0;i<S.placed.length;i++)if(S.placed[i].sqIdx===sqIdx){p=S.placed[i];break;}
   _sqTooltipFillContent(id,p);
-  _sqTooltipOpenSqIdx=sqIdx;_sqTooltipOpenId=id;_tsTooltipOpenTs=null;
+  _sqTooltipOpenSqIdx=sqIdx;_sqTooltipOpenId=id;_stampTooltipOpenTs=null;
   var cb=document.getElementById('constraint-banner');
   if(cb){el._cbWas=cb.style.display;cb.style.display='none';}
   el.style.display='block';
@@ -343,12 +356,12 @@ function _sqTooltipRender(sqIdx,id){
 }
 
 // Re-fills the currently-open tooltip's content in place (no fade/animation restart) so
-// scaling sticker descriptions (crossroads, bounty_hunter, etc.) update live while hovered.
+// scaling stamp descriptions (crossroads, bounty_hunter, etc.) update live while hovered.
 function _tooltipRefreshIfOpen(){
   var el=document.getElementById('sq-hover-tooltip');if(!el||el.style.display==='none')return;
-  if(_tsTooltipOpenTs){
-    var ts=_tsTooltipOpenTs;
-    if(S.tileStickers.indexOf(ts)<0){_tsTooltipHide();return;}
+  if(_stampTooltipOpenTs){
+    var ts=_stampTooltipOpenTs;
+    if(S.stamps.indexOf(ts)<0){_stampTooltipHide();return;}
     _sqTooltipFillContent(ts.id,ts);
   }else if(_sqTooltipOpenSqIdx>=0&&_sqTooltipOpenId){
     var p=null;for(var i=0;i<S.placed.length;i++)if(S.placed[i].sqIdx===_sqTooltipOpenSqIdx){p=S.placed[i];break;}
@@ -409,13 +422,13 @@ function _sqTooltipHide(){
   if(cb&&el._cbWas!==undefined){cb.style.display=el._cbWas;el._cbWas=undefined;}
 }
 
-// ---- Tile sticker hotbar hover tooltip (mirrors board sticker tooltip, no freeze/sell) ----
+// ---- Stamp bar hover tooltip (mirrors board sticker tooltip, no freeze/sell) ----
 
-function _tsTooltipRender(ts){
+function _stampTooltipRender(ts){
   var d=sqd(ts.id);if(!d)return;
   var el=document.getElementById('sq-hover-tooltip');if(!el)return;
   _sqTooltipFillContent(ts.id,ts);
-  _tsTooltipOpenTs=ts;_sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;
+  _stampTooltipOpenTs=ts;_sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;
   var act=document.getElementById('sqht-actions');if(act)act.style.display='none';
   var cb=document.getElementById('constraint-banner');
   if(cb&&el._cbWas===undefined){el._cbWas=cb.style.display;cb.style.display='none';}
@@ -424,16 +437,16 @@ function _tsTooltipRender(ts){
   requestAnimationFrame(function(){el.style.opacity='1';});
 }
 
-function _tsTooltipShow(ts){
+function _stampTooltipShow(ts){
   var d=sqd(ts.id);if(!d)return;
   clearTimeout(_sqTooltipTimer);
   _sqTooltipFrozen=false;_sqTooltipFrozenIdx=-1;_sqTooltipFrozenId=null;
-  _sqTooltipTimer=setTimeout(function(){_tsTooltipRender(ts);},250);
+  _sqTooltipTimer=setTimeout(function(){_stampTooltipRender(ts);},250);
 }
 
-function _tsTooltipHide(){
+function _stampTooltipHide(){
   clearTimeout(_sqTooltipTimer);_sqTooltipTimer=null;
-  _tsTooltipOpenTs=null;
+  _stampTooltipOpenTs=null;
   var el=document.getElementById('sq-hover-tooltip');if(!el||el.style.display==='none')return;
   el.style.opacity='0';
   el.style.display='none';
@@ -509,17 +522,17 @@ function renderSqHand(){
   document.getElementById('placing-info').textContent=unplaced>0?'Drag stickers onto the board':'All placed — confirm!';
 }
 
-function _renderStickerBarInto(bar,ph,src){
+function _renderStampBarInto(bar,ph,src){
   bar.innerHTML='';
-  var stickers=S.tileStickers||[];
-  ph.rebuild(stickers);
-  for(var vi=0;vi<stickers.length;vi++){
-    var ts=stickers[vi];var d=sqd(ts.id);if(!d)continue;
+  var stamps=S.stamps||[];
+  ph.rebuild(stamps);
+  for(var vi=0;vi<stamps.length;vi++){
+    var ts=stamps[vi];var d=sqd(ts.id);if(!d)continue;
     var face=document.createElement('div');
-    face.className='sticker-tile';
-    face.setAttribute('data-ts-id',ts.id);
+    face.className='stamp-tile';
+    face.setAttribute('data-stamp-id',ts.id);
     var tw=ph.TILE_W;
-    var topPx=src==='shop-sticker'?2:8;
+    var topPx=src==='shop-stamp'?2:8;
     var baseCss='position:absolute;width:'+tw+'px;height:'+tw+'px;top:'+topPx+'px;left:'+(ph.x[vi]-tw/2-ph.left)+'px;';
     if(d.iconPng){
       face.style.cssText=baseCss+'border-radius:8px;overflow:hidden;';
@@ -531,57 +544,57 @@ function _renderStickerBarInto(bar,ph,src){
     var isDragging=activeDrag&&activeDrag.src===src&&activeDrag.vi===vi;
     if(isDragging)face.style.opacity='0';
     if(ts.id==='easy_mode'){face.addEventListener('mouseenter',_easyHintShow);face.addEventListener('mouseleave',_easyHintHide);}
-    face.addEventListener('mouseenter',function(tsRef){return function(){_tsTooltipShow(tsRef);};}(ts));
-    face.addEventListener('mouseleave',_tsTooltipHide);
+    face.addEventListener('mouseenter',function(tsRef){return function(){_stampTooltipShow(tsRef);};}(ts));
+    face.addEventListener('mouseleave',_stampTooltipHide);
     bar.appendChild(face);
-    attachStickerDrag(face,vi,ts,ph,src);
+    attachStampDrag(face,vi,ts,ph,src);
   }
 }
 
-function renderTileStickerBar(){
+function renderStampBar(){
   SP.bounds();
-  var bar=document.getElementById('tile-sticker-bar');if(!bar)return;
-  _renderStickerBarInto(bar,SP,'sticker');
+  var bar=document.getElementById('stamp-bar');if(!bar)return;
+  _renderStampBarInto(bar,SP,'stamp');
   // n/5 counter on right side of box
-  var stickers=S.tileStickers||[];
+  var stamps=S.stamps||[];
   var ctr=document.createElement('div');
-  ctr.style.cssText='position:absolute;right:8px;bottom:6px;font-size:28px;color:#8880a8;pointer-events:none;line-height:1';
-  ctr.textContent=stickers.length+'/5';
+  ctr.style.cssText='position:absolute;right:16px;bottom:-15px;font-size:28px;color:#8880a8;pointer-events:none;line-height:1';
+  ctr.textContent=stamps.length+"/5";
   bar.appendChild(ctr);
-  // Update shop sticker bar
-  var shopBar=document.getElementById('shop-sticker-bar');
-  if(shopBar){SSP.bounds();_renderShopPhysicsStickerBar(shopBar);}
-  // Update board preview sticker bar if visible
-  var previewBar=document.getElementById('preview-sticker-bar');
+  // Update shop stamp bar
+  var shopBar=document.getElementById('shop-stamp-bar');
+  if(shopBar){SSP.bounds();_renderShopPhysicsStampBar(shopBar);}
+  // Update board preview stamp bar if visible
+  var previewBar=document.getElementById('preview-stamp-bar');
   if(previewBar&&document.getElementById('board-preview-modal').style.display!=='none'){
-    _renderPreviewStickerBar(previewBar);
+    _renderPreviewStampBar(previewBar);
   }
 }
 
-function _renderShopPhysicsStickerBar(bar){
-  _renderStickerBarInto(bar,SSP,'shop-sticker');
-  // n/5 counter to the right of the last tile (only when there are stickers)
-  var stickers=S.tileStickers||[];
-  if(stickers.length>0){
+function _renderShopPhysicsStampBar(bar){
+  _renderStampBarInto(bar,SSP,'shop-stamp');
+  // n/5 counter to the right of the last tile (only when there are stamps)
+  var stamps=S.stamps||[];
+  if(stamps.length>0){
     var ctr=document.createElement('div');
     ctr.style.cssText='position:absolute;font-size:clamp(7px,1.2vw,17px);color:#8880a8;pointer-events:none;line-height:1;top:50%;transform:translateY(-50%)';
     // position it just right of the last tile
     SSP.bounds();
-    var lastX=SSP.x.length>0?SSP.x[stickers.length-1]+SSP.TILE_W/2-SSP.left:0;
+    var lastX=SSP.x.length>0?SSP.x[stamps.length-1]+SSP.TILE_W/2-SSP.left:0;
     ctr.style.left=(lastX+6)+'px';
-    ctr.textContent=stickers.length+'/5';
+    ctr.textContent=stamps.length+"/5";
     bar.appendChild(ctr);
   }
 }
 
-function _renderPreviewStickerBar(container){
+function _renderPreviewStampBar(container){
   container.innerHTML='';
-  var stickers=S.tileStickers||[];
-  if(!stickers.length)return;
-  var label=document.createElement('div');label.style.cssText='color:#8880a8;font-size:28px;align-self:center;flex-shrink:0';label.textContent='Stickers:';
+  var stamps=S.stamps||[];
+  if(!stamps.length)return;
+  var label=document.createElement('div');label.style.cssText='color:#8880a8;font-size:28px;align-self:center;flex-shrink:0';label.textContent='Stamps:';
   container.appendChild(label);
-  for(var i=0;i<stickers.length;i++){
-    var d=sqd(stickers[i].id);if(!d)continue;
+  for(var i=0;i<stamps.length;i++){
+    var d=sqd(stamps[i].id);if(!d)continue;
     var slot=document.createElement('div');
     slot.style.cssText='width:40px;height:40px;border:1px solid #5a5a9a;border-radius:6px;background:#0d0d1e;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;position:relative';
     slot.title=d.name+' — '+d.desc;
@@ -595,7 +608,7 @@ function _renderPreviewStickerBar(container){
   }
 }
 
-function _openTileStickerModal(idx,id){
+function _openStampModal(idx,id){
   var d=sqd(id);if(!d)return;
   var iconEl=document.getElementById('sq-icon');
   if(iconEl)iconEl.innerHTML=d.iconPng?'<img src="'+d.iconPng+'" style="max-width:80px;max-height:80px;image-rendering:pixelated">':sqIconHTML(d,40);
@@ -603,17 +616,17 @@ function _openTileStickerModal(idx,id){
   var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
   var rarEl=document.getElementById('sq-rarity');if(rarEl)rarEl.innerHTML='<span class="scr '+rc+'">'+d.rarity+'</span>';
   var descEl=document.getElementById('sq-desc');if(descEl)descEl.innerHTML=_sqDescHTML(id,null);
-  var posEl=document.getElementById('sq-pos');if(posEl)posEl.textContent='Hotbar slot '+(idx+1);
+  var posEl=document.getElementById('sq-pos');if(posEl)posEl.textContent='Stamp slot '+(idx+1);
   var sell=Math.floor(d.cost/2);
   var sellBtn=document.getElementById('sq-sell-btn');
   if(sellBtn){
     sellBtn.textContent='Sell $'+sell;
     sellBtn.onclick=(function(i,sv,dn,dd){return function(){
-      S.tileStickers.splice(i,1);
+      S.stamps.splice(i,1);
       S.gold+=sv;
       if(currentConstraint()==='c_stickers')S.stickersSoldThisStage=(S.stickersSoldThisStage||0)+1;
       document.getElementById('sq-modal').style.display='none';
-      renderTileStickerBar();renderHUD();
+      renderStampBar();renderHUD();
       toast(dn+' sold for $'+sv+'!');
       if(dd&&dd.onSell)dd.onSell();
     };})(idx,sell,d.name,d);

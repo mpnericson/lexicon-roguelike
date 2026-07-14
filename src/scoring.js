@@ -67,16 +67,29 @@ function getAllWords(nt,dir){
 
 // Full-board tile view with Jenga tops merged over the tiles they cover.
 function _liveTiles(){
-  var tiles=new Array(B*B),jengaTops=new Set();
+  var tiles=new Array(B*B),jengaTops=new Set(),jengaUnder=null;
+  function addUnder(idx,src){
+    if(!jengaUnder)jengaUnder={};
+    jengaUnder[idx]={letter:tileDisplayLetter(src),isBlank:!!src.isBlank,
+      sc:src.isBlank?(src._alchSc||0):(LS[src.letter]||0),variant:src.variant||null};
+  }
   for(var i=0;i<B*B;i++){
     var tt=S.btTop&&S.btTop[i];
-    if(tt&&tt.isNew){tiles[i]=tt;jengaTops.add(i);}
-    else tiles[i]=S.bt[i]||null;
+    if(tt&&tt.isNew){
+      // Fresh stack this turn: the committed tile beneath is the buried tile.
+      tiles[i]=tt;jengaTops.add(i);
+      if(S.bt[i])addUnder(i,S.bt[i]);
+    }else{
+      tiles[i]=S.bt[i]||null;
+      // Committed stack from a previous play retains its buried tile (_buried),
+      // which keeps scoring in any word that passes through this square.
+      if(S.bt[i]&&S.bt[i]._buried)addUnder(i,S.bt[i]._buried);
+    }
   }
-  return{tiles:tiles,jengaTops:jengaTops};
+  return{tiles:tiles,jengaTops:jengaTops,jengaUnder:jengaUnder};
 }
 
-// Snapshot of every S field that influences scoring. Sticker hooks read
+// Snapshot of every S field that influences scoring. Sticker/stamp hooks read
 // these through ctx.state instead of touching S directly.
 function buildEngineState(freeHandCount){
   return{
@@ -90,25 +103,50 @@ function buildEngineState(freeHandCount){
     drunkStreak:S.drunkStreak||0,
     palMult:S.palMult||1,
     playerMult:S.playerMult||1,
+    cartographerMult:S.cartographerMult||1,
     bhMult:S.bhMult||1,
     crossroadsCount:S.crossroadsCount||0,
+    discardsLeft:S.disc||0,
     discPressure:S.discPressure||0,
     bagColouredCount:S.bag?S.bag.filter(function(t){return t.variant;}).length:0
   };
 }
 
+// Synchronous dictionary check (validWord is async only for its API fallback;
+// with the local dict loaded it's a plain Set lookup).
+function _dictHas(word){return !!(typeof DICT!=='undefined'&&DICT&&DICT.size>0&&DICT.has(word.toUpperCase()));}
+
+// For each Jenga stack, the buried tile forms a cross word (its letter + the
+// committed neighbours perpendicular to the main word). Returns the stack-square
+// indices whose buried cross word is a valid dictionary word — these are the
+// only ones the engine will score. Shared logic lives in _engJengaCrossIdxs
+// (score_engine.js) so the solver judges validity identically.
+function _jengaCrossIdxs(lv,dir){
+  return _engJengaCrossIdxs(lv.tiles,lv.jengaTops,dir,_dictHas);
+}
+
+// Mirror: the set of played words that read as valid words backwards too, so
+// the engine scores them twice. Only computed when the stamp is owned. Shared
+// helper (_engMirrorWords) keeps validity identical to the solver's valuation.
+function _mirrorWords(lv,nt,dir){
+  if(!hasStamp('mirror'))return null;
+  return _engMirrorWords(lv.tiles,nt.map(function(t){return t.idx;}),dir,lv.jengaTops,_dictHas);
+}
+
 // ---- Main scoring entry point ----
-// preview=true → no cooldown commits, sticker hooks skip side effects.
+// preview=true → no cooldown commits, sticker/stamp hooks skip side effects.
 // Returns the runScoreEngine result (see score_engine.js) or null.
 
 function scorePlay(nt,dir,preview){
   if(!S.localCooldowns)S.localCooldowns=new Set();
   var lv=_liveTiles();
   var res=runScoreEngine({
-    tiles:lv.tiles,jengaTops:lv.jengaTops,
+    tiles:lv.tiles,jengaTops:lv.jengaTops,jengaUnder:lv.jengaUnder,
+    jengaCrossIdxs:_jengaCrossIdxs(lv,dir),
+    mirrorWords:_mirrorWords(lv,nt,dir),
     newIdxs:nt.map(function(t){return t.idx;}),
     dir:dir,
-    boardStickers:S.board,placed:S.placed,hotbar:S.tileStickers,
+    boardStickers:S.board,placed:S.placed,stamps:S.stamps,
     cooldowns:S.localCooldowns,bounties:S.bounties||[],
     preview:!!preview,
     state:buildEngineState(S.hand.filter(function(t){return t!==null;}).length)
@@ -429,13 +467,137 @@ function showScorePop(text,x,y,bg,fg){
 }
 function bumpSA(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('ls-bump');void el.offsetWidth;el.classList.add('ls-bump');}
 function scoreDelay(ms){return new Promise(function(r){setTimeout(r,ms);});}
+// Ease-in shared by every score/gold/target count-up: the number creeps up
+// slowly at first and accelerates toward the finish (feels like it's "rushing"
+// to land). Higher _SCORE_EASE_POW = slower start, faster finish.
+var _SCORE_EASE_POW=4.5;
+function _easeInScore(t){return t<=0?0:(t>=1?1:Math.pow(t,_SCORE_EASE_POW));}
+// Inverse of _easeInScore: maps a value-fraction to the time-fraction it should
+// land at, so a step-based counter (gold coins) accelerates the same way as the
+// interpolated ones.
+function _easeInScoreTime(f){return f<=0?0:(f>=1?1:Math.pow(f,1/_SCORE_EASE_POW));}
+// Per-tile letter tick-up: the running letter total starts climbing at a fixed
+// base rate (points/sec) and the rate grows in proportion to the current value
+// (dv/dt = base + growth·v), so the value climbs exponentially and higher totals
+// tick up ever faster. Tune base for the low-number feel, growth for how hard
+// the acceleration kicks in as the numbers get big.
+var _TICK_BASE_RATE=5;  // points/sec while the total is still small
+var _TICK_GROWTH=3.0;    // per-sec exponential growth of the tick rate
+// Ticks the HUD gold display by `delta`, one $1 at a time. On each step the
+// increment, coin clink, HUD bump, and `bounceFn()` (bouncing the source tile
+// or stamp) all fire in the SAME frame so the money is visibly tied
+// to the thing paying it out. Reads the current value from the element so it
+// composes across multiple deltas. No-op in dev mode (∞ gold).
+async function animGoldTick(delta,bounceFn){
+  var el=document.getElementById('hud-gold');
+  if(S.devMode||!el||!delta)return;
+  var cur=parseInt(el.textContent.replace(/[^0-9-]/g,''),10);if(isNaN(cur))cur=0;
+  var dir=delta<0?-1:1,steps=Math.abs(delta);
+  // Total payout duration (larger swings stay capped so big payouts don't drag);
+  // coins land on an ease-in curve so the count starts slow and accelerates.
+  var DUR=steps<=6?steps*90:Math.max(540,45*steps);
+  var prevT=0;
+  for(var i=0;i<steps;i++){
+    cur+=dir;el.textContent='$'+cur;bumpSA('hud-gold');
+    if(bounceFn)bounceFn();
+    _playCoinClink(dir<0);
+    var nextT=DUR*_easeInScoreTime((i+1)/steps);
+    await scoreDelay(Math.max(12,nextT-prevT));
+    prevT=nextT;
+  }
+}
+// Resolves the element that should bounce with each $1 tick of a gold event:
+// a stamp (floatStampId), a board sticker's tile (floatSqIdx), or the
+// scoring tile itself (sqIdx). Returns null when there's nothing to bounce.
+function _goldBounceFn(ev){
+  if(ev.floatStampId){var id=ev.floatStampId;return function(){_bounceStamp(id);};}
+  if(ev.floatSqIdx!=null){var bel=document.querySelector('[data-sq-idx="'+ev.floatSqIdx+'"] .board-tile');return function(){_binkEl(bel);};}
+  if(ev.sqIdx!=null){var tel=_evTileEl(ev);return function(){_binkEl(tel);};}
+  return null;
+}
 function fmtMult(m){var r=Math.round(m);if(m>=10||Math.abs(m-r)<0.001)return r.toString();return parseFloat(m.toFixed(2)).toString();}
 
-// Board tile element for an event's square (jenga top face wins), or null.
+// The stacked Jenga top face for a square, or null.
+function _jengaTopEl(sqIdx){
+  return document.querySelector('[data-sq-idx="'+sqIdx+'"] .board-tile.jenga-top');
+}
+// The buried (bottom) tile for a stacked square: the first board tile that
+// isn't the jenga top face.
+function _jengaBottomEl(sqIdx){
+  var els=document.querySelectorAll('[data-sq-idx="'+sqIdx+'"] .board-tile');
+  for(var i=0;i<els.length;i++)if(!els[i].classList.contains('jenga-top'))return els[i];
+  return null;
+}
+// Board tile element for an event's square, or null. Jenga buried-tile events
+// point at the bottom tile; everything else prefers the stacked top face.
 function _evTileEl(ev){
   if(ev.sqIdx==null)return null;
-  return document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')
+  if(ev.jengaUnder)return _jengaBottomEl(ev.sqIdx)||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile');
+  return _jengaTopEl(ev.sqIdx)
+    ||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile.jenga-stacked')
     ||document.querySelector('[data-sq-idx="'+ev.sqIdx+'"] .board-tile');
+}
+// Flip a board tile to its gold face mid-animation (Gilded), so it visibly
+// becomes a gold tile the moment it's gilded rather than only after the play
+// commits and re-renders. S.bt/S.btTop already carry variant:'gold' (set in
+// the PRE bracket), so this just repaints the existing DOM face to match:
+// regenerates the sprite with the gold variant and swaps the var-* class.
+function _goldifyTileEl(sqIdx){
+  var el=_jengaTopEl(sqIdx)||document.querySelector('[data-sq-idx="'+sqIdx+'"] .board-tile');
+  if(!el||el.classList.contains('var-gold'))return;
+  var bt=(S.btTop&&S.btTop[sqIdx]&&S.btTop[sqIdx].isNew)?S.btTop[sqIdx]:S.bt[sqIdx];
+  if(!bt)return;
+  var sz=parseInt(el.dataset.tsz,10)||el.offsetWidth||64;
+  var spr=(bt.isBlank&&bt.blankAs)?blankTileSpr(bt.blankAs,'gold',sz):tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,'gold',sz);
+  el.classList.remove('var-blue','var-red');el.classList.add('var-gold');
+  el.dataset.spr=spr;
+  el.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+spr;
+}
+// Axis-aligned translate (one tile over). sign +1 = right/down, -1 = left/up.
+function _jengaAxisXform(axis,sign){return axis==='h'?'translateX('+(sign*100)+'%)':'translateY('+(sign*100)+'%)';}
+// Which way to slide along `axis`. Prefer sliding TOWARD an adjacent stacked
+// tile so it visibly slides too ("if there is another stacked tile adjacent,
+// both slide"); otherwise toward any occupied square, else positive.
+function _jengaSlideSign(sqIdx,axis){
+  var r=Math.floor(sqIdx/B),c=sqIdx%B;
+  var pos=axis==='h'?(c<B-1?sqIdx+1:-1):(r<B-1?sqIdx+B:-1);
+  var neg=axis==='h'?(c>0?sqIdx-1:-1):(r>0?sqIdx-B:-1);
+  if(pos>=0&&_jengaTopEl(pos))return 1;
+  if(neg>=0&&_jengaTopEl(neg))return -1;
+  if(pos>=0&&document.querySelector('[data-sq-idx="'+pos+'"] .board-tile'))return 1;
+  if(neg>=0&&document.querySelector('[data-sq-idx="'+neg+'"] .board-tile'))return -1;
+  return 1;
+}
+// Quickly slide the Jenga top face(s) aside along `axis` so the buried tile
+// shows. Chains through adjacent stacked tops in the slide direction so they
+// move together ("if there is another stacked tile adjacent, both slide").
+// Returns the list of slid elements for _jengaSlideBack.
+function _jengaSlideOut(sqIdx,axis){
+  axis=axis||'h';
+  var sign=_jengaSlideSign(sqIdx,axis),slid=[],idx=sqIdx;
+  while(true){
+    var top=_jengaTopEl(idx);if(!top)break;
+    top.style.transition='transform 0.11s ease-out';
+    top.style.setProperty('transform',_jengaAxisXform(axis,sign),'important');
+    top.style.zIndex='6';
+    slid.push(top);
+    var r=Math.floor(idx/B),c=idx%B;
+    var next=axis==='h'?(sign>0?(c<B-1?idx+1:-1):(c>0?idx-1:-1)):(sign>0?(r<B-1?idx+B:-1):(r>0?idx-B:-1));
+    if(next<0||!_jengaTopEl(next))break;
+    idx=next;
+  }
+  return slid;
+}
+// Ease the top face(s) back onto the stack — relaxed slide-back (CSS class
+// governs the rest position once the inline transform is cleared).
+function _jengaSlideBack(slid){
+  if(!slid)return;
+  for(var i=0;i<slid.length;i++){(function(top){
+    top.style.transition='transform 0.32s cubic-bezier(.3,.85,.35,1)';
+    top.style.removeProperty('transform');
+    top.style.zIndex='';
+    setTimeout(function(){if(top)top.style.removeProperty('transition');},340);
+  })(slid[i]);}
 }
 
 // Restart the bink (pop) animation on a tile element.
@@ -444,9 +606,9 @@ function _binkEl(el){
   el.classList.remove('binking');void el.offsetWidth;el.classList.add('binking');
 }
 
-// Bounces the matching hotbar sticker face(s) when its effect contributes to scoring.
-function _bounceTsSticker(id){
-  var els=document.querySelectorAll('#tile-sticker-bar .sticker-tile[data-ts-id="'+id+'"]');
+// Bounces the matching stamp face(s) when its effect contributes to scoring.
+function _bounceStamp(id){
+  var els=document.querySelectorAll('#stamp-bar .stamp-tile[data-stamp-id="'+id+'"]');
   for(var i=0;i<els.length;i++){
     var el=els[i];
     el.classList.remove('sq-binking');
@@ -473,6 +635,7 @@ async function runScoreAnim(events,total){
   var lsTileDelta=document.getElementById('ls-tile-delta');
   row.classList.add('scoring');
   saL.textContent='0';saM.textContent='1';saS.textContent='0';
+  saL.style.color='';
   if(lsTileDelta){lsTileDelta.textContent='';lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');}
 
   var delay=1000,minDelay=100,delayStep=50;
@@ -481,10 +644,15 @@ async function runScoreAnim(events,total){
   var _deltaActive=false,_deltaTileBase=0;
   var _pendingTick=null; // {fV,tV} — last tile's score waiting to be ticked up
   var _tickVer=0; // incremented to cancel in-flight tick animations
+  var _jengaSlid=null,_jengaSlidSq=-1; // Jenga: top face(s) currently slid aside
   S._crossroadsLiveCount=S.crossroadsCount||0; // baseline for live tooltip ticks this play
 
+  // Slide the revealed Jenga top(s) back onto the stack once the buried tile is done.
+  function _jengaRestore(){if(_jengaSlid){_jengaSlideBack(_jengaSlid);_jengaSlid=null;_jengaSlidSq=-1;}}
+
   // Fire the pending per-tile tick-up.
-  // animated=true: 500ms rAF animation of saL (parallel with next tile's delta).
+  // animated=true: rate-based rAF climb of saL (fixed base rate that accelerates
+  //   exponentially as the value grows); runs parallel with next tile's delta.
   // animated=false: instant snap + fade delta (used for post-word events and final).
   function _firePendingTick(animated){
     if(!_pendingTick)return;
@@ -497,14 +665,17 @@ async function runScoreAnim(events,total){
     }
     var myV=_tickVer;
     (function(fV,tV,ver){
-      var _t0=null,_DUR=500;
+      if(tV<=fV){saL.textContent=tV;return;}
+      var _last=null,v=fV;
       function _tk(now){
         if(_tickVer!==ver)return;
-        if(!_t0)_t0=now;
-        var t=Math.min(1,(now-_t0)/_DUR);
-        saL.textContent=Math.round(fV+(tV-fV)*t);
-        if(t<1)requestAnimationFrame(_tk);
-        else saL.textContent=tV;
+        if(_last===null)_last=now;
+        var dt=(now-_last)/1000;_last=now;
+        // Rate grows with how much THIS tile has added so far (resets each tile):
+        // every tile starts at the base rate, then ramps up exponentially.
+        v+=(_TICK_BASE_RATE+(v-fV)*_TICK_GROWTH)*dt;
+        if(v>=tV){saL.textContent=tV;}
+        else{saL.textContent=Math.round(v);requestAnimationFrame(_tk);}
       }
       requestAnimationFrame(_tk);
     })(p.fV,p.tV,myV);
@@ -516,29 +687,88 @@ async function runScoreAnim(events,total){
     bumpSA('ls-mult');
   }
 
+  // Apply one merged sibling effect (see grouping below) into the SAME frame as
+  // its head event's bounce — used when a sticker/stamp adds independent score types
+  // (e.g. Alpha: +letter score AND +mult) that can all land at once. Handles the
+  // accumulator update + score pop; the bounce/ding belong to the head event.
+  function _applyCoEffect(co){
+    if(co.type==='plus-mult'){
+      var brp=row.getBoundingClientRect();
+      showScorePop('+'+co.delta+' mult',brp.left+100,brp.top-32,'#500808','#ff8080');
+      animPlusSum+=co.delta;refreshMult();
+    }else if(co.type==='x-mult'){
+      var telx=_evTileEl(co),rx=telx?telx.getBoundingClientRect():null;
+      if(rx)showScorePop(co.factor,rx.left+rx.width/2-20,rx.top-4,'#500808','#ff6060');
+      else{var brx=row.getBoundingClientRect();showScorePop(co.factor+' mult',brx.left+100,brx.top-32,'#500808','#ff6060');}
+      animXprod*=co.factor;refreshMult();
+    }else if(co.type==='letter'){
+      saL.textContent=co.lettersAfter;bumpSA('ls-letters');_saLSynced=co.lettersAfter;
+    }
+  }
+  function _applyCoApply(ev){
+    if(!ev._coApply)return;
+    for(var _ci=0;_ci<ev._coApply.length;_ci++)_applyCoEffect(ev._coApply[_ci]);
+  }
+
   // Shared opening beat for every non-tile-local event: snap the pending tile
   // tick, consume one delay step, wait for the sticker peel, then fire the
-  // ding + sticker float + hotbar bounce (all suppressed for _skip events).
+  // ding + sticker float + stamp-bar bounce (all suppressed for _skip events).
   // Returns the delay to await after the branch's own visuals, or null for
   // _skip events (which fire their state changes with no beat of their own).
   async function _evBeatStart(ev){
     _firePendingTick(false);
+    _jengaRestore();
     var curDelay=null;
     if(!ev._skip){curDelay=delay;delay=Math.max(minDelay,delay-delayStep);}
     if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
     if(!ev._skip&&!ev.silent)_playScoreDing();
     if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
-    if(ev.floatTsId&&!ev._skip)_bounceTsSticker(ev.floatTsId);
+    if(ev.floatStampId&&!ev._skip)_bounceStamp(ev.floatStampId);
     return curDelay;
   }
 
-  // Consecutive events sharing a floatSqIdx come from the same sticker trigger.
-  // Mark all but the first in each run as _skip so they fire their effects in the
-  // same beat as the primary event (no extra ding, no extra delay, no re-activation).
-  for(var _gi=0;_gi<events.length-1;_gi++){
-    if(events[_gi].floatSqIdx!=null&&events[_gi+1].floatSqIdx===events[_gi].floatSqIdx){
-      events[_gi+1]._skip=true;
+  // Consecutive events from one sticker trigger — same floatStampId (stamp) or
+  // same floatSqIdx (board) — share a single bounce. Independent score-type
+  // effects (a +mult, a ×mult, a non-running letter bonus) are MERGED onto the
+  // head event's beat via _coApply and consumed (_consumed → no beat of their
+  // own), so a sticker/stamp adding e.g. letter score AND mult applies both at once.
+  // Gold keeps its own $-tick animation but shares the beat (_skip → no extra
+  // ding/delay/re-activation). A tile-local letter ends the group: its running
+  // "+X" delta drives the letter display and must own its beat.
+  function _floatKey(e){return e.floatStampId?('ts:'+e.floatStampId):(e.floatSqIdx!=null?('sq:'+e.floatSqIdx):null);}
+  for(var _gi=0;_gi<events.length;_gi++){
+    var _he=events[_gi];
+    if(_he._consumed)continue;
+    var _hkey=_floatKey(_he);
+    if(_hkey==null)continue;
+    var _co=null;
+    for(var _gj=_gi+1;_gj<events.length;_gj++){
+      var _fe=events[_gj];
+      if(_floatKey(_fe)!==_hkey)break;
+      if(_fe.type==='letter'&&_fe.isTileLocal)break;
+      if(_fe.type==='plus-mult'||_fe.type==='x-mult'||_fe.type==='letter'){
+        _fe._consumed=true;(_co||(_co=[])).push(_fe);
+      }else{
+        _fe._skip=true; // gold / retrigger / etc: same bounce, own animation
+      }
     }
+    if(_co)_he._coApply=_co;
+  }
+
+  // A gold/Gilded tile earns +$1 during its own per-tile scoring — a gold event
+  // carrying only sqIdx (no float ref). Ride it on the SAME bounce as that
+  // tile's letter score: attach it to that tile-pass's visible letter head (the
+  // isTileLocal event tagged with _globalLetters for this square). The tile-pass
+  // block is bounded by its trailing silent letter, so the search can't leak
+  // into a neighbouring tile. Golds tied to a sticker (float ref) or with no
+  // square (bounty) are left alone — they keep their own beat.
+  for(var _gk=0;_gk<events.length;_gk++){
+    var _ge=events[_gk];
+    if(_ge.type!=='gold'||_ge._consumed||_ge.floatStampId||_ge.floatSqIdx!=null||_ge.sqIdx==null)continue;
+    var _th=null;
+    for(var _fj=_gk+1;_fj<events.length;_fj++){var _fev=events[_fj];if(_fev.type==='letter'&&_fev.isSilent)break;if(_fev.type==='letter'&&_fev.isTileLocal&&_fev._globalLetters!=null&&_fev.sqIdx===_ge.sqIdx){_th=_fev;break;}}
+    if(!_th)for(var _bj=_gk-1;_bj>=0;_bj--){var _bev=events[_bj];if(_bev.type==='letter'&&_bev.isSilent)break;if(_bev.type==='letter'&&_bev.isTileLocal&&_bev._globalLetters!=null&&_bev.sqIdx===_ge.sqIdx){_th=_bev;break;}}
+    if(_th){(_th._goldCo||(_th._goldCo=[])).push(_ge);_ge._consumed=true;}
   }
 
   // Pre-schedule every sticker peel 1 second before its own ding, regardless of word length.
@@ -546,6 +776,7 @@ async function runScoreAnim(events,total){
   var _PEEL_LEAD=1000,_simD=delay,_simT=0;
   for(var _si=0;_si<events.length;_si++){
     var _sev=events[_si];
+    if(_sev._consumed)continue; // merged onto a head event's beat — no beat of its own
     if(_sev.floatSqIdx!=null&&!_sev._skip){
       (function(sqIdx,t){setTimeout(function(){_preStickerPeel(sqIdx);},Math.max(0,t-_PEEL_LEAD));})(
         _sev.floatSqIdx,_simT);
@@ -559,6 +790,7 @@ async function runScoreAnim(events,total){
 
   for(var i=0;i<events.length;i++){
     var ev=events[i];
+    if(ev._consumed)continue; // merged into its head event's bounce (applied via _applyCoApply)
 
     if(ev.type==='letter'){
       if(ev.isSilent){
@@ -592,12 +824,27 @@ async function runScoreAnim(events,total){
           }
           if(!ev.suppressVisual){
             var curDelay=delay;delay=Math.max(minDelay,delay-delayStep);
+            // Jenga: reveal the buried tile as it scores by sliding the top
+            // aside — along the main-word axis while a cross word scores, along
+            // the cross axis while the main word scores. Restore on any other tile.
+            if(ev.jengaUnder){if(_jengaSlidSq!==ev.sqIdx){_jengaRestore();_jengaSlid=_jengaSlideOut(ev.sqIdx,ev.jengaSlideAxis);_jengaSlidSq=ev.sqIdx;}}
+            else _jengaRestore();
             var tileEl=_evTileEl(ev);
             if(ev.floatSqIdx!=null)await _awaitPeelHold(ev.floatSqIdx);
             _playScoreDing();
             if(ev.floatSqIdx!=null)_activateStickerFloat(ev.floatSqIdx);
-            if(ev.floatTsId)_bounceTsSticker(ev.floatTsId);
+            if(ev.floatStampId)_bounceStamp(ev.floatStampId);
             _binkEl(tileEl);
+            _applyCoApply(ev); // merged +mult / bonus land on this same bounce
+            // Gold this tile earned (gold/Gilded +$1) ticks on the same bounce.
+            if(ev._goldCo){
+              var _tileBounce=function(){_binkEl(tileEl);};
+              for(var _gci=0;_gci<ev._goldCo.length;_gci++){
+                var _gce=ev._goldCo[_gci],_brg=row.getBoundingClientRect();
+                showScorePop(_gce.delta<0?'-$'+(-_gce.delta):'+$'+_gce.delta,_brg.left+24,_brg.top-32,'#3a2800','#f0c060');
+                await animGoldTick(_gce.delta,_tileBounce);
+              }
+            }
           }
           if(ev._globalLetters!=null){
             // All brackets done for this tile — store tick, wait for next tile to pull the trigger
@@ -609,10 +856,15 @@ async function runScoreAnim(events,total){
           else await scoreDelay(1);
         }
       }else{
-        // Non-tile-local letter event (bingo +50, sticker bonus, etc.)
+        // Non-tile-local letter event (bingo +50, sticker/stamp bonus, etc.)
         var curDelay=await _evBeatStart(ev);
+        // Gilded: flip the tile to its gold face on this beat, so it visibly
+        // becomes gold the instant it's gilded (PRE bracket, before it scores).
+        if(ev.goldifySq!=null)_goldifyTileEl(ev.goldifySq);
         if(!ev._skip)_binkEl(_evTileEl(ev));
+        if(ev.bingo)saL.style.color='#2e9d72'; // jade — bingo bonus landed
         saL.textContent=ev.lettersAfter;bumpSA('ls-letters');_saLSynced=ev.lettersAfter;
+        _applyCoApply(ev);
         if(curDelay!=null)await scoreDelay(curDelay);
       }
 
@@ -622,6 +874,7 @@ async function runScoreAnim(events,total){
       showScorePop('+'+ev.delta+' mult',br.left+100,br.top-32,'#500808','#ff8080');
       animPlusSum+=ev.delta;
       refreshMult();
+      _applyCoApply(ev);
       if(curDelay!=null)await scoreDelay(curDelay);
 
     }else if(ev.type==='crossword-tick'){
@@ -642,12 +895,26 @@ async function runScoreAnim(events,total){
       if(!ev._skip)_binkEl(tileEl2);
       animXprod*=ev.factor;
       refreshMult();
+      _applyCoApply(ev);
       if(curDelay!=null)await scoreDelay(curDelay);
 
     }else if(ev.type==='gold'){
-      var curDelay=await _evBeatStart(ev);
+      // Gold's audio/increment is driven by animGoldTick's per-$1 bounce (below),
+      // not the shared _evBeatStart ding — so open the beat by hand: flush the
+      // pending tile tick, consume a delay step, and peel the board sticker if
+      // this gold comes from one, then let the ticks fire the coin clinks.
+      _firePendingTick(false);
+      _jengaRestore();
+      var curDelay=null;
+      if(!ev._skip){
+        curDelay=delay;delay=Math.max(minDelay,delay-delayStep);
+        if(ev.floatSqIdx!=null){await _awaitPeelHold(ev.floatSqIdx);_activateStickerFloat(ev.floatSqIdx);}
+      }
       var br3=row.getBoundingClientRect();
-      showScorePop('+$'+ev.delta,br3.left+24,br3.top-32,'#3a2800','#f0c060');
+      var _goldTxt=ev.delta<0?'-$'+(-ev.delta):'+$'+ev.delta;
+      showScorePop(_goldTxt,br3.left+24,br3.top-32,'#3a2800','#f0c060');
+      _applyCoApply(ev); // merged +mult (e.g. Gold Rush) lands with the first coin
+      await animGoldTick(ev.delta,_goldBounceFn(ev));
       if(curDelay!=null)await scoreDelay(curDelay);
 
     }else if(ev.type==='retrigger'){
@@ -667,6 +934,7 @@ async function runScoreAnim(events,total){
 
     }else if(ev.type==='final'){
       _firePendingTick(false);
+      _jengaRestore();
       saL.textContent=ev.letters;
       saM.textContent=fmtMult(ev.displayMult||ev.mult);
       saS.textContent=total.toLocaleString();bumpSA('ls-score');
@@ -680,22 +948,32 @@ async function runScoreAnim(events,total){
   var _bar=document.getElementById('score-bar');
   var _runP=document.getElementById('run-progress');
   var _startPct=Math.min(100,_oldScore/_tgt*100);
-  var _endPct=Math.min(100,(_oldScore+total)/_tgt*100);
   if(_bar){_bar.style.transition='none';_bar.style.height=_startPct+'%';}
+  // Fill the score toward the target starting at a base rate of 10% of the
+  // target per second, then accelerating exponentially as more is added
+  // (d(added)/dt = base + growth·added). Base rate is proportional to the target
+  // so every stage starts filling at the same relative pace. The bar is derived
+  // from the SAME running score each frame, so it fills at the exact same rate
+  // as the score ticks up — it just clamps at 100% if the score overshoots.
+  // growth chosen so a full-bar fill (empty→target) takes ~4.3s:
+  // ln(1+10·growth)/growth ≈ 4.3 at growth=0.35.
+  var _FILL_BASE=_tgt*0.10,_FILL_GROWTH=0.35;
   await new Promise(function(res2){
-    var _start=performance.now(),DUR=2000;
+    var _last=null,_added=0;
     function _tick(now){
-      var t=Math.min(1,(now-_start)/DUR);
-      var _cur=Math.round(total*(1-t));
-      saS.textContent=_cur.toLocaleString();
-      if(_bar)_bar.style.height=(_startPct+(_endPct-_startPct)*t)+'%';
-      if(_runP)_runP.textContent=Math.round(_oldScore+total*t).toLocaleString()+' / '+_tgt.toLocaleString();
-      if(t<1){requestAnimationFrame(_tick);}else{saS.textContent='0';res2();}
+      if(_last===null)_last=now;
+      var dt=(now-_last)/1000;_last=now;
+      _added+=(_FILL_BASE+_added*_FILL_GROWTH)*dt;
+      var done=_added>=total;if(done)_added=total;
+      saS.textContent=Math.round(total-_added).toLocaleString();
+      if(_bar)_bar.style.height=Math.min(100,(_oldScore+_added)/_tgt*100)+'%';
+      if(_runP)_runP.textContent=Math.round(_oldScore+_added).toLocaleString()+' / '+_tgt.toLocaleString();
+      if(!done){requestAnimationFrame(_tick);}else{saS.textContent='0';res2();}
     }
     requestAnimationFrame(_tick);
   });
   if(_bar)_bar.style.transition='height .6s cubic-bezier(.22,1,.36,1)';
-  saL.textContent='0';saM.textContent='1';
+  saL.textContent='0';saM.textContent='1';saL.style.color='';
   if(lsTileDelta){lsTileDelta.textContent='';lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');}
   row.classList.remove('scoring');
 }

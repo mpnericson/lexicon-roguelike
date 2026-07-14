@@ -31,23 +31,33 @@ window.addEventListener('resize',function(){hpBounds();renderBoard();});
   dh.addEventListener('click',function(){discardTiles();});
 })();
 
-// Menu/Hide-tiles sprite hover and click
+// Focus-mode (eye) + menu button hover and click
 (function(){
-  var eyeHit=document.getElementById('mh-eye-hit');
+  var fb=document.getElementById('focus-btn-wrap');
   var menuWrap=document.getElementById('menu-wrap');
-  if(!eyeHit||!menuWrap)return;
-  function idleF(){return _mhTilesVisible?1:13;}
-  eyeHit.addEventListener('mouseenter',function(){if(!_mhTransitioning)_mhSetFrame(_mhTilesVisible?2:9);});
-  eyeHit.addEventListener('mouseleave',function(){if(!_mhTransitioning)_mhSetFrame(idleF());});
-  eyeHit.addEventListener('click',function(){toggleBoardTiles();});
-  menuWrap.addEventListener('mouseenter',function(){if(!_mhTransitioning)_mhSetFrame(_mhTilesVisible?4:11);});
-  menuWrap.addEventListener('mouseleave',function(){if(!_mhTransitioning)_mhSetFrame(idleF());});
-  menuWrap.addEventListener('mousedown',function(e){if(!e.target.closest('#menu-dropdown')&&!_mhTransitioning)_mhSetFrame(_mhTilesVisible?5:12);});
-  menuWrap.addEventListener('mouseup',function(e){if(!e.target.closest('#menu-dropdown')&&!_mhTransitioning)_mhSetFrame(_mhTilesVisible?4:11);});
-  menuWrap.addEventListener('click',function(e){if(!e.target.closest('#menu-dropdown'))toggleMenu();});
+  if(fb){
+    fb.addEventListener('mouseenter',function(){if(!_fbAnimating)_fbFrame(FOCUS.active?FOCUS.BTN.HOVER_CLOSED:FOCUS.BTN.HOVER_OPEN);});
+    fb.addEventListener('mouseleave',function(){if(!_fbAnimating)_fbFrame(FOCUS.active?FOCUS.BTN.IDLE_CLOSED:FOCUS.BTN.IDLE_OPEN);});
+    fb.addEventListener('mousedown',function(){if(!_fbAnimating)_fbFrame(FOCUS.active?FOCUS.BTN.PRESS_CLOSED:FOCUS.BTN.PRESS_OPEN);});
+    fb.addEventListener('click',function(){toggleFocusMode();});
+  }
+  if(menuWrap){
+    // Frame swaps no-op until the menu button frames are exported
+    // (Assets/animations/menu button/menu_button1..3.png: idle/hover/press).
+    var mfOk=false;var probe=new Image();
+    probe.onload=function(){mfOk=true;};
+    probe.src='Assets/animations/menu button/menu_button2.png';
+    function mf(n){if(!mfOk)return;var el=document.getElementById('menu-btn-sprite');if(el)el.src='Assets/animations/menu button/menu_button'+n+'.png';}
+    menuWrap.addEventListener('mouseenter',function(){mf(2);});
+    menuWrap.addEventListener('mouseleave',function(){mf(1);});
+    menuWrap.addEventListener('mousedown',function(e){if(!e.target.closest('#menu-dropdown'))mf(3);});
+    menuWrap.addEventListener('mouseup',function(e){if(!e.target.closest('#menu-dropdown'))mf(2);});
+    menuWrap.addEventListener('click',function(e){if(!e.target.closest('#menu-dropdown'))toggleMenu();});
+  }
 })();
 
 document.addEventListener('keydown',function(e){
+  if(window._focusMode){if(e.key==='Escape')exitFocus();return;}
   if(e.key==='Enter'&&S.phase==='play'&&!e.target.closest('.modal-overlay')){if(window._pdFlash)_pdFlash(3);playWord();}
   if((e.key==='Delete'||e.key==='Backspace')&&S.phase==='play'&&!e.target.closest('input,textarea')){if(window._pdFlash)_pdFlash(5);discardTiles();}
   if(e.key==='Escape'){var _bt=document.getElementById('bag-ui-tiles');if(_bt&&_bt.dataset.expandedLetter)_bagCollapseLetter(_bt);}
@@ -84,11 +94,11 @@ document.addEventListener('click',function(e){
   var dd=document.getElementById('menu-dropdown');
   if(dd&&m&&!m.contains(e.target))dd.style.display='none';
 });
-// Auto-detect sticker sprite PNGs. For each sticker without an iconPng, try
+// Auto-detect sticker/stamp sprite PNGs. For each def without an iconPng, try
 // loading Assets/stickers/{id}/{id}.png — if the file exists it loads and the
 // property is set; if not, the image silently fails and the text icon is kept.
 // To add a sprite: drop a 32×32 PNG at Assets/stickers/{sticker_id}/{sticker_id}.png.
-// Adding a new sticker to the code? Create a matching folder — no other changes needed.
+// Adding a new sticker or stamp to the code? Create a matching folder — no other changes needed.
 (function(){
   if(!window.SQ)return;
   for(var _i=0;_i<SQ.length;_i++){

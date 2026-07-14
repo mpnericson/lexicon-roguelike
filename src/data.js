@@ -1,6 +1,6 @@
 // =====================================================================
 // DATA — tile distribution, game constants, shared utilities
-// Sticker definitions live in src/stickers/ (loaded after this file).
+// Sticker and stamp definitions live in src/stickers/ (loaded after this file).
 // =====================================================================
 function isPalindrome(w){return w.length>1&&w===w.split('').reverse().join('');}
 function isExtendedPalindrome(w){
@@ -56,7 +56,7 @@ var CONSTRAINTS=[
   {id:'c_draw3',name:'Slow Draw',desc:'Draw at most 3 tiles after each word or discard.'},
   {id:'c_nodisc',name:'No Discards',desc:'Discards are disabled this round.'},
   {id:'c_oneplay',name:'One Shot',desc:'Only one play this round. Target reduced to 1/3.'},
-  {id:'c_stickers',name:'Sticker Strike',desc:'All stickers disabled until you sell one.'},
+  {id:'c_stickers',name:'Sticker Strike',desc:'All stickers and stamps disabled until you sell one.'},
 ];
 function currentConstraint(){
   if(!S||!S.constraintOrder)return null;
@@ -65,27 +65,27 @@ function currentConstraint(){
   return S.constraintOrder[S.ai]||null;
 }
 
-// Stickers The Thing cannot copy (utility / non-scoring mechanics).
-// Add copyable:false to a sticker definition to block it without editing this list.
+// Stamps The Thing cannot copy (utility / non-scoring mechanics).
+// Add copyable:false to a stamp definition to block it without editing this list.
 var _THING_BLOCKED={the_thing:true,easy_mode:true,jenga:true,midas_touch:true,insatiable:true,emergency_rations:true,safety_net:true,sheriffs_office:true};
 
-// Sticker definitions are split across src/stickers/:
+// Sticker/stamp definitions are split across src/stickers/:
 //   board/squares.js   — dl, tl, dw, tw, echo, gilded, void, paint_bucket, super_glue
 //   board/effects.js   — spring_trap, whack_a_mole, slot_machine
 //   board/indirect.js  — chess pieces (knight/bishop/rook/queen), proletariat
-//   tile/economy.js    — inkwell, pressure_cooker, the_miser, bounty_hunter, sheriffs_office,
+//   stamps/economy.js  — inkwell, pressure_cooker, the_miser, bounty_hunter, sheriffs_office,
 //                        bourgeois, insatiable, emergency_rations, the_target, pinata, safety_net
-//   tile/scoring.js    — the_commons, scholar, aristocrat, the_marshall, the_hangman,
+//   stamps/scoring.js  — the_commons, scholar, aristocrat, the_marshall, the_hangman,
 //                        magic_number, the_purist, crossroads, palindrome_engine, drunk_text,
 //                        the_player, chess_king, NATO tiles
-//   tile/utility.js    — jenga, midas_touch, easy_mode, the_thing
+//   stamps/utility.js  — jenga, midas_touch, easy_mode, the_thing
 var SQ=[];
 
 // ── Tile State Machine ────────────────────────────────────────────────────────
 // Every tile exists in exactly one state at all times. Never write t.state
 // directly — always go through setTileState() so sub-props stay consistent.
 var TILE_STATE={
-  HAND:     'hand',      // in the hotbar, selectable
+  HAND:     'hand',      // in the hand, selectable
   DRAGGING: 'dragging',  // held by the pointer
   MOVING:   'moving',    // in-flight animation between locations
   STORED:   'stored',    // off-screen: in the bag or discard pile

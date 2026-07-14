@@ -18,7 +18,7 @@ function saveGame() {
       hand: (S.hand || []).map(function(t) {
         if (!t) return null;
         return {letter:t.letter,isBlank:t.isBlank,id:t.id,blankAs:t.blankAs||null,
-                sel:false,onBoard:false,variant:t.variant||null,blueBonus:t.blueBonus||0,_alchSc:t._alchSc||0};
+                sel:false,onBoard:false,variant:t.variant||null,_alchSc:t._alchSc||0};
       }),
       board: S.board,
       bt: (S.bt || []).map(function(bt) {
@@ -33,6 +33,7 @@ function saveGame() {
       bhMult: S.bhMult || 1,
       palMult: S.palMult || 1,
       playerMult: S.playerMult || 1,
+      cartographerMult: S.cartographerMult || 1,
       palWords: S.palWords || [],
       lastWordLen: S.lastWordLen || 0,
       endless: !!S.endless,
@@ -44,7 +45,7 @@ function saveGame() {
       usedLetters: Array.from(S.usedLetters||[]),
       stickersSoldThisStage: S.stickersSoldThisStage||0,
       crossroadsCount: S.crossroadsCount||0,
-      tileStickers: (S.tileStickers||[]).map(function(ts){return{id:ts.id};}),
+      stamps: (S.stamps||[]).map(function(ts){return{id:ts.id};}),
       stickerInventory: (S.stickerInventory||[]).map(function(p){return{id:p.id};}),
       pool: (S.pool||[]).map(function(t){return{letter:t.letter,isBlank:!!t.isBlank,id:t.id,variant:t.variant||null};})
     };
@@ -97,6 +98,7 @@ function loadGame() {
       bhMult: d.bhMult || 1,
       palMult: d.palMult || 1,
       playerMult: d.playerMult || 1,
+      cartographerMult: d.cartographerMult || 1,
       palWords: d.palWords || [],
       lastWordLen: d.lastWordLen || 0,
       endless: !!d.endless,
@@ -108,7 +110,7 @@ function loadGame() {
       usedLetters: new Set(d.usedLetters||[]),
       stickersSoldThisStage: d.stickersSoldThisStage||0,
       crossroadsCount: d.crossroadsCount||0,
-      tileStickers: (d.tileStickers||[]).map(function(ts){return(ts&&ts.id)?{id:ts.id}:null;}).filter(Boolean),
+      stamps: ((d.stamps||d.tileStickers)||[]).map(function(ts){return(ts&&ts.id)?{id:ts.id}:null;}).filter(Boolean), // d.tileStickers: pre-rename saves
       devMode: false,
       pool: d.pool || (function(){
         var pm={};

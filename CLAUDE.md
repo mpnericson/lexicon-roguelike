@@ -2,6 +2,8 @@
 
 A browser/Electron Scrabble roguelike. All game logic lives in `src/` JS files loaded via `<script>` tags in `index.html`. No bundler, no framework, no modules.
 
+**Terminology**: **stickers** are board-square effects (placed on squares, formerly "board stickers"); **stamps** are the passive items in the bar above the hand (formerly "hotbar/tile/global stickers"). Both share the `SQ` defs array and the `Assets/stickers/` sprite pipeline.
+
 ## Running the game
 
 ```bash
@@ -17,7 +19,7 @@ Open `index.html` directly in a browser also works.
 |------|------|
 | `index.html` | All CSS + HTML structure. Loads every JS file via `<script>` tags. |
 | `src/data.js` | Constants: `B=15` (board size), `LS` (letter scores), `DIST` (tile counts), `STAGES`/`CONSTRAINTS` (progression), `setTileState` (tile state machine), utility fns (`uid`, `_rng`, `shuffle`, `sqd`). `SQ` sticker defs live in `src/stickers/`. |
-| `src/game.js` | Global state `S`, `startGame`, `roundComplete`/`advanceRound`, `showGO`, `toast`, modals, bag modal + letter expand/collapse, WebAudio SFX, `transformTile`, `openBlankChooser`, `hasTileSticker`/`countTileSticker`. |
+| `src/game.js` | Global state `S`, `startGame`, `roundComplete`/`advanceRound`, `showGO`, `toast`, modals, bag modal + letter expand/collapse, WebAudio SFX, `transformTile`, `openBlankChooser`, `hasStamp`/`countStamp`. |
 | `src/save.js` | localStorage run persistence: `saveGame`, `loadGame`, `resumeGame`, `clearSave`. |
 | `src/achievements.js` | Achievement defs, `achvInit`/`achvCheck`/`achvUnlock`, achievements modal. |
 | `src/play.js` | `playWord` (async), `discardTiles`, `shuffleHand`. |
@@ -26,8 +28,8 @@ Open `index.html` directly in a browser also works.
 | `src/render.js` | `renderAll`, `renderBoard`, `renderHand`, `renderSqHand`, `renderHUD`. |
 | `src/drag.js` | Pointer-event drag engine: `attachHandTileDrag`, `attachBoardTileDrag`, `attachSqDrag`, `placeTile`, `recallTile`. |
 | `src/physics.js` | Spring physics for hand tiles: `HP` object, `hpBounds`, `hpRest`, `hpStep`, `hpDraw`. |
-| `src/shop.js` | Shop phase UI, purchasing, sticker application. |
-| `src/stickers/` | All sticker definitions incl. their scoring hooks (board/squares, board/effects, board/indirect, tile/economy, tile/scoring, tile/utility). |
+| `src/shop.js` | Shop phase UI, purchasing, sticker application. Slot machine: buttons arm the mode (grey = symbol reels — **dev-only for now**, yellow/pink = default sticker/stamp reels; grey reel tint = mode light), handle pull spins the armed machine (`spinArmedSlots` → `spinSlots` or `spinSymbolSlots`; symbol combos in `SYMBOL_PAYOUTS` — outcome rolled first, reels dressed to match). |
+| `src/stickers/` | All sticker + stamp definitions incl. their scoring hooks (board/squares, board/effects, board/indirect, stamps/economy, stamps/scoring, stamps/utility). |
 | `src/ui.js` | Dev-mode palette, solver UI, board preview, misc modals. |
 | `src/gaddag.js` | GADDAG word index (flat Int32Array, ~48MB, ~0.7s chunked build at startup). `buildGaddag`, `buildGaddagSync`, `gdChild`, `gdEnd`. |
 | `src/solver.js` | GADDAG-based solver (`runSolver`, `_rankRunRankSolve`, `findBestMoveBackground`). |
@@ -46,7 +48,8 @@ S = {
   ai, bi,             // stage index, round index into STAGES
   score, gold, plays, disc,
   phase,              // 'play' | 'placing' | 'shop'
-  placed,             // stickers the player owns
+  placed,             // stickers the player has placed on the board
+  stamps,             // stamps the player owns — array order = bar order (hooks fire left→right)
   bounties,           // active bounty objects — persist across blinds
   sqHand, sqStaged,   // sticker placement phase
   devMode, seed, ...
@@ -104,8 +107,8 @@ Tile dimensions must be consistent across CSS, physics, render, and drag:
 The engine only controls the ORDER effects fire in; all effect logic lives in the sticker definitions. Bracket order:
 
 - **PRE** — tile-count bonus (+1 mult per tile beyond 3), then board-sticker `onPreScore` per played square (Gilded).
-- **PER TILE** (cross words first, then main word): base letter score → additive (board `onTileAdd` on the square, additive aura hooks, gold-tile +$1, hotbar `onPerTile` hooks **left→right**) → multiplicative (board `onTileMult`: DL/TL/DW/TW, then multiplicative aura hooks: chess pieces) → retrigger (`retrigger:true` squares, red tiles).
-- **POST** — bingo +50 → board `onPostWordAdd` → board `onPostWordMult` → hotbar `onPostWord` **left→right** (hotbar order is a gameplay mechanic) → bounty reward.
+- **PER TILE** (cross words first, then main word): base letter score → additive (board `onTileAdd` on the square, additive aura hooks, gold-tile +$1, stamp `onPerTile` hooks **left→right**) → multiplicative (board `onTileMult`: DL/TL/DW/TW, then multiplicative aura hooks: chess pieces) → retrigger (`retrigger:true` squares, red tiles).
+- **POST** — bingo +50 → board `onPostWordAdd` → board `onPostWordMult` → stamp `onPostWord` **left→right** (stamp bar order is a gameplay mechanic) → bounty reward.
 - **FINAL** — `total = round(letters × (1 + Σ plusMults) × Π xmults)`, then `ctx.finalTransforms` (Palindrome Engine).
 
 The solver scores hypothetical moves through the same engine (board overlay + `preview:true`). `preview:true` skips cooldown commits and sticker side effects. Engine inputs/ctx surface are documented at the top of `score_engine.js`.
@@ -114,7 +117,7 @@ The solver scores hypothetical moves through the same engine (board overlay + `p
 
 Three-phase pipeline shared by all entry points:
 
-1. **Generate** — `_solverGenMoves(handCounts, blankCount)` walks the GADDAG (gaddag.js) from each board anchor (empty square adjacent to a tile; centre when empty) and emits every legal placement spellable with the rack. Synchronous, ~20-30ms typical (~200ms with a blank). Cross-words are validated during generation via per-square letter bitmasks (`_solverCrossMasks`). Each move is generated exactly once (the leftward walk never places on another anchor). Blanks are used greedily only when the rack letter is unavailable.
+1. **Generate** — `_solverGenMoves(handCounts, blankCount, jengaActive)` walks the GADDAG (gaddag.js) from each board anchor (empty square adjacent to a tile; centre when empty) and emits every legal placement spellable with the rack. Synchronous, ~20-30ms typical (~200ms with a blank). Cross-words are validated during generation via per-square letter bitmasks (`_solverCrossMasks`). Each move is generated exactly once (the leftward walk never places on another anchor). Blanks are used greedily only when the rack letter is unavailable. **Jenga hook** (`jengaActive`, set in `_solverCore` when the stamp is owned): committed tiles become stackable — their squares join the anchor set and the walk gains an override branch that stacks a rack tile on top (`isTop` placements; no cross-word mask since the buried letter keeps the perpendicular run; single-stack moves are emitted only in the direction `_engWordDir` will infer at play time). Stacked candidates score through the same engine inputs live play uses (`jengaTops`/`jengaUnder`/`jengaCrossIdxs`).
 2. **Score** — `_solverScoreMove(mv, hm)` runs each candidate through `runScoreEngine` (preview mode) on a board overlay, chunked via `setTimeout`.
 3. **Rank** — top-K insertion while scoring.
 
@@ -171,9 +174,9 @@ per run into S.constraintOrder): c_long, c_pal, c_longer, c_letters, c_hand,
 c_draw3, c_nodisc, c_oneplay, c_stickers.
 ```
 
-## Sticker types (SQ array) and scoring hooks
+## Sticker/stamp types (SQ array) and scoring hooks
 
-Two families: **board stickers** (`type:'board'`/`'local'`, live in `S.placed` with a `sqIdx`, id mirrored in `S.board[sqIdx]`) and **hotbar/tile stickers** (`type:'tile'`, live in `S.tileStickers` — array order = hotbar left→right order, which is the order their hooks fire in).
+Two families: **stickers** (`type:'board'`/`'local'`, live in `S.placed` with a `sqIdx`, id mirrored in `S.board[sqIdx]`) and **stamps** (`type:'stamp'`, live in `S.stamps` — array order = stamp bar left→right order, which is the order their hooks fire in).
 
 Scoring hooks (all receive `ctx`; read game state via `ctx.state`, never `S`, so the engine stays pure/testable):
 
@@ -181,11 +184,11 @@ Scoring hooks (all receive `ctx`; read game state via `ctx.state`, never `S`, so
 - Auras — for board stickers whose effect targets *other* squares: in `onBuildCtx`, `ctx.auras.push({squares, onTileAdd, onTileMult})`. `squares` is a Set/array of covered indices (omit to evaluate every tile in the hook); `onTileAdd` fires in the per-tile additive bracket, `onTileMult` in the mult bracket. Every matching aura fires — overlapping auras **stack** (two chess pieces covering a square = ×9). Note: DL/TL/DW/TW are NOT auras — they're square-local `onTileMult` hooks on the sticker def; auras are only for ranged effects.
 - `onPreScore(tile, ctx, sqIdx)` — board, PRE bracket (Gilded).
 - `onTileAdd(tile, ctx, ts, baseSc, sqIdx)` — board, per-tile additive (Void, Spring Trap, Slot Machine setup).
-- `onPerTile(tile, ctx, ts, inst)` — hotbar, per-tile additive, left→right (Commons, NATO letters).
+- `onPerTile(tile, ctx, ts, inst)` — stamp, per-tile additive, left→right (Commons, NATO letters).
 - `onTileMult(tile, ctx, ts, sqIdx)` — board, per-tile multiplicative (DL/TL/DW/TW).
 - `onPostWordAdd` / `onPostWordMult(w, wt, ctx, inst)` — board, post-word (Proletariat / Slot Machine payout).
-- `onPostWord(w, wt, ctx, inst)` — hotbar, post-word, left→right (Scholar, Crossroads, Drunk Text, …).
-- `onCrossword(ctx, inst)` — hotbar, fired before each cross word scores (Crossroads tooltip tick).
+- `onPostWord(w, wt, ctx, inst)` — stamp, post-word, left→right (Scholar, Crossroads, Drunk Text, …).
+- `onCrossword(ctx, inst)` — stamp, fired before each cross word scores (Crossroads tooltip tick).
 - `retrigger:true` — board flag; engine re-runs the per-tile passes (Red Sticker).
 - Non-engine hooks fired from play/game code: `onWordPlayed`, `onEndStage`, `onSell`, `onAcquire`.
 - Chess pieces (`chess_*`) — hover to preview attack pattern; click to inspect.

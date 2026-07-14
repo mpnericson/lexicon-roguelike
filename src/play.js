@@ -40,10 +40,14 @@ async function playWord(){
     }
     if(!conn){toast('Word must connect to an existing word!');return;}
   }
+  var _words=getAllWords(nt,dir);
+  // Palindromes in ANY formed word (main or cross) count for the pal-lock
+  // unlock and the Palindrome Engine.
+  var _palWordsPlayed=[];for(var _pwi=0;_pwi<_words.length;_pwi++){if(isExtendedPalindrome(_words[_pwi].word))_palWordsPlayed.push(_words[_pwi].word);}
   var _con=currentConstraint();
   var palLocked=_con==='c_pal'&&!S.palUnlocked;
   var justUnlocked=false;
-  if(palLocked&&isExtendedPalindrome(main.word)){S.palUnlocked=true;palLocked=false;justUnlocked=true;}
+  if(palLocked&&_palWordsPlayed.length){S.palUnlocked=true;palLocked=false;justUnlocked=true;}
   var scoreLocked=false,scoreLockMsg='';
   if(_con==='c_long'&&main.word.length<5){scoreLocked=true;scoreLockMsg='Word scores 0 — only 5+ letter words score this round!';}
   if(_con==='c_longer'&&(S.lastWordLen||0)>0&&main.word.length<=(S.lastWordLen||0)){scoreLocked=true;scoreLockMsg='Word scores 0 — must be longer than your last ('+S.lastWordLen+' letters)!';}
@@ -51,8 +55,7 @@ async function playWord(){
   window._scoring=true;
   var _playBtn=document.querySelector('#play-controls .btn-icon-green');
   if(_playBtn)_playBtn.disabled=true;
-  var _hasDT=hasTileSticker('drunk_text');
-  var _words=getAllWords(nt,dir);
+  var _hasDT=hasStamp('drunk_text');
   var _eggWords={};for(var i=0;i<EASTER_EGGS.length;i++)_eggWords[EASTER_EGGS[i].word]=true;
   var _bountyWords={};if(S.bounties&&S.bounties.length){for(var _bwi2=0;_bwi2<S.bounties.length;_bwi2++){var _bws=S.bounties[_bwi2].words||[];for(var _bwj=0;_bwj<_bws.length;_bwj++)_bountyWords[_bws[_bwj].word.toUpperCase()]=true;}}
   var _dtInvalid=false;
@@ -86,7 +89,7 @@ async function playWord(){
       }
     }
   }
-  var _hasBH=hasTileSticker('bounty_hunter');
+  var _hasBH=hasStamp('bounty_hunter');
   if(_matchedBounties.length){
     var _totBReward=0;
     for(var _mbi=0;_mbi<_matchedBounties.length;_mbi++){_applyBountyGlow(_matchedBounties[_mbi].idxs,_matchedBounties[_mbi].scrollIdx);_totBReward+=_matchedBounties[_mbi].reward;}
@@ -97,23 +100,37 @@ async function playWord(){
   if(!scoreLocked){
     if(justUnlocked)toast('Palindrome! Scoring is now live.');
     var res=scorePlay(nt,dir,false);
-    _fireAllStickers('onWordPlayed',[main.word,main.tiles]);
+    _fireAllHooks('onWordPlayed',[main.word,main.tiles]);
     if(_hasDT)delete S._drunkValid;
     await runScoreAnim(res.events,res.total);
     S.score+=res.total;S.gold+=res.tgold;
     // Record every formed word (main + crosswords) with this play's score.
     for(var _wbi=0;_wbi<_words.length;_wbi++)wordbookRecord(_words[_wbi].word,res.total);
-    var _hasMT=hasTileSticker('midas_touch');
-    if(_hasMT&&main.word.length>=5){for(var _mj=0;_mj<main.tiles.length;_mj++){var _mIdx=main.tiles[_mj].idx;if(S.bt[_mIdx])transformTile(S.bt[_mIdx].id,{variant:'gold'});}}
+    var _hasMT=hasStamp('midas_touch');
+    // Gild the tile actually played on each square. Runs before the Jenga
+    // commit below, so a fresh stacked tile is still in S.btTop (the visible
+    // played tile); S.bt holds the buried committed tile — gild the top.
+    if(_hasMT&&main.word.length>=5){for(var _mj=0;_mj<main.tiles.length;_mj++){var _mIdx=main.tiles[_mj].idx;var _mGt=(S.btTop&&S.btTop[_mIdx]&&S.btTop[_mIdx].isNew)?S.btTop[_mIdx]:S.bt[_mIdx];if(_mGt)transformTile(_mGt.id,{variant:'gold'});}}
     S.crossroadsCount=(S.crossroadsCount||0)+(res.crossWordCount||0);
     S._crossroadsLiveCount=null; // animation's display-only counter is now caught up — defer to the real one
     _proletariatSpread();
     _checkRankReward(res.total,_capturedRankTop10);
     achvCheck('word_played',{bingo:res.bingo,isPalin:isExtendedPalindrome(main.word)});
-    var _hasPE=hasTileSticker('palindrome_engine');
-    if(_hasPE&&isExtendedPalindrome(main.word)){
+    var _hasPE=hasStamp('palindrome_engine');
+    if(_hasPE&&_palWordsPlayed.length){
       if(!S.palWords)S.palWords=[];
-      if(S.palWords.indexOf(main.word)<0){S.palWords.push(main.word);S.palMult=(S.palMult||1)+0.25;toast('Palindrome Engine: ×'+fmtMult(S.palMult)+'!');}
+      var _peSeen={};
+      for(var _pei=0;_pei<_palWordsPlayed.length;_pei++){
+        var _pw=_palWordsPlayed[_pei];
+        if(_peSeen[_pw]||S.palWords.indexOf(_pw)>=0)continue;
+        _peSeen[_pw]=1;S.palWords.push(_pw);S.palMult=(S.palMult||1)+0.25;
+      }
+      if(Object.keys(_peSeen).length)toast('Palindrome Engine: ×'+fmtMult(S.palMult)+'!');
+    }
+    if(hasStamp('cartographer')){
+      var _corners={};_corners[0]=1;_corners[B-1]=1;_corners[(B-1)*B]=1;_corners[B*B-1]=1;
+      var _cn=0;for(var _cti=0;_cti<nt.length;_cti++){if(_corners[nt[_cti].idx])_cn++;}
+      if(_cn>0){S.cartographerMult=(S.cartographerMult||1)+0.5*_cn;toast('Cartographer: ×'+fmtMult(S.cartographerMult)+'!');}
     }
   }else{toast(scoreLockMsg);}
   // Spring trap: eject tile(s) into bag before commit
@@ -143,11 +160,13 @@ async function playWord(){
   var _glueSquares=[];
   for(var _sgi=0;_sgi<S.placed.length;_sgi++){if(S.placed[_sgi].id==='super_glue'&&S.placed[_sgi].sqIdx!=null)_glueSquares.push(S.placed[_sgi].sqIdx);}
   var _wamConsumed=[];
+  var _virusConsumed=[];
   for(var _pi=0;_pi<nt.length;_pi++){
     var _pIdx=nt[_pi].idx;var _pSid=S.board[_pIdx];if(!_pSid)continue;
     var _pDef=sqd(_pSid);if(!_pDef||!_pDef.perishable)continue;
     if(_pSid!=='super_glue'){var _glued=false;for(var _sgi2=0;_sgi2<_glueSquares.length;_sgi2++){if(adjSq(_pIdx,_glueSquares[_sgi2])){_glued=true;break;}}if(_glued)continue;}
     if(_pSid==='whack_a_mole')_wamConsumed.push(_pIdx);
+    if(_pSid==='virus')_virusConsumed.push(_pIdx);
     S.board[_pIdx]=null;
     for(var _pri=S.placed.length-1;_pri>=0;_pri--){if(S.placed[_pri].sqIdx===_pIdx){S.placed.splice(_pri,1);break;}}
     _perishableChanged=true;
@@ -168,6 +187,24 @@ async function playWord(){
     renderBoard();
     toast('Whack-a-Mole! It moved.');
   }
+  // Virus: after being consumed, spread to the 2 closest free squares (no tile,
+  // no sticker). S.board is re-read each iteration so cascading spreads don't
+  // collide.
+  for(var _vi=0;_vi<_virusConsumed.length;_vi++){
+    var _vOr=_virusConsumed[_vi],_vor=Math.floor(_vOr/B),_voc=_vOr%B,_vCand=[];
+    for(var _vI=0;_vI<B*B;_vI++){
+      if(_vI===_vOr||S.board[_vI]||S.bt[_vI])continue;
+      _vCand.push({idx:_vI,d:Math.abs(Math.floor(_vI/B)-_vor)+Math.abs((_vI%B)-_voc)});
+    }
+    _vCand.sort(function(a,b){return a.d-b.d;});
+    var _vSpawn=0;
+    for(var _vk=0;_vk<_vCand.length&&_vSpawn<2;_vk++){
+      S.board[_vCand[_vk].idx]='virus';
+      S.placed.push({id:'virus',sqIdx:_vCand[_vk].idx});
+      _vSpawn++;
+    }
+    if(_vSpawn>0){renderBoard();toast('Virus spread!');}
+  }
   // Bounty slide-out: fires after scoring animation completes. Multiple scrolls
   // can complete at once — splice highest index first so lower ones stay valid.
   if(_matchedBounties.length){
@@ -180,15 +217,17 @@ async function playWord(){
       S.bounties.splice(_bDesc[_mbo].scrollIdx,1);
       if(_hasBH)S.bhMult=(S.bhMult||1)+0.25;
     }
+    if(_bGold)await animGoldTick(_bGold);
     renderHUD();
   }
   S.wtr=(S.wtr||0)+1;S.discPressure=0;
   if(_con==='c_letters'){var _mts=main.tiles;for(var _li2=0;_li2<_mts.length;_li2++){if(!_mts[_li2].isBlank&&_mts[_li2].letter)(S.usedLetters=S.usedLetters||new Set()).add(_mts[_li2].letter);}}
   S.lastWordLen=main.word.length;
-  var blueTiles=[];
-  for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){var _bt=S.bt[i];if(_bt.variant==='blue'){_bt.blueBonus=(_bt.blueBonus||0)+(_bt.isBlank?0:(LS[_bt.letter]||0));blueTiles.push(_bt);S.bt[i]=null;}else{setTileState(_bt,'board',{boardSq:i,isNew:false});}}}
-  // Commit Jenga stacked tiles: btTop replaces bt at that square
-  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var _btt=S.btTop[i];if(_btt.variant==='blue'){_btt.blueBonus=(_btt.blueBonus||0)+(_btt.isBlank?0:(LS[_btt.letter]||0));blueTiles.push(_btt);S.btTop[i]=null;}else{setTileState(_btt,'board',{boardSq:i,isNew:false});_btt._stackLevel=(S.bt[i]&&S.bt[i]._stackLevel?S.bt[i]._stackLevel:0)+1;S.bt[i]=_btt;S.btTop[i]=null;}}}}
+  for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){setTileState(S.bt[i],'board',{boardSq:i,isNew:false});}}
+  // Commit Jenga stacked tiles: btTop replaces bt at that square, but the buried
+  // tile's scoring/render info is preserved on _buried so it keeps scoring in
+  // future words that pass through this square (and can still be revealed).
+  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var _btt=S.btTop[i];var _bur=S.bt[i];setTileState(_btt,'board',{boardSq:i,isNew:false});_btt._stackLevel=(_bur&&_bur._stackLevel?_bur._stackLevel:0)+1;if(_bur)_btt._buried={letter:_bur.letter,isBlank:!!_bur.isBlank,blankAs:_bur.blankAs||null,variant:_bur.variant||null,_alchSc:_bur._alchSc||0};S.bt[i]=_btt;S.btTop[i]=null;}}}
   // Save positions of kept tiles before filtering
   var pwKept={};var _pwvi=0;for(var _pwki=0;_pwki<S.hand.length;_pwki++){var _pwt=S.hand[_pwki];if(_pwt){if(HP.x[_pwvi]!==undefined)pwKept[_pwt.id]=HP.x[_pwvi];_pwvi++;}}
   S.hand=S.hand.filter(function(t){return!t._done;});
@@ -204,11 +243,11 @@ async function playWord(){
   saveGame();
   if(S.score>=tgt())setTimeout(roundComplete,700);
   else if(S.plays===0)setTimeout(function(){
-    // Safety Net: if score >= 25% of target, advance to shop and destroy the sticker
-    var _snIdx=-1;for(var _si=0;_si<(S.tileStickers||[]).length;_si++){if(S.tileStickers[_si].id==='safety_net'){_snIdx=_si;break;}}
+    // Safety Net: if score >= 25% of target, advance to shop and destroy the stamp
+    var _snIdx=-1;for(var _si=0;_si<(S.stamps||[]).length;_si++){if(S.stamps[_si].id==='safety_net'){_snIdx=_si;break;}}
     if(_snIdx>=0&&S.score>=Math.floor(tgt()*0.25)){
-      S.tileStickers.splice(_snIdx,1);
-      renderTileStickerBar();renderHUD();
+      S.stamps.splice(_snIdx,1);
+      renderStampBar();renderHUD();
       toast('Safety Net! Advancing to shop...');
       setTimeout(advanceRound,1200);
       return;
@@ -305,7 +344,7 @@ function discardTiles(){
     var _discardIds={};
     for(var _di=0;_di<S.hand.length;_di++){if(S.hand[_di]&&S.hand[_di].sel){_discardIds[S.hand[_di].id]=true;setTileState(S.hand[_di],'stored',{storedIn:'discard'});}}
     S.hand=S.hand.filter(function(t){return!t||!_discardIds[t.id];});HP.x=[];HP.vx=[];window._easyHint=null;S.disc--;
-    if(hasTileSticker('pressure_cooker'))S.discPressure=(S.discPressure||0)+1;
+    if(hasStamp('pressure_cooker'))S.discPressure=(S.discPressure||0)+1;
     saveGame();
     var keptCount=S.hand.filter(Boolean).length;
     var _hm2=handMax();var _drawCap2=(currentConstraint()==='c_draw3')?3:_hm2;var _dcDrawN=S.devMode?Math.min(sel.length,_drawCap2):Math.min(Math.min(sel.length,_drawCap2),S.bag.length);

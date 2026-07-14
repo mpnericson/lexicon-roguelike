@@ -1,5 +1,5 @@
 // =====================================================================
-// UI — board preview, sticker collection, inspectors, dev tools
+// UI — board preview, collection, inspectors, dev tools
 // =====================================================================
 var _devTab = 'tiles';
 var _zoomState = null;
@@ -110,21 +110,6 @@ function devAddBlank() {
   renderHand();
 }
 
-var _mhTilesVisible=true,_mhTransitioning=false;
-function _mhSetFrame(n){var el=document.getElementById('menu-hide-sprite');if(el)el.src='Assets/animations/menu and hide tiles/menu_hide_tiles'+n+'.png';}
-function toggleBoardTiles(){
-  var wrap=document.getElementById('board-wrap');
-  var hidden=wrap.classList.toggle('tiles-hidden');
-  _mhTransitioning=true;
-  var frames=hidden?[3,6,7,8,13]:[10,8,7,6,1];
-  var i=0;
-  function step(){
-    if(i>=frames.length){_mhTilesVisible=!hidden;_mhTransitioning=false;return;}
-    _mhSetFrame(frames[i++]);setTimeout(step,80);
-  }
-  step();
-}
-
 function togglePreviewTiles(){
   var wrap=document.getElementById('board-preview-wrap');
   var btn=document.getElementById('preview-tile-toggle-btn');
@@ -138,8 +123,8 @@ function openBoardPreview(){
   var btn=document.getElementById('preview-tile-toggle-btn');
   if(btn)btn.textContent='Hide Tiles';
   renderBoardPreview();
-  var pb=document.getElementById('preview-sticker-bar');
-  if(pb&&typeof _renderPreviewStickerBar==='function')_renderPreviewStickerBar(pb);
+  var pb=document.getElementById('preview-stamp-bar');
+  if(pb&&typeof _renderPreviewStampBar==='function')_renderPreviewStampBar(pb);
   document.getElementById('board-preview-modal').style.display='flex';
 }
 
@@ -167,8 +152,8 @@ function _refreshCollectionContent(){
   var prevScroll=g.scrollTop;
   g.innerHTML='';
   var types=[
-    {key:'board',label:'Board Stickers',test:function(d){return !!d.bm||d.type==='board'||d.type==='local'||!!d.apply;}},
-    {key:'global',label:'Global Stickers',test:function(d){return !d.bm&&d.type!=='board'&&d.type!=='local'&&!d.apply;}}
+    {key:'stickers',label:'Stickers',test:function(d){return !!d.bm||d.type==='board'||d.type==='local'||!!d.apply;}},
+    {key:'stamps',label:'Stamps',test:function(d){return !d.bm&&d.type!=='board'&&d.type!=='local'&&!d.apply;}}
   ];
   for(var ti=0;ti<types.length;ti++){
     var tf=types[ti].test;var items=SQ.filter(function(d){return tf(d);});if(!items.length)continue;
@@ -177,9 +162,9 @@ function _refreshCollectionContent(){
     var row=document.createElement('div');row.className='shop-row';
     for(var j=0;j<items.length;j++){(function(d){
       var isPlaced=false;for(var k=0;k<S.placed.length;k++)if(S.placed[k].id===d.id){isPlaced=true;break;}
-      var isTileType=d.type==='tile';
+      var isStamp=d.type==='stamp';
       var invCount=0;
-      if(isTileType){for(var k=0;k<S.tileStickers.length;k++)if(S.tileStickers[k].id===d.id)invCount++;}
+      if(isStamp){for(var k=0;k<S.stamps.length;k++)if(S.stamps[k].id===d.id)invCount++;}
       else{for(var k=0;k<S.stickerInventory.length;k++)if(S.stickerInventory[k].id===d.id)invCount++;}
       var card=document.createElement('div');card.className='coll-card';
       card.innerHTML='<div class="coll-icon-wrap r-'+(d.rarity||'common')+(isPlaced?' coll-placed':'')+'"><span style="font-size:52px;line-height:1;color:'+d.fg+'">'+sqIconHTML(d,72)+'</span></div>'
@@ -192,20 +177,20 @@ function _refreshCollectionContent(){
         var ctrl=document.createElement('div');ctrl.style.cssText='display:flex;align-items:center;gap:5px;margin-top:5px';
         var minusBtn=document.createElement('button');minusBtn.className='btn btn-gray';minusBtn.style.cssText='padding:1px 8px;font-size:30px;min-width:28px;line-height:1';minusBtn.textContent='−';
         if(invCount===0)minusBtn.disabled=true;
-        minusBtn.onclick=(function(dd,isTile){return function(e){
+        minusBtn.onclick=(function(dd,isStamp){return function(e){
           e.stopPropagation();
-          if(isTile){for(var _i=0;_i<S.tileStickers.length;_i++){if(S.tileStickers[_i].id===dd.id){S.tileStickers.splice(_i,1);break;}}renderTileStickerBar();}
+          if(isStamp){for(var _i=0;_i<S.stamps.length;_i++){if(S.stamps[_i].id===dd.id){S.stamps.splice(_i,1);break;}}renderStampBar();}
           else{for(var _i=0;_i<S.stickerInventory.length;_i++){if(S.stickerInventory[_i].id===dd.id){S.stickerInventory.splice(_i,1);break;}}}
           renderHUD();_refreshCollectionContent();
-        };})(d,isTileType);
+        };})(d,isStamp);
         var countEl=document.createElement('span');countEl.style.cssText='font-size:30px;color:#d0d0f0;min-width:18px;text-align:center;font-weight:normal';countEl.textContent=invCount;
         var plusBtn=document.createElement('button');plusBtn.className='btn btn-gold';plusBtn.style.cssText='padding:1px 8px;font-size:30px;min-width:28px;line-height:1';plusBtn.textContent='+';
-        plusBtn.onclick=(function(dd,isTile){return function(e){
+        plusBtn.onclick=(function(dd,isStamp){return function(e){
           e.stopPropagation();
-          if(isTile){S.tileStickers.push({id:dd.id});renderTileStickerBar();}
+          if(isStamp){S.stamps.push({id:dd.id});renderStampBar();}
           else{S.stickerInventory.push({id:dd.id});}
           renderHUD();_refreshCollectionContent();
-        };})(d,isTileType);
+        };})(d,isStamp);
         ctrl.appendChild(minusBtn);ctrl.appendChild(countEl);ctrl.appendChild(plusBtn);
         card.appendChild(ctrl);
       }

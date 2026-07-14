@@ -3,7 +3,7 @@
 //
 // runScoreEngine(input) computes the score of a play. It reads NO global
 // game state and touches NO DOM: everything it needs arrives in `input`,
-// everything it decides comes back in the result. All sticker behaviour
+// everything it decides comes back in the result. All sticker/stamp behaviour
 // lives in the sticker definitions (src/stickers/); the engine only
 // controls the ORDER in which effects fire.
 //
@@ -15,16 +15,25 @@
 //   dir            optional 'h'|'v' (skips direction inference)
 //   jengaTops      optional Set of indices holding stacked (Jenga) tiles —
 //                  these never form cross-words
+//   jengaUnder     optional map {sqIdx: {letter,isBlank,sc,variant}} of the
+//                  committed tile buried under each stacked top — scored for
+//                  its letter value (Jenga / Deep Roots)
+//   jengaCrossIdxs optional array of stacked-top square indices whose (top)
+//                  cross word is a VALID word (validity is decided by the
+//                  caller, which owns the dictionary); only those jenga tops
+//                  form a scoring cross word. The buried tile scores its value
+//                  inside every word its square is part of.
 //   boardStickers  B*B array of board-sticker ids (S.board equivalent)
 //   placed         board-sticker instances [{id, sqIdx, …}]
-//   hotbar         tile-sticker instances, hotbar order (left → right)
+//   stamps         stamp instances, bar order (left → right)
 //   cooldowns      Set of square indices already used this stage
-//   bounties       active bounty list (available to sticker hooks)
-//   preview        true → sticker hooks skip their commit side effects
+//   bounties       active bounty list (available to sticker/stamp hooks)
+//   preview        true → sticker/stamp hooks skip their commit side effects
 //   state          plain values that influence scoring:
 //     freeHandCount, constraint, usedLetters, stickersSold,
 //     pendingBountyReward, drunkValid, magicStreak, drunkStreak, palMult,
-//     playerMult, bhMult, crossroadsCount, discPressure, bagColouredCount
+//     playerMult, cartographerMult, bhMult, crossroadsCount, discardsLeft,
+//     discPressure, bagColouredCount
 // }
 //
 // Bracket order:
@@ -33,7 +42,7 @@
 //   PER TILE  for every tile of every word (cross words first):
 //             1. base letter score (constraint-aware)
 //             2. additive — board onTileAdd on this square, then additive
-//                aura hooks, then gold-tile +$1, then hotbar onPerTile
+//                aura hooks, then gold-tile +$1, then stamp onPerTile
 //                hooks left → right
 //             3. multiplicative — board onTileMult on this square
 //                (DL/TL/DW/TW), then multiplicative aura hooks
@@ -41,14 +50,14 @@
 //   POST      1. bingo +50
 //             2. board onPostWordAdd, all placed instances
 //             3. board onPostWordMult, all placed instances
-//             4. hotbar onPostWord, left → right — hotbar order matters
+//             4. stamp onPostWord, left → right — stamp bar order matters
 //             5. bounty reward
 //   FINAL     total = round(letters × (1 + Σ plusMults) × Π xmults),
 //             then ctx.finalTransforms apply in order (Palindrome Engine)
 //
-// ctx surface available to sticker hooks:
+// ctx surface available to sticker/stamp hooks:
 //   letters, plusMults[], xmults[], tgold, events[], scoredTiles[],
-//   newTileCount, crossWordCount, mainWord, state, hotbar, placed,
+//   newTileCount, crossWordCount, mainWord, state, stamps, placed,
 //   boardStickers, cooldowns, bounties, preview, stickerLocked,
 //   auras[], finalTransforms[] ({factor, label, tsId}), plus any fields
 //   hooks set on ctx themselves (purist, slotRoll, springTraps, …).
@@ -118,6 +127,81 @@ function _engWordDir(tiles, nt) {
   return null;
 }
 
+// Which stacked (Jenga) squares form a valid cross word. The stacked TOP tile
+// forms the cross word (its letter is what shows on the board — `tiles` already
+// has the top merged in), exactly like a normal new tile; jenga tops are only
+// special in that an invalid cross word doesn't reject the play, so the caller
+// filters to the valid ones here. The buried tile then scores its value inside
+// that word (handled in runScoreEngine). Shared by live play (scoring.js
+// _jengaCrossIdxs) and the solver so validity can't drift.
+// jengaTops is a Set (or array) of stacked-top square indices.
+// Returns an array of square indices (for input.jengaCrossIdxs) or null.
+function _engJengaCrossIdxs(tiles, jengaTops, dir, hasWord) {
+  if (!jengaTops) return null;
+  var cx = dir === 'h' ? 'v' : 'h', out = [];
+  var list = jengaTops.forEach ? [] : jengaTops;
+  if (jengaTops.forEach) jengaTops.forEach(function (i) { list.push(i); });
+  for (var n = 0; n < list.length; n++) {
+    var idx = list[n];
+    var cw = _engExtract(tiles, {}, null, Math.floor(idx / B), idx % B, cx);
+    if (cw && cw.tiles.length >= 2 && hasWord(cw.word)) out.push(idx);
+  }
+  return out.length ? out : null;
+}
+
+// Canonical identifier for a word: its sorted tile-index list. Shared by the
+// engine (word doubling) and the callers that decide which words qualify
+// (Mirror), so the key can't drift between where it's computed and matched.
+function _engWordKey(wt) {
+  var a = [];
+  for (var i = 0; i < wt.length; i++) a.push(wt[i].idx);
+  a.sort(function (x, y) { return x - y; });
+  return a.join(',');
+}
+
+// Which words (main + cross, ≥2 tiles) are valid read BACKWARDS too — these
+// score a second time under Mirror. Pure: the caller owns the dictionary and
+// passes it as hasWord(word)→bool. Returns a Set of _engWordKey values (or
+// null). Palindromes qualify automatically (their reverse is the same word,
+// already valid). Jenga tops don't form cross words, same rule as scoring.
+// Shared by live play (scoring.js) and the solver so the two can't disagree.
+function _engMirrorWords(tiles, newIdxs, dir, jengaTops, hasWord) {
+  if (!newIdxs || !newIdxs.length) return null;
+  var cache = {}, set = new Set();
+  function _has(s, i) { return s ? (s.has ? s.has(i) : s.indexOf(i) >= 0) : false; }
+  function chk(word, wt) {
+    var rev = word.split('').reverse().join('');
+    if (hasWord(rev)) set.add(_engWordKey(wt));
+  }
+  var main = _engExtract(tiles, cache, jengaTops, Math.floor(newIdxs[0] / B), newIdxs[0] % B, dir);
+  if (!main) return null;
+  chk(main.word, main.tiles);
+  var cx = dir === 'h' ? 'v' : 'h', seen = {};
+  for (var i = 0; i < newIdxs.length; i++) {
+    var idx = newIdxs[i], r = Math.floor(idx / B), c = idx % B, k = r + ',' + c;
+    if (seen[k]) continue;
+    seen[k] = 1;
+    if (_has(jengaTops, idx)) continue;
+    var cw = _engExtract(tiles, cache, jengaTops, r, c, cx);
+    if (cw && cw.tiles.length >= 2) chk(cw.word, cw.tiles);
+  }
+  return set.size ? set : null;
+}
+
+// Score the tile buried under a Jenga stack (fresh top this turn OR a committed
+// stack from a previous play — both live in jengaUnder) for its letter value
+// inside the word currently being scored, tagging its events with the slide
+// axis so the animation can reveal it. Fires once per word the square is in.
+function _engScoreBuried(tile, ctx, jengaUnder, axis) {
+  if (!jengaUnder || !jengaUnder[tile.idx]) return;
+  var u = jengaUnder[tile.idx];
+  _engScoreTile({
+    idx: tile.idx, row: tile.row, col: tile.col, letter: u.letter,
+    isBlank: u.isBlank, sc: u.sc, variant: u.variant || null, isNew: false,
+    jengaUnder: true, jengaAxis: axis
+  }, ctx);
+}
+
 // True when an aura covers sqIdx (auras without a squares list evaluate
 // every tile themselves).
 function _engAuraHits(aura, sqIdx) {
@@ -135,6 +219,10 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger) {
   var sid = ctx.boardStickers[sqIdx];
   var def = sid ? sqd(sid) : null;
   var sqActive = !ctx.cooldowns.has(sqIdx);
+  // Jenga buried tile: scores its letter value + variant + stamp per-tile
+  // hooks, but the square's own sticker/auras already fired for the top tile,
+  // so they are skipped here (no double-dip on DL/TL/chess/etc).
+  var ju = tile.jengaUnder;
 
   // 1. Base letter score
   var baseSc = tile.isBlank ? (tile.sc || 0) : (LS[tile.letter] || 0);
@@ -146,14 +234,14 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger) {
     label:tile.letter+(tile.isBlank?' (blank)':'')+(_letterUsed?' (used-0)':'')});
 
   // 2. Additive — board sticker on this square (cooldown-gated)
-  if (sqActive && def && def.onTileAdd && !ctx.stickerLocked) {
+  if (sqActive && def && def.onTileAdd && !ctx.stickerLocked && !ju) {
     ctx._stickerActed = false;
     var _prevEvLen = ctx.events.length;
     ts = def.onTileAdd(tile, ctx, ts, baseSc, sqIdx);
     if (!ctx.preview && (ctx.events.length > _prevEvLen || ctx._stickerActed)) ctx.activatedSqs.add(sqIdx);
   }
   // 2. Additive — aura hooks (board stickers acting at range)
-  for (var aai = 0; aai < ctx.auras.length; aai++) {
+  if (!ju) for (var aai = 0; aai < ctx.auras.length; aai++) {
     var aau = ctx.auras[aai];
     if (aau.onTileAdd && _engAuraHits(aau, sqIdx)) ts = aau.onTileAdd(tile, ctx, ts, sqIdx);
   }
@@ -162,28 +250,28 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger) {
     ctx.tgold++;
     ctx.events.push({type:'gold',delta:1,sqIdx:sqIdx,label:'Gold tile +$1'});
   }
-  // 2. Additive — hotbar stickers, left → right
+  // 2. Additive — stamps, left → right
   if (!ctx.stickerLocked) {
-    for (var hi = 0; hi < ctx.hotbar.length; hi++) {
-      var hd = sqd(ctx.hotbar[hi].id);
-      if (hd && hd.onPerTile) ts = hd.onPerTile(tile, ctx, ts, ctx.hotbar[hi]);
+    for (var hi = 0; hi < ctx.stamps.length; hi++) {
+      var hd = sqd(ctx.stamps[hi].id);
+      if (hd && hd.onPerTile) ts = hd.onPerTile(tile, ctx, ts, ctx.stamps[hi]);
     }
   }
 
   // 3. Multiplicative — board sticker on this square (DL/TL/DW/TW)
-  if (sqActive && def && def.onTileMult && !ctx.stickerLocked) {
+  if (sqActive && def && def.onTileMult && !ctx.stickerLocked && !ju) {
     ts = def.onTileMult(tile, ctx, ts, sqIdx);
     if (!ctx.preview) ctx.activatedSqs.add(sqIdx);
   }
   // 3. Multiplicative — aura hooks (board stickers acting at range)
-  for (var ami = 0; ami < ctx.auras.length; ami++) {
+  if (!ju) for (var ami = 0; ami < ctx.auras.length; ami++) {
     var amu = ctx.auras[ami];
     if (amu.onTileMult && _engAuraHits(amu, sqIdx)) ts = amu.onTileMult(tile, ctx, ts, sqIdx);
   }
 
   // 4. Retrigger — continues from current ts, does NOT reset to 0
   if (!skipRetrigger) {
-    if (sqActive && def && def.retrigger && !ctx.stickerLocked) {
+    if (sqActive && def && def.retrigger && !ctx.stickerLocked && !ju) {
       if (!ctx.preview) ctx.activatedSqs.add(sqIdx);
       ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:def.name,floatSqIdx:sqIdx});
       ts = _engTilePasses(tile, ctx, ts, true);
@@ -199,7 +287,9 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger) {
 // Runs all passes for one tile, then adds the completed tile score to
 // ctx.letters once. Also handles the animation-sync event bookkeeping.
 function _engScoreTile(tile, ctx) {
-  ctx.scoredTiles.push(tile);
+  // Jenga buried tiles contribute letter value but don't count toward
+  // word-composition checks (Scholar/Aristocrat read ctx.scoredTiles).
+  if (!tile.jengaUnder) ctx.scoredTiles.push(tile);
   var _startEvt = ctx.events.length;
   var ts = _engTilePasses(tile, ctx, 0, false);
   // If bracket 1 has subsequent tile-local sticker effects, suppress its pop/bounce/ding
@@ -213,6 +303,14 @@ function _engScoreTile(tile, ctx) {
     if (ctx.events[_li].isTileLocal) { ctx.events[_li]._globalLetters = ctx.letters; break; }
   }
   ctx.events.push({type:'letter',lettersAfter:ctx.letters,isSilent:true});
+  // Tag every event this buried tile produced so the animation can slide the
+  // Jenga top aside (along jengaAxis) to reveal it while it scores.
+  if (tile.jengaUnder) {
+    for (var _je = _startEvt; _je < ctx.events.length; _je++) {
+      ctx.events[_je].jengaUnder = true;
+      if (tile.jengaAxis) ctx.events[_je].jengaSlideAxis = tile.jengaAxis;
+    }
+  }
 }
 
 // ---- Main entry point ----
@@ -241,13 +339,19 @@ function runScoreEngine(input) {
   var main = _engExtract(tiles, cache, jengaTops, nt[0].row, nt[0].col, dir);
   if (!main) return null;
 
-  // Cross words (Jenga tops sit on existing words — no new cross-word)
+  // Cross words. Each new tile — including a Jenga top — forms a cross word in
+  // the cross direction from the merged board (`tiles` already has tops on top),
+  // exactly like normal play. A jenga top's cross word is only kept when the
+  // caller flagged it valid (input.jengaCrossIdxs), since an invalid one must
+  // not reject the play. The tile buried under each jenga top then scores its
+  // value inside the cross word (see the per-word loop below).
   var cx = dir === 'h' ? 'v' : 'h', crossWords = [], seenCw = {};
+  var jengaCrossSet = input.jengaCrossIdxs && input.jengaCrossIdxs.length ? input.jengaCrossIdxs : null;
   for (var ci = 0; ci < nt.length; ci++) {
     var k = nt[ci].row + ',' + nt[ci].col;
     if (seenCw[k]) continue;
     seenCw[k] = 1;
-    if (nt[ci].jengaTop) continue;
+    if (nt[ci].jengaTop && !(jengaCrossSet && jengaCrossSet.indexOf(nt[ci].idx) >= 0)) continue;
     var cw = _engExtract(tiles, cache, jengaTops, nt[ci].row, nt[ci].col, cx);
     if (cw && cw.tiles.length >= 2) crossWords.push(cw);
   }
@@ -258,24 +362,24 @@ function runScoreEngine(input) {
     activatedSqs: new Set(), scoredTiles: [],
     mainWord: main.word, newTileCount: nt.length, crossWordCount: crossWords.length,
     state: state,
-    hotbar: input.hotbar || [], placed: input.placed || [],
+    stamps: input.stamps || [], placed: input.placed || [],
     boardStickers: input.boardStickers || [], cooldowns: input.cooldowns || new Set(),
     bounties: input.bounties || [],
     preview: !!input.preview,
     auras: [], finalTransforms: [],
     _freeHandCount: state.freeHandCount || 0,
-    stickerLocked: state.constraint === 'c_stickers' && !state.stickersSold
+    stickerLocked: state.constraint === 'c_stickers' && !state.stickersSold // disables stickers AND stamps
   };
 
-  // onBuildCtx — board stickers register auras/flags, then hotbar stickers
+  // onBuildCtx — board stickers register auras/flags, then stamps
   if (!ctx.stickerLocked) {
     for (var bci = 0; bci < ctx.placed.length; bci++) {
       var bcd = sqd(ctx.placed[bci].id);
       if (bcd && bcd.onBuildCtx) bcd.onBuildCtx(ctx, ctx.placed[bci]);
     }
-    for (var hci = 0; hci < ctx.hotbar.length; hci++) {
-      var hcd = sqd(ctx.hotbar[hci].id);
-      if (hcd && hcd.onBuildCtx) hcd.onBuildCtx(ctx, ctx.hotbar[hci]);
+    for (var hci = 0; hci < ctx.stamps.length; hci++) {
+      var hcd = sqd(ctx.stamps[hci].id);
+      if (hcd && hcd.onBuildCtx) hcd.onBuildCtx(ctx, ctx.stamps[hci]);
     }
   }
 
@@ -293,7 +397,10 @@ function runScoreEngine(input) {
       if (!pSid) continue;
       var pDef = sqd(pSid);
       if (!pDef || !pDef.onPreScore) continue;
-      if (ctx.cooldowns.has(pIdx)) continue;
+      // No cooldown gate here: PRE hooks fire only on tiles placed THIS turn
+      // (nt), which were never scored before, so a stale per-square cooldown
+      // (e.g. left over after the old tile/sticker at this index was ejected)
+      // must not suppress them. Gilded is a perishable one-shot anyway.
       ctx._stickerActed = false;
       var _preEv = ctx.events.length;
       pDef.onPreScore(nt[pri], ctx, pIdx);
@@ -304,23 +411,42 @@ function runScoreEngine(input) {
   var bingo = nt.length > 0 && ctx._freeHandCount === 0;
 
   // ---- PER TILE — cross words first, then the main word ----
-  for (var cwi = 0; cwi < crossWords.length; cwi++) {
-    if (!ctx.stickerLocked) {
-      for (var cbi = 0; cbi < ctx.hotbar.length; cbi++) {
-        var cbd = sqd(ctx.hotbar[cbi].id);
-        if (cbd && cbd.onCrossword) cbd.onCrossword(ctx, ctx.hotbar[cbi]);
+  // Mirror: a word valid in both directions scores a SECOND time immediately
+  // after its first pass. mirrorWords (from the caller, which owns the
+  // dictionary) is the Set of qualifying word keys; here we just repeat the
+  // per-tile pass for those words. The reversed word is display-only.
+  var mirrorSet = input.mirrorWords || null;
+  function _engScoreWord(wt, word, buriedAxis) {
+    var reps = (mirrorSet && mirrorSet.has(_engWordKey(wt))) ? 2 : 1;
+    for (var rp = 0; rp < reps; rp++) {
+      if (rp > 0) ctx.events.push({ type: 'retrigger',
+        label: 'Mirror ' + word.split('').reverse().join(''), floatStampId: 'mirror' });
+      for (var ti = 0; ti < wt.length; ti++) {
+        _engScoreTile(wt[ti], ctx);
+        _engScoreBuried(wt[ti], ctx, input.jengaUnder, buriedAxis);
       }
     }
-    var cwt = crossWords[cwi].tiles;
-    for (var cti = 0; cti < cwt.length; cti++) _engScoreTile(cwt[cti], ctx);
   }
-  for (var mti = 0; mti < main.tiles.length; mti++) _engScoreTile(main.tiles[mti], ctx);
+  for (var cwi = 0; cwi < crossWords.length; cwi++) {
+    if (!ctx.stickerLocked) {
+      for (var cbi = 0; cbi < ctx.stamps.length; cbi++) {
+        var cbd = sqd(ctx.stamps[cbi].id);
+        if (cbd && cbd.onCrossword) cbd.onCrossword(ctx, ctx.stamps[cbi]);
+      }
+    }
+    // Jenga: the buried tile scores inside the cross word; its top slides along
+    // the MAIN-word axis (dir) to reveal it.
+    _engScoreWord(crossWords[cwi].tiles, crossWords[cwi].word, dir);
+  }
+  // Jenga (Deep Roots): the buried tile scores in the main word; its top slides
+  // along the CROSS axis (cx) to reveal it.
+  _engScoreWord(main.tiles, main.word, cx);
 
   // ---- POST ----
   // 1. Bingo (game mechanic, not a sticker)
   if (bingo) {
     ctx.letters += 50;
-    ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Bingo +50'});
+    ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Bingo +50',bingo:true});
   }
   if (!ctx.stickerLocked) {
     // 2. Board stickers — additive effects
@@ -333,16 +459,16 @@ function runScoreEngine(input) {
       var pmd = sqd(ctx.placed[pmi].id);
       if (pmd && pmd.onPostWordMult) pmd.onPostWordMult(main.word, main.tiles, ctx, ctx.placed[pmi]);
     }
-    // 4. Hotbar stickers — left → right, each fires all its effects in turn
-    for (var hwi = 0; hwi < ctx.hotbar.length; hwi++) {
-      var hwd = sqd(ctx.hotbar[hwi].id);
+    // 4. Stamps — left → right, each fires all its effects in turn
+    for (var hwi = 0; hwi < ctx.stamps.length; hwi++) {
+      var hwd = sqd(ctx.stamps[hwi].id);
       if (hwd && hwd.onPostWord) {
         var _evStart = ctx.events.length;
-        hwd.onPostWord(main.word, main.tiles, ctx, ctx.hotbar[hwi]);
+        hwd.onPostWord(main.word, main.tiles, ctx, ctx.stamps[hwi]);
         for (var evi = _evStart; evi < ctx.events.length; evi++) {
           var tev = ctx.events[evi];
-          if ((tev.type==='letter'||tev.type==='plus-mult'||tev.type==='x-mult')
-            && tev.floatSqIdx == null && tev.floatTsId == null) tev.floatTsId = ctx.hotbar[hwi].id;
+          if ((tev.type==='letter'||tev.type==='plus-mult'||tev.type==='x-mult'||tev.type==='gold')
+            && tev.floatSqIdx == null && tev.floatStampId == null) tev.floatStampId = ctx.stamps[hwi].id;
         }
       }
     }
@@ -364,7 +490,7 @@ function runScoreEngine(input) {
     var tr = ctx.finalTransforms[fti];
     total = Math.round(total * tr.factor);
     displayMult *= tr.factor;
-    ctx.events.push({type:'final-transform',label:tr.label,total:total,palMult:tr.factor,floatTsId:tr.tsId});
+    ctx.events.push({type:'final-transform',label:tr.label,total:total,palMult:tr.factor,floatStampId:tr.tsId});
   }
   ctx.events.push({type:'final',letters:ctx.letters,plusSum:plusSum,xprod:xprod,mult:mult,displayMult:displayMult,total:total});
 

@@ -133,6 +133,32 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .hand-tile{width:68px;height:68px;box-shadow:0 4px 0 #6b5535;cursor:grab;position:absolute;top:0;transition:transform 0.12s ease,filter 0.12s ease;will-change:filter,transform}
 .hand-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(240,224,128,0.45));z-index:10;cursor:grab}
 .hand-tile.selected{transform:translateY(-5px);z-index:5;filter:brightness(1.15) drop-shadow(0 0 6px rgba(240,224,128,0.35))}
+/* Focus mode: fade all peripheral UI, keep board + tiles + eye */
+#left-panel,#stamp-bar,#hand-wrap,#bounty-row,#play-controls{transition:opacity .45s ease}
+body.focus-mode #left-panel,body.focus-mode #stamp-bar,body.focus-mode #hand-wrap,body.focus-mode #bounty-row,body.focus-mode #play-controls{opacity:0;pointer-events:none}
+/* Focus backdrop — covers the animated mainui background. Swap in a custom
+   focus-mode background by adding background-image to #focus-bg. */
+#focus-bg{position:fixed;inset:0;background:#0f0f1e;opacity:0;transition:opacity .45s ease;pointer-events:none;z-index:890}
+body.focus-mode #focus-bg{opacity:1}
+/* Board + eye ride above the backdrop; board zooms via transform (focus.js) */
+#board-wrap{transition:transform .55s cubic-bezier(.22,.9,.3,1);transform-origin:center center}
+body.focus-mode #board-area{z-index:895;overflow:visible}
+body.focus-mode #rp-top-row{z-index:895}
+/* Focus button slides right into the vacated menu slot; menu fades out */
+#focus-btn-wrap{transition:transform .45s ease}
+body.focus-mode #focus-btn-wrap{transform:translateX(100%)}
+#menu-wrap{transition:opacity .45s ease}
+body.focus-mode #menu-wrap{opacity:0;pointer-events:none}
+.focus-tile{cursor:grab;touch-action:none;transition:none;filter:drop-shadow(0 3px 5px rgba(0,0,0,0.55));will-change:transform}
+.focus-tile:active{cursor:grabbing}
+.focus-tile.focus-pinned{filter:brightness(1.12) drop-shadow(0 0 7px rgba(240,224,128,0.55))}
+/* Modals (blank chooser etc.) must clear the focus backdrop/overlay */
+body.focus-mode .modal-overlay{z-index:950}
+/* Exit beat 1: focus-mode is kept (peripheral UI stays hidden) but focus-exiting
+   lets the eye slide back home and the backdrop fade out while the board shrinks.
+   Rules come after their focus-mode counterparts so they win on source order. */
+body.focus-exiting #focus-btn-wrap{transform:none}
+body.focus-exiting #focus-bg{opacity:0}
 .btn-icon{height:80px;border-radius:10px;border:none;cursor:pointer;font-size:34px;display:flex;align-items:center;justify-content:center;flex:1;font-family:'Jersey 10',Georgia}
 .btn-icon:active{transform:scale(.95)}
 .btn-icon-green{background:#2d7a2d;color:#d0f0d0;box-shadow:0 3px 0 #1a4a1a}.btn-icon-green:hover{background:#3a8a3a}
@@ -238,8 +264,9 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .ui-icon{display:inline-block;vertical-align:middle;image-rendering:pixelated}
 .tile.tile-spr.selected{background-color:transparent!important;border:none!important;box-shadow:none!important;filter:brightness(1.15) drop-shadow(0 0 4px #c8b000);}
 .board-tile.tile-spr.is-new{cursor:grab;}
-.board-tile.jenga-stacked{transform:translateY(-6px)!important;box-shadow:0 9px 0 rgba(90,60,0,0.85)!important;z-index:2;}
-.board-tile.jenga-stacked-2{transform:translateY(-12px)!important;box-shadow:0 15px 0 rgba(90,60,0,0.85)!important;z-index:3;}
+/* transform is NOT !important so the bink animation (below) can override it — an !important transform would beat the keyframes in the cascade. */
+.board-tile.jenga-stacked{transform:translateY(-6px);box-shadow:0 9px 0 rgba(90,60,0,0.85)!important;z-index:2;}
+.board-tile.jenga-stacked-2{transform:translateY(-12px);box-shadow:0 15px 0 rgba(90,60,0,0.85)!important;z-index:3;}
 .vbadge{position:absolute;top:1px;left:2px;font-size:28px;font-weight:normal;line-height:1;border-radius:2px;padding:0 2px;pointer-events:none}
 .vbadge-gold{background:#5a3800;color:#f0d060}.vbadge-blue{background:#0a2a5a;color:#80c8ff}.vbadge-red{background:#5a0a0a;color:#ff9090}
 @keyframes bfloat0{0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-5px)rotate(1.2deg)}}
@@ -270,6 +297,9 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 #board-preview-wrap{display:inline-grid;gap:0}
 @keyframes bink{0%{transform:scale(1) translateY(0)}40%{transform:scale(1.28) translateY(-6px);background:#fffde7!important;box-shadow:0 0 22px rgba(255,220,60,.95),0 2px 0 #7a6800!important}72%{transform:scale(1.04) translateY(0px)}100%{transform:scale(1) translateY(0)}}
 .binking{animation:bink .42s cubic-bezier(.36,.07,.19,.97)!important}
+/* Jenga top face bounces from its raised (-6px) baseline so the elevation is kept through the bink. */
+@keyframes bink-jenga{0%{transform:translateY(-6px) scale(1)}40%{transform:translateY(-14px) scale(1.28);background:#fffde7!important}72%{transform:translateY(-6px) scale(1.04)}100%{transform:translateY(-6px) scale(1)}}
+.board-tile.jenga-stacked.binking{animation:bink-jenga .42s cubic-bezier(.36,.07,.19,.97)!important}
 @keyframes sq-bink{0%{transform:scale(1)}30%{transform:scale(1.22)}65%{transform:scale(0.96)}100%{transform:scale(1)}}
 .sq-binking{animation:sq-bink .35s cubic-bezier(.36,.07,.19,.97)!important}
 .score-pop{position:fixed;pointer-events:none;z-index:810;font-weight:normal;border-radius:5px;padding:2px 9px;white-space:nowrap;font-family:'Jersey 10',Georgia,serif;animation:pop-up .65s ease-out forwards}
@@ -327,12 +357,12 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 /* Right panel controls */
 #rp-top-row .btn-icon{height:90px;font-size:22px}
 #play-controls .btn-icon{height:90px;font-size:24px}
-/* Tile sticker hotbar */
-#tile-sticker-bar{height:80px;flex-shrink:0;position:relative;overflow:visible}
-.sticker-tile{width:68px;height:68px;cursor:grab;position:absolute;top:8px;transition:transform 0.12s ease,filter 0.12s ease}
-.sticker-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(200,160,255,0.45));z-index:10}
-/* Shop sticker bar — physics-driven, no box */
-#shop-sticker-bar{position:absolute;left:6.7031%;top:2.25%;width:53%;height:15%;z-index:5;overflow:visible}
+/* Stamp bar */
+#stamp-bar{height:80px;flex-shrink:0;position:relative;overflow:visible}
+.stamp-tile{width:68px;height:68px;cursor:grab;position:absolute;top:8px;transition:transform 0.12s ease,filter 0.12s ease}
+.stamp-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(200,160,255,0.45));z-index:10}
+/* Shop stamp bar — physics-driven, no box */
+#shop-stamp-bar{position:absolute;left:6.7031%;top:2.25%;width:53%;height:15%;z-index:5;overflow:visible}
 /* New shop UI animated sprites */
 #shop-slot-buttons{position:absolute;left:5.2734%;top:50.9375%;width:56.25%;image-rendering:pixelated;z-index:3;pointer-events:none}
 #shop-slot-tray{position:absolute;left:-0.1953%;top:62.5%;width:67.1875%;image-rendering:pixelated;z-index:3;pointer-events:none}
@@ -371,8 +401,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 
   <!-- CENTER COLUMN: board + tiles (flex:1, ~50%) -->
   <div id="center-col">
-    <!-- Tile sticker hotbar -->
-    <div id="tile-sticker-bar"></div>
+    <!-- Stamp bar -->
+    <div id="stamp-bar"></div>
     <!-- Board -->
     <div id="board-area">
       <div id="board-wrap"></div>
@@ -396,11 +426,13 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
   <div id="right-panel">
     <!-- Top group: buttons + bounties -->
     <div style="display:flex;flex-direction:column;gap:20px">
-      <!-- Top row: eye toggle + menu sprite -->
-      <div id="rp-top-row" style="position:relative;flex-shrink:0;width:93.75%;align-self:flex-end;margin-right:0.78125vw;margin-top:0.625vh;will-change:transform">
-        <img id="menu-hide-sprite" src="Assets/animations/menu and hide tiles/menu_hide_tiles1.png" style="width:100%;image-rendering:pixelated;display:block;cursor:pointer">
-        <div id="mh-eye-hit" style="position:absolute;left:0;top:0;width:50%;height:100%;cursor:pointer"></div>
-        <div id="menu-wrap" style="position:absolute;right:0;top:0;width:50%;height:100%;cursor:pointer">
+      <!-- Top row: focus-mode eye + menu buttons -->
+      <div id="rp-top-row" style="position:relative;flex-shrink:0;width:93.75%;align-self:flex-end;margin-right:0.78125vw;margin-top:0.625vh;display:flex;will-change:transform">
+        <div id="focus-btn-wrap" style="width:50%;cursor:pointer">
+          <img id="focus-btn-sprite" src="Assets/animations/focus mode button/focus_mode_button1.png" style="width:100%;image-rendering:pixelated;display:block;pointer-events:none">
+        </div>
+        <div id="menu-wrap" style="width:50%;cursor:pointer">
+          <img id="menu-btn-sprite" src="Assets/animations/menu button/menu_button1.png" style="width:100%;image-rendering:pixelated;display:block;pointer-events:none">
         </div>
       </div>
       <!-- Bounties -->
@@ -448,6 +480,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
   </div>
 
 </div>
+<!-- Focus-mode backdrop (see #focus-bg CSS) -->
+<div id="focus-bg"></div>
 <!-- Modals -->
 <div id="shop-screen">
   <div id="shop-canvas">
@@ -474,7 +508,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
     <img id="shop-slot-buttons" src="Assets/animations/slot-buttons/Slot_buttons1.png">
     <img id="shop-slot-tray" src="Assets/animations/slot-tray/slot_tray1.png">
 
-    <div id="shop-sticker-bar"></div>
+    <div id="shop-stamp-bar"></div>
     <div id="shop-bounty-label" style="position:absolute;left:75%;top:9%;width:22%;text-align:center;font-family:'Jersey 10',Georgia,serif;font-size:clamp(10px,2vw,30px);color:#f0e0c0;pointer-events:none;z-index:5;line-height:1">Bounties: $2</div>
     <div id="shop-bounty-list"></div>
     <div id="shop-queue-bar"></div>
@@ -501,7 +535,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
       </div>
     </div>
     <div id="board-preview-wrap" style="background:#0a0a18;padding:6px;border-radius:8px;border:1px solid #2a2a4a"></div>
-    <div id="preview-sticker-bar" style="margin-top:12px;display:flex;gap:6px;justify-content:center"></div>
+    <div id="preview-stamp-bar" style="margin-top:12px;display:flex;gap:6px;justify-content:center"></div>
   </div>
 </div>
 <div id="seed-modal" class="modal-overlay" style="display:none">
@@ -551,10 +585,10 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 <div id="collection-modal" class="modal-overlay" style="display:none">
   <div class="modal" style="max-width:740px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <h2>Sticker Collection</h2>
+      <h2>Collection</h2>
       <button class="btn btn-gray" style="width:auto;padding:7px 16px;margin:0" onclick="document.getElementById('collection-modal').style.display='none'">Close</button>
     </div>
-    <p class="msub">All available stickers. Green border = active on your board.</p>
+    <p class="msub">All available stickers and stamps. Green border = active on your board.</p>
     <div id="collection-content" style="margin-top:8px"></div>
   </div>
 </div>
@@ -619,9 +653,9 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 <script src="src/stickers/board/squares.js"></script>
 <script src="src/stickers/board/effects.js"></script>
 <script src="src/stickers/board/indirect.js"></script>
-<script src="src/stickers/tile/economy.js"></script>
-<script src="src/stickers/tile/scoring.js"></script>
-<script src="src/stickers/tile/utility.js"></script>
+<script src="src/stickers/stamps/economy.js"></script>
+<script src="src/stickers/stamps/scoring.js"></script>
+<script src="src/stickers/stamps/utility.js"></script>
 <script src="src/solver.js"></script>
 <script src="src/physics.js"></script>
 <script src="src/game.js"></script>
@@ -636,11 +670,12 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 <script src="src/save.js"></script>
 <script src="src/achievements.js"></script>
 <script src="src/wordbook.js"></script>
+<script src="src/focus.js"></script>
 <script src="src/init.js"></script>
 <div id="solver-panel"></div>
 <div id="dev-palette"></div>
 <div id="menu-dropdown" style="display:none">
-  <div class="menu-item" onclick="openCollection()">Sticker Collection</div>
+  <div class="menu-item" onclick="openCollection()">Collection</div>
   <div class="menu-item" onclick="openWordbookModal()">Dictionary</div>
   <div class="menu-item" onclick="openAchievementsModal()">Achievements</div>
   <div class="menu-item" id="devmode-item" onclick="toggleDevMode()">Dev Mode: Off</div>

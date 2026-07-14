@@ -88,10 +88,10 @@ function startGame(seed){
   for(var _ci=_co.length-1;_ci>0;_ci--){var _cj=Math.floor(_rng()*(_ci+1));var _ct=_co[_ci];_co[_ci]=_co[_cj];_co[_cj]=_ct;}
   S={bag:_bag,hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),btTop:Array(B*B).fill(null),
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,palUnlocked:false,devMode:false,
-     phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,bhMult:1,palMult:1,playerMult:1,palWords:[],localCooldowns:new Set(),
+     phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,bhMult:1,palMult:1,playerMult:1,cartographerMult:1,palWords:[],localCooldowns:new Set(),
      lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,
      constraintOrder:_co.slice(0,STAGES.length),usedLetters:new Set(),stickersSoldThisStage:0,crossroadsCount:0,
-     tileStickers:[],bagBlueAnchors:{},pool:_bag.slice(),
+     stamps:[],bagBlueAnchors:{},pool:_bag.slice(),
      bounties:_generateBounties(3,[])};
   window._easyHint=null;
   shopPool={sq:[],packs:[],bounties:[]};activeDrag=null;
@@ -204,7 +204,7 @@ function roundComplete(){
   var reward=2+S.bi*2+(S.ai*2);
   var playsBonus=S.plays>0?S.plays:0;
   S.gold+=reward+playsBonus;
-  var hasSheriff=hasTileSticker('sheriffs_office');
+  var hasSheriff=hasStamp('sheriffs_office');
   var sheriffWord='';
   if(hasSheriff){
     var _activeWords=[];(S.bounties||[]).forEach(function(sc){(sc.words||[]).forEach(function(w){_activeWords.push(w.word);});});
@@ -233,8 +233,8 @@ function advanceRound(){
   if(newStage){
     // Paint bucket: blank the tile that was committed on its square (transforms pool entry in place)
     for(var _pbi=0;_pbi<S.placed.length;_pbi++){var _pb=S.placed[_pbi];if(_pb.id==='paint_bucket'&&_pb.sqIdx!=null&&S.bt[_pb.sqIdx]&&S.bt[_pb.sqIdx].id){_pbBlanks++;transformTile(S.bt[_pb.sqIdx].id,{isBlank:true});}}
-    // End-of-stage sticker effects (Bourgeois, etc.)
-    _fireAllStickers('onEndStage',[]);
+    // End-of-stage sticker/stamp effects (Bourgeois, etc.)
+    _fireAllHooks('onEndStage',[]);
   }
 
   if(typeof _resetZoom==='function')_resetZoom();
@@ -259,7 +259,7 @@ function _doStageAnimation(newStage,pbBlanks){
     S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
     S.usedLetters=new Set();S.stickersSoldThisStage=0;
     var _rc=currentConstraint();if(_rc==='c_oneplay')S.plays=1;if(_rc==='c_nodisc')S.disc=0;
-    var _insatN=countTileSticker('insatiable');
+    var _insatN=countStamp('insatiable');
     if(_insatN)S.disc+=_insatN;
     S.sqHand=[];S.sqStaged={};
     recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],packs:[],bounties:[]};enterShopPhase();
@@ -968,6 +968,39 @@ function _playScoreDing(){
     }
   }catch(e){}
 }
+// Coin clink for gold ticking up/down during the score animation.
+// down=true → duller, lower "cha-ching out" for losing gold.
+function _playCoinClink(down){
+  try{
+    var ctx=_getAudioCtx();
+    var now=ctx.currentTime+0.005;
+    var pv=1+(Math.random()-0.5)*0.14;
+    var base=(down?720:1250)*pv;
+    // Inharmonic metallic partials → bell-like coin ring.
+    var partials=[1,2.71,5.18];
+    for(var p=0;p<partials.length;p++){
+      var osc=ctx.createOscillator();osc.type='triangle';
+      osc.frequency.value=base*partials[p];
+      var g=ctx.createGain();
+      var amp=(down?0.11:0.14)/(p+1);
+      g.gain.setValueAtTime(0,now);
+      g.gain.linearRampToValueAtTime(amp,now+0.004);
+      g.gain.exponentialRampToValueAtTime(0.001,now+0.15);
+      osc.connect(g);g.connect(ctx.destination);
+      osc.start(now);osc.stop(now+0.17);
+    }
+    // Short noise transient for the "clink" attack.
+    var len=Math.ceil(ctx.sampleRate*0.02);
+    var buf=ctx.createBuffer(1,len,ctx.sampleRate);
+    var d=buf.getChannelData(0);
+    for(var i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
+    var src=ctx.createBufferSource();src.buffer=buf;
+    var filt=ctx.createBiquadFilter();filt.type='bandpass';
+    filt.frequency.value=(down?2600:4600)*pv;filt.Q.value=5;
+    var ng=ctx.createGain();ng.gain.setValueAtTime(0.08,now);ng.gain.exponentialRampToValueAtTime(0.001,now+0.02);
+    src.connect(filt);filt.connect(ng);ng.connect(ctx.destination);src.start(now);
+  }catch(e){}
+}
 function _playReelTick(){
   try{
     var ctx=_getAudioCtx(),now=ctx.currentTime;
@@ -1049,13 +1082,13 @@ function _playSpringBoing(){
   }catch(e){}
 }
 
-// ── Tile-sticker (hotbar) lookup helpers ──
-function countTileSticker(id){
-  var n=0,ts=S.tileStickers||[];
+// ── Stamp lookup helpers ──
+function countStamp(id){
+  var n=0,ts=S.stamps||[];
   for(var i=0;i<ts.length;i++)if(ts[i].id===id)n++;
   return n;
 }
-function hasTileSticker(id){return countTileSticker(id)>0;}
+function hasStamp(id){return countStamp(id)>0;}
 
 // ── Shared gold-spend helper ──
 // Returns true and deducts gold on success; toasts and returns false if insufficient.
@@ -1065,17 +1098,17 @@ function spendGold(cost){
   return true;
 }
 
-// ── Fire a sticker hook across all placed board stickers and tile stickers ──
-// Snapshots both arrays before iterating so hooks that modify S.placed/S.tileStickers
+// ── Fire a hook across all placed board stickers and stamps ──
+// Snapshots both arrays before iterating so hooks that modify S.placed/S.stamps
 // (e.g. Bourgeois destroying itself on onEndStage) don't corrupt the walk.
-function _fireAllStickers(hookName,args){
+function _fireAllHooks(hookName,args){
   args=args||[];
   var _sp=S.placed.slice();
   for(var _fi=0;_fi<_sp.length;_fi++){
     var _fp=_sp[_fi],_fd=sqd(_fp.id);
     if(_fd&&_fd[hookName])_fd[hookName].apply(_fd,args.concat([_fp]));
   }
-  var _st=S.tileStickers.slice();
+  var _st=S.stamps.slice();
   for(var _fj=0;_fj<_st.length;_fj++){
     var _fts=_st[_fj],_ftsd=sqd(_fts.id);
     if(_ftsd&&_ftsd[hookName])_ftsd[hookName].apply(_ftsd,args.concat([_fts]));
