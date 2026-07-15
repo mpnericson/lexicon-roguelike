@@ -248,6 +248,7 @@ function renderBoard(){
             if(Date.now()-_dragEndTime<300)return;
             var sel=[];for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel)sel.push(_si);}
             if(sel.length===0)return;
+            if(window.TUT&&TUT.active&&!_tutClickPlaceOK(sel.length,'h'))return;
             if(sel.length===1){
               var oi=sel[0];var t=S.hand[oi];t.sel=false;
               if(t.isBlank&&!t.blankAs){openBlankChooser(t,function(){placeTile(t,sqI);renderBoard();renderHand();});}
@@ -261,6 +262,7 @@ function renderBoard(){
             ev.preventDefault();ev.stopPropagation();
             if(Date.now()-_dragEndTime<300)return;
             var sel=[];for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel)sel.push(_si);}
+            if(window.TUT&&TUT.active&&sel.length&&!_tutClickPlaceOK(sel.length,'v'))return;
             if(sel.length>1)multiPlaceSelected(sel,sqI,'v');
           });
         })(i);
@@ -395,6 +397,7 @@ function _sqTooltipFreeze(sqIdx,id){
       S.gold+=sv;S.board[si]=null;S.placed=S.placed.filter(function(p){return p.sqIdx!==si;});
       if(currentConstraint()==='c_stickers')S.stickersSoldThisStage=(S.stickersSoldThisStage||0)+1;
       _sqTooltipUnfreeze();renderBoard();renderHUD();toast(dn+' sold for $'+sv);
+      _rankObserve(true); // board scoring changed under the same rack
     };})(sqIdx,id,sell,d.name);
   }
   if(act)act.style.display='flex';
@@ -629,6 +632,7 @@ function _openStampModal(idx,id){
       renderStampBar();renderHUD();
       toast(dn+' sold for $'+sv+'!');
       if(dd&&dd.onSell)dd.onSell();
+      _rankObserve(true); // stamp scoring changed under the same rack
     };})(idx,sell,d.name,d);
   }
   document.getElementById('sq-modal').style.display='flex';

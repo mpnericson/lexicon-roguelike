@@ -24,27 +24,42 @@ var _solverRunning = false;
 var _solverResults = [];
 var _solverHighlightMove = null;
 
+// Position view threaded through the whole pipeline (sv = solver view).
+// Live entry points (dev panel) pass S's arrays by reference; background
+// solves pass a frozen capture (_rankCapturePosition / the game-over snap) so
+// the solver never reads — and never installs anything into — live globals
+// mid-solve. Everything in sv is read-only to the solver.
+function _solverLivePosition() {
+  return { bt: S.bt, btTop: S.btTop || null, board: S.board, placed: S.placed,
+           stamps: S.stamps, cooldowns: S.localCooldowns, bounties: S.bounties };
+}
+function _svHasStamp(sv, id) {
+  var st = sv.stamps || [];
+  for (var i = 0; i < st.length; i++) if (st[i] && st[i].id === id) return true;
+  return false;
+}
+
 // Precompute cross-word fragments for each empty cell.
 // Avoids re-scanning neighbors on every placement attempt.
-function _solverPrecompute() {
+function _solverPrecompute(bt) {
   var cvAbove = new Array(B * B).fill(''); // for H placement: letters above cell, top-to-bottom
   var cvBelow = new Array(B * B).fill(''); // for H placement: letters below cell
   var chLeft = new Array(B * B).fill(''); // for V placement: letters left of cell, left-to-right
   var chRight = new Array(B * B).fill(''); // for V placement: letters right of cell
   for (var i = 0; i < B * B; i++) {
-    if (S.bt[i]) continue; // only precompute for empty cells
+    if (bt[i]) continue; // only precompute for empty cells
     var r = Math.floor(i / B), c = i % B, rr, cc, s;
     rr = r - 1; s = '';
-    while (rr >= 0 && S.bt[rr * B + c]) { s = S.bt[rr * B + c].letter + s; rr--; }
+    while (rr >= 0 && bt[rr * B + c]) { s = bt[rr * B + c].letter + s; rr--; }
     cvAbove[i] = s;
     rr = r + 1; s = '';
-    while (rr < B && S.bt[rr * B + c]) { s += S.bt[rr * B + c].letter; rr++; }
+    while (rr < B && bt[rr * B + c]) { s += bt[rr * B + c].letter; rr++; }
     cvBelow[i] = s;
     cc = c - 1; s = '';
-    while (cc >= 0 && S.bt[r * B + cc]) { s = S.bt[r * B + cc].letter + s; cc--; }
+    while (cc >= 0 && bt[r * B + cc]) { s = bt[r * B + cc].letter + s; cc--; }
     chLeft[i] = s;
     cc = c + 1; s = '';
-    while (cc < B && S.bt[r * B + cc]) { s += S.bt[r * B + cc].letter; cc++; }
+    while (cc < B && bt[r * B + cc]) { s += bt[r * B + cc].letter; cc++; }
     chRight[i] = s;
   }
   return { cvAbove: cvAbove, cvBelow: cvBelow, chLeft: chLeft, chRight: chRight };
@@ -54,10 +69,10 @@ function _solverPrecompute() {
 // in DICT. Squares with no perpendicular neighbours allow every letter.
 // h = masks for horizontal placements (vertical cross-words), v = vice versa.
 var GD_ALLMASK = (1 << 26) - 1;
-function _solverCrossMasks(pre) {
+function _solverCrossMasks(bt, pre) {
   var mh = new Array(B * B), mv = new Array(B * B);
   for (var i = 0; i < B * B; i++) {
-    if (S.bt[i]) { mh[i] = 0; mv[i] = 0; continue; }
+    if (bt[i]) { mh[i] = 0; mv[i] = 0; continue; }
     var ab = pre.cvAbove[i], be = pre.cvBelow[i], lf = pre.chLeft[i], rt = pre.chRight[i];
     if (!ab && !be) mh[i] = GD_ALLMASK;
     else { var m = 0; for (var c = 0; c < 26; c++) { if (DICT.has(ab + String.fromCharCode(65 + c) + be)) m |= 1 << c; } mh[i] = m; }
@@ -71,10 +86,10 @@ function _solverCrossMasks(pre) {
 // board is empty). Every legal move covers at least one anchor.
 // Jenga: stackable (occupied) squares join the anchor set — pure-stack moves
 // place on no empty square, so they must be generated from the stack square.
-function _solverAnchors(stackable) {
+function _solverAnchors(bt, stackable) {
   var list = [], is = new Uint8Array(B * B), hasTiles = false;
   for (var i = 0; i < B * B; i++) {
-    if (!S.bt[i]) continue;
+    if (!bt[i]) continue;
     hasTiles = true;
     var r = Math.floor(i / B), c = i % B;
     var nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
@@ -82,7 +97,7 @@ function _solverAnchors(stackable) {
       var nr = nb[k][0], nc = nb[k][1];
       if (nr < 0 || nr >= B || nc < 0 || nc >= B) continue;
       var ni = nr * B + nc;
-      if (!S.bt[ni] && !is[ni]) { is[ni] = 1; list.push(ni); }
+      if (!bt[ni] && !is[ni]) { is[ni] = 1; list.push(ni); }
     }
   }
   if (!hasTiles) { var mid = Math.floor(B / 2) * B + Math.floor(B / 2); is[mid] = 1; list.push(mid); }
@@ -105,18 +120,19 @@ function _solverAnchors(stackable) {
 // extends naturally: a move is generated from its leftmost placed-on anchor,
 // so overrides are offered only at the walk's own anchor (leftward) or on the
 // rightward extension — never left of the anchor.
-function _solverGenMoves(handCounts, blankCount, jengaActive) {
+function _solverGenMoves(sv, handCounts, blankCount, jengaActive) {
+  var svBt = sv.bt;
   // ---- Jenga hook — everything below is classic Gordon when this is null.
   var stackable = null;
   if (jengaActive) {
     stackable = new Uint8Array(B * B);
     for (var sqi = 0; sqi < B * B; sqi++) {
-      if (S.bt[sqi] && !S.bt[sqi].isNew && !S.bt[sqi]._stackLevel && !(S.btTop && S.btTop[sqi])) stackable[sqi] = 1;
+      if (svBt[sqi] && !svBt[sqi].isNew && !svBt[sqi]._stackLevel && !(sv.btTop && sv.btTop[sqi])) stackable[sqi] = 1;
     }
   }
-  var pre = _solverPrecompute();
-  var masks = _solverCrossMasks(pre);
-  var an = _solverAnchors(stackable);
+  var pre = _solverPrecompute(svBt);
+  var masks = _solverCrossMasks(svBt, pre);
+  var an = _solverAnchors(svBt, stackable);
   var moves = [];
   var rack = {}; for (var rl in handCounts) rack[rl] = handCounts[rl];
   var blanks = blankCount;
@@ -125,7 +141,7 @@ function _solverGenMoves(handCounts, blankCount, jengaActive) {
   function record(loIdx, hiIdx, stride, isH) {
     var word = '';
     for (var i = loIdx; i <= hiIdx; i += stride) {
-      word += pend[i] ? pend[i].letter : tileDisplayLetter(S.bt[i]);
+      word += pend[i] ? pend[i].letter : tileDisplayLetter(svBt[i]);
     }
     var pl = [];
     for (var k in pend) pl.push({ idx: +k, letter: pend[k].letter, isBlank: pend[k].isBlank, isTop: !!pend[k].isTop });
@@ -134,8 +150,8 @@ function _solverGenMoves(handCounts, blankCount, jengaActive) {
     // emit the direction the engine will actually judge the play in.
     if (pl.length === 1 && pl[0].isTop) {
       var pi = pl[0].idx, pr = Math.floor(pi / B), pc = pi % B;
-      var hasH = !!((pc > 0 && S.bt[pi - 1]) || (pc < B - 1 && S.bt[pi + 1]));
-      var hasV = !!((pr > 0 && S.bt[pi - B]) || (pr < B - 1 && S.bt[pi + B]));
+      var hasH = !!((pc > 0 && svBt[pi - 1]) || (pc < B - 1 && svBt[pi + 1]));
+      var hasV = !!((pr > 0 && svBt[pi - B]) || (pr < B - 1 && svBt[pi + B]));
       var engH = !(hasV && !hasH);
       if (engH !== isH) return;
     }
@@ -170,7 +186,7 @@ function _solverGenMoves(handCounts, blankCount, jengaActive) {
   function genLeft(aIdx, aCo, off, node, isH, stride, mask) {
     var co = aCo + off;
     if (co < 0) return;
-    var cur = aIdx + off * stride, bt = S.bt[cur];
+    var cur = aIdx + off * stride, bt = svBt[cur];
     if (bt) {
       var stk = stackable && stackable[cur];
       // Consume the board letter — except at a stack-anchor's own square
@@ -191,8 +207,8 @@ function _solverGenMoves(handCounts, blankCount, jengaActive) {
 
   function afterLeft(aIdx, aCo, off, node, isH, stride, mask) {
     var co = aCo + off, cur = aIdx + off * stride;
-    var leftOpen = co === 0 || !S.bt[cur - stride];
-    var aRightOpen = aCo === B - 1 || !S.bt[aIdx + stride];
+    var leftOpen = co === 0 || !svBt[cur - stride];
+    var aRightOpen = aCo === B - 1 || !svBt[aIdx + stride];
     // Word ends at the anchor (no rightward part)
     if (leftOpen && aRightOpen && pendN > 0 && gdEnd(node)) record(cur, aIdx, stride, isH);
     if (co > 0) genLeft(aIdx, aCo, off - 1, node, isH, stride, mask);
@@ -204,7 +220,7 @@ function _solverGenMoves(handCounts, blankCount, jengaActive) {
   function genRight(aIdx, aCo, off, node, loIdx, isH, stride, mask) {
     var co = aCo + off;
     if (co >= B) return;
-    var cur = aIdx + off * stride, bt = S.bt[cur];
+    var cur = aIdx + off * stride, bt = svBt[cur];
     if (bt) {
       var nx = gdChild(node, tileDisplayLetter(bt).charCodeAt(0));
       if (nx) afterRight(aIdx, aCo, off, nx, loIdx, isH, stride, mask);
@@ -218,7 +234,7 @@ function _solverGenMoves(handCounts, blankCount, jengaActive) {
 
   function afterRight(aIdx, aCo, off, node, loIdx, isH, stride, mask) {
     var co = aCo + off, cur = aIdx + off * stride;
-    var rightOpen = co === B - 1 || !S.bt[cur + stride];
+    var rightOpen = co === B - 1 || !svBt[cur + stride];
     if (rightOpen && pendN > 0 && gdEnd(node)) record(loIdx, cur, stride, isH);
     if (co < B - 1) genRight(aIdx, aCo, off + 1, node, loIdx, isH, stride, mask);
   }
@@ -253,13 +269,13 @@ function _solverHandMaps(tiles) {
 
 // Score one generated move through the real engine (preview mode).
 // Returns {score, letters, mult, gold, word, r, c, isH, wt} or null.
-function _solverScoreMove(mv, hm) {
-  var overlay = S.bt.slice(), newIdxs = [], blankUsed = 0, firstUse = {};
+function _solverScoreMove(sv, mv, hm) {
+  var overlay = sv.bt.slice(), newIdxs = [], blankUsed = 0, firstUse = {};
   var jengaTops = null, jengaUnder = null;
   // Committed stacks from previous plays keep a buried tile that still scores in
   // any word the move forms through them.
   for (var _ci = 0; _ci < B * B; _ci++) {
-    var _cb = S.bt[_ci];
+    var _cb = sv.bt[_ci];
     if (_cb && _cb._buried) {
       if (!jengaUnder) jengaUnder = {};
       var _bu = _cb._buried;
@@ -279,7 +295,7 @@ function _solverScoreMove(mv, hm) {
     // Jenga: remember the buried tile so the engine scores its letter value
     // and (when valid) its cross word — the same inputs live play feeds it.
     if (p.isTop) {
-      var un = S.bt[p.idx];
+      var un = sv.bt[p.idx];
       if (!jengaTops) jengaTops = new Set();
       if (!jengaUnder) jengaUnder = {};
       jengaTops.add(p.idx);
@@ -300,9 +316,9 @@ function _solverScoreMove(mv, hm) {
     tiles: overlay, newIdxs: newIdxs, dir: mv.isH ? 'h' : 'v',
     jengaTops: jengaTops, jengaUnder: jengaUnder,
     jengaCrossIdxs: jengaTops ? _engJengaCrossIdxs(overlay, jengaTops, mv.isH ? 'h' : 'v', function (w) { return DICT.has(w); }) : null,
-    mirrorWords: (typeof hasStamp === 'function' && hasStamp('mirror')) ? _engMirrorWords(overlay, newIdxs, mv.isH ? 'h' : 'v', jengaTops, function (w) { return DICT.has(w); }) : null,
-    boardStickers: S.board, placed: S.placed, stamps: S.stamps,
-    cooldowns: S.localCooldowns || new Set(), bounties: S.bounties || [],
+    mirrorWords: _svHasStamp(sv, 'mirror') ? _engMirrorWords(overlay, newIdxs, mv.isH ? 'h' : 'v', jengaTops, function (w) { return DICT.has(w); }) : null,
+    boardStickers: sv.board, placed: sv.placed, stamps: sv.stamps,
+    cooldowns: sv.cooldowns || new Set(), bounties: sv.bounties || [],
     preview: true,
     state: buildEngineState(_bingoHit ? 0 : Math.max(1, (hm.handTileCount || 7) - newCount))
   });
@@ -314,7 +330,7 @@ function _solverScoreMove(mv, hm) {
     var idx = startIdx + k * stride, ov = overlay[idx];
     wt.push((ov && ov.isNew)
       ? { idx: idx, letter: mv.word[k], isNew: true, isBlank: ov.isBlank, variant: ov.variant, isTop: !!(jengaTops && jengaTops.has(idx)) }
-      : { idx: idx, letter: mv.word[k], isNew: false, isBlank: !!S.bt[idx].isBlank, variant: S.bt[idx].variant || null });
+      : { idx: idx, letter: mv.word[k], isNew: false, isBlank: !!sv.bt[idx].isBlank, variant: sv.bt[idx].variant || null });
   }
   return { score: res.total, letters: res.letters, mult: res.mult, gold: res.tgold, word: mv.word, r: mv.r, c: mv.c, isH: mv.isH, wt: wt };
 }
@@ -343,9 +359,13 @@ function _solverInflateBounty(res, bounties) {
 // ---- Shared solver core ----
 // The single generate → score → filter → rank pipeline behind every entry
 // point, so constraint legality and bounty inflation stay identical across
-// the dev panel, the rank-reward solve, and the game-over reveal. Reads
-// whatever S.hand/S.bt/S.board currently are (callers swap in a snapshot if
-// they solve a past position). Chunked via setTimeout to keep the UI live.
+// the dev panel, the rank-reward solve, and the game-over reveal. The board
+// position comes from opts.position (frozen capture for background solves,
+// live S views otherwise) — never from live globals mid-solve, so user input
+// between chunks always sees untouched game state.
+// Chunked via setTimeout to keep the UI live.
+//   position        {bt, btTop, board, placed, stamps, cooldowns, bounties}
+//                   — defaults to _solverLivePosition()
 //   handTiles       tile array for the rack (nulls ignored)
 //   topK            number of results to keep, ranked by score
 //   constraintState {palUnlocked, lastWordLen} — the position the moves are
@@ -358,11 +378,11 @@ function _solverInflateBounty(res, bounties) {
 // word it forms is an (extended) palindrome. Cross words are walked from the
 // placements over an S.bt-backed letter lookup. Only called during the c_pal
 // round, so the perpendicular walk stays off the normal hot path.
-function _solverFormsPal(mv) {
+function _solverFormsPal(sv, mv) {
   if (isExtendedPalindrome(mv.word)) return true;
   function letAt(idx) {
     for (var j = 0; j < mv.placements.length; j++) if (mv.placements[j].idx === idx) return mv.placements[j].letter;
-    var b = S.bt[idx];
+    var b = sv.bt[idx];
     return b ? tileDisplayLetter(b) : null;
   }
   for (var i = 0; i < mv.placements.length; i++) {
@@ -382,17 +402,18 @@ function _solverFormsPal(mv) {
 }
 
 function _solverCore(opts) {
+  var sv = opts.position || _solverLivePosition();
   var hm = _solverHandMaps(opts.handTiles);
   // Jenga hook: stacked-play generation only when the stamp is owned.
-  var _jengaOn = typeof hasStamp === 'function' && hasStamp('jenga');
-  var moves = _solverGenMoves(hm.handCounts, hm.blankPool.length, _jengaOn);
+  var _jengaOn = _svHasStamp(sv, 'jenga');
+  var moves = _solverGenMoves(sv, hm.handCounts, hm.blankPool.length, _jengaOn);
   var cs = opts.constraintState || {};
   var _con = currentConstraint();
   var _palUnlocked = cs.palUnlocked != null ? cs.palUnlocked : S.palUnlocked;
   var _lastLen = cs.lastWordLen != null ? cs.lastWordLen : (S.lastWordLen || 0);
   var _palLock = _con === 'c_pal' && !_palUnlocked;
   var _minLen = _con === 'c_long' ? 5 : (_con === 'c_longer' ? _lastLen + 1 : 2);
-  var bounties = S.bounties || [];
+  var bounties = sv.bounties || [];
   var mi = 0, chunk = opts.chunk || 200, topK = opts.topK, best = [];
   function step() {
     if (opts.shouldAbort && opts.shouldAbort()) { opts.onDone(null); return; }
@@ -400,8 +421,8 @@ function _solverCore(opts) {
     for (; mi < end; mi++) {
       var mv = moves[mi];
       if (mv.word.length < _minLen) continue;
-      if (_palLock && !_solverFormsPal(mv)) continue;
-      var res = _solverScoreMove(mv, hm);
+      if (_palLock && !_solverFormsPal(sv, mv)) continue;
+      var res = _solverScoreMove(sv, mv, hm);
       if (!res) continue;
       res = _solverInflateBounty(res, bounties);
       var ins = false;
@@ -417,44 +438,101 @@ function _solverCore(opts) {
 }
 
 // ---- Rank solver — silent background solve, keeps top 10 for reward system ----
+//
+// Rack observer. The tiles available to the player change at only a handful
+// of points (draws, discards→draw, plays→draw, stamp transforms, shop exit);
+// each calls _rankObserve(), which compares a rack signature and — when it
+// actually changed — freezes the position SYNCHRONOUSLY, before control
+// returns to the event loop, then solves it in the background after a short
+// CPU-deferral delay. The frozen position is passed to _solverCore as
+// opts.position and is NEVER installed into S (the old swap-S.hand/bt/board
+// design let mid-solve user input observe snapshot clones, duplicating tiles).
 
-var _rankTop10 = null;   // null = stale/computing; array = ready
-var _rankRunId = 0;      // increment to cancel any in-progress solve
+var _rankTop10 = null;      // null = stale/computing; array = ready
+var _rankRunId = 0;         // increment to cancel any in-progress solve
 var _rankSolving = false;
 var _rankTimer = null;
+var _rankSig = null;        // signature of the last observed rack
+var _rankPendingPos = null; // frozen position awaiting its solve
+var RANK_SOLVE_DELAY = 600; // defers the CPU burn past the draw animation — the position is already frozen
 
-// Called after every drawFull(). Debounced 600ms.
-function _scheduleRankSolve() {
-  if (_rankTimer) clearTimeout(_rankTimer);
-  _rankTop10 = null;
-  _rankTimer = setTimeout(function() {
-    _rankTimer = null;
-    if (!DICT || !GADDAG || S.phase !== 'play' || _solverRunning || _rankSolving) return;
-    var snap = {
-      hand:  S.hand.map(function(t){ return t ? Object.assign({},t,{onBoard:false,_boardSq:undefined}) : null; }),
-      bt:    S.bt.map(function(bt){ return (bt && !bt.isNew) ? Object.assign({},bt) : null; }),
-      board: S.board.slice()
-    };
-    _rankRunRankSolve(snap);
-  }, 600);
+// Freeze the position the player now faces. Tiles are shared REFERENCES, not
+// clones — preview scoring never writes to them, and nothing here ever flows
+// back into S. Taken at the moment the rack changes, so staged (isNew) tiles
+// are normally absent; if any exist (transform mid-turn) they're still part
+// of the player's rack and are folded back into the hand.
+function _rankCapturePosition() {
+  var hand = [];
+  for (var i = 0; i < S.hand.length; i++) if (S.hand[i]) hand.push(S.hand[i]);
+  var bt = new Array(B * B).fill(null), btTop = null;
+  for (var j = 0; j < B * B; j++) {
+    var t = S.bt[j];
+    if (t) { if (t.isNew) hand.push(t); else bt[j] = t; }
+    var tt = S.btTop && S.btTop[j];
+    if (tt) { if (tt.isNew) hand.push(tt); else { if (!btTop) btTop = new Array(B * B).fill(null); btTop[j] = tt; } }
+  }
+  return {
+    hand: hand, bt: bt, btTop: btTop,
+    board: S.board.slice(), placed: S.placed.slice(), stamps: S.stamps.slice(),
+    cooldowns: S.localCooldowns ? new Set(S.localCooldowns) : new Set(),
+    bounties: (S.bounties || []).slice(),
+    palUnlocked: !!S.palUnlocked, lastWordLen: S.lastWordLen || 0
+  };
 }
 
-function _rankRunRankSolve(snap) {
+// Observer entry point — cheap, signature-gated, safe to call liberally from
+// any rack mutation site. force=true re-captures even when the rack is
+// unchanged (shop exit / sticker placement: same tiles, different scoring).
+function _rankObserve(force) {
+  if (typeof S === 'undefined' || !S || S.phase !== 'play') return;
+  var pos = _rankCapturePosition();
+  var parts = [];
+  for (var i = 0; i < pos.hand.length; i++) {
+    var t = pos.hand[i];
+    parts.push(t.id + '|' + (t.isBlank ? '_' : t.letter) + '|' + (t.variant || ''));
+  }
+  parts.sort();
+  var sig = parts.join(',');
+  if (!force && sig === _rankSig) {
+    // Same rack — but a capture may still be waiting on GADDAG/phase/solver
+    // availability (see _rankKick's bail-outs); give it another kick.
+    if (_rankPendingPos && !_rankTimer) _rankTimer = setTimeout(_rankKick, RANK_SOLVE_DELAY);
+    return;
+  }
+  _rankSig = sig;
+  _rankRunId++;      // position changed — abort any in-flight rank solve
+  _rankTop10 = null;
+  _rankPendingPos = pos;
+  if (_rankTimer) clearTimeout(_rankTimer);
+  _rankTimer = setTimeout(_rankKick, RANK_SOLVE_DELAY);
+}
+
+function _rankKick() {
+  _rankTimer = null;
+  if (!_rankPendingPos) return;
+  // Not solvable right now: keep the pending position — the observer call at
+  // the blocking transition's end (gaddag-ready, shop exit) re-kicks it.
+  if (typeof S === 'undefined' || !S || S.phase !== 'play') return;
+  if (!DICT || !GADDAG) return;
+  if (_solverRunning || _rankSolving) { _rankTimer = setTimeout(_rankKick, 250); return; }
+  var pos = _rankPendingPos;
+  _rankPendingPos = null;
+  _rankRunRankSolve(pos);
+}
+
+function _rankRunRankSolve(pos) {
   if (!DICT || !GADDAG || _solverRunning || _rankSolving) return;
   _rankSolving = true;
   var myId = ++_rankRunId;
-  var origHand = S.hand, origBt = S.bt, origBoard = S.board;
-  S.hand = snap.hand; S.bt = snap.bt; S.board = snap.board;
-  function restore() { S.hand = origHand; S.bt = origBt; S.board = origBoard; _rankSolving = false; }
-
   _solverCore({
-    handTiles: S.hand,
+    position: pos,
+    handTiles: pos.hand,
     topK: 10,
-    constraintState: { palUnlocked: S.palUnlocked, lastWordLen: S.lastWordLen },
+    constraintState: { palUnlocked: pos.palUnlocked, lastWordLen: pos.lastWordLen },
     chunk: 200,
     shouldAbort: function () { return _rankRunId !== myId; },
     onDone: function (best) {
-      restore();
+      _rankSolving = false;
       if (best && _rankRunId === myId) { _rankTop10 = best; window._easyHint = best.length ? best[0] : null; }
     }
   });
@@ -566,17 +644,22 @@ function runSolver() {
 function findBestMoveBackground(snap, onDone) {
   if (!DICT || !GADDAG || _solverRunning || _rankSolving) { onDone(null); return; }
   _solverRunning = true;
-  var origHand = S.hand, origBt = S.bt, origBoard = S.board;
-  S.hand = snap.hand; S.bt = snap.bt; S.board = snap.board;
-  function restore() { var live = document.getElementById('gameover-modal'); if (live && live.style.display !== 'none') { S.hand = origHand; S.bt = origBt; S.board = origBoard; } }
-
+  // The snap freezes hand/bt/board (cloned pre-commit in playWord); effect
+  // state (stickers/stamps/bounties) is read live — it doesn't change between
+  // the final play and the game-over screen. btTop is null: the pre-play
+  // position has no committed stacked tops (btTop only ever holds staged
+  // tiles). Nothing is installed into S, so a new game started mid-solve
+  // can't be corrupted.
+  var pos = { hand: snap.hand, bt: snap.bt, btTop: null, board: snap.board,
+              placed: S.placed, stamps: S.stamps, cooldowns: S.localCooldowns, bounties: S.bounties };
   _solverCore({
-    handTiles: S.hand,
+    position: pos,
+    handTiles: snap.hand,
     topK: 5,
     constraintState: { palUnlocked: snap.palUnlocked, lastWordLen: snap.lastWordLen },
     chunk: 250,
     shouldAbort: function () { return !_solverRunning; },
-    onDone: function (best) { _solverRunning = false; restore(); onDone(best); }
+    onDone: function (best) { _solverRunning = false; onDone(best); }
   });
 }
 

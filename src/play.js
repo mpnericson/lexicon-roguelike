@@ -240,6 +240,7 @@ async function playWord(){
   window._scoring=false;
   if(_playBtn)_playBtn.disabled=false;
   saveGame();
+  if(window.TUT&&TUT.active)tutEvent('word-played',{word:main.word});
   if(S.score>=tgt())setTimeout(roundComplete,700);
   else if(S.plays===0)setTimeout(function(){
     // Safety Net: if score >= 25% of target, advance to shop and destroy the stamp
@@ -333,6 +334,7 @@ function discardTiles(){
   if(S.disc<=0){toast('No discards remaining!');return;}
   var sel=[];for(var i=0;i<S.hand.length;i++)if(S.hand[i]&&S.hand[i].sel)sel.push(i);
   if(!sel.length){toast('Click tiles to select them first.');return;}
+  if(window.TUT&&TUT.active&&!_tutDiscardOK(sel))return;
   var selEls=Array.prototype.slice.call(document.getElementById('hand-area').querySelectorAll('.hand-tile.selected'));
   var N=selEls.length,done=0;
   var dur=180;
@@ -345,6 +347,7 @@ function discardTiles(){
     S.hand=S.hand.filter(function(t){return!t||!_discardIds[t.id];});HP.x=[];HP.vx=[];window._easyHint=null;S.disc--;
     if(hasStamp('pressure_cooker')){S.discPressure=(S.discPressure||0)+1;stampScaleBounce('pressure_cooker');}
     saveGame();
+    if(window.TUT&&TUT.active)tutEvent('discard');
     var keptCount=S.hand.filter(Boolean).length;
     var _hm2=handMax();var _drawCap2=(currentConstraint()==='c_draw3')?3:_hm2;var _dcDrawN=S.devMode?Math.min(sel.length,_drawCap2):Math.min(Math.min(sel.length,_drawCap2),S.bag.length);
     var _dcTotalN=keptCount+Math.max(0,_dcDrawN);

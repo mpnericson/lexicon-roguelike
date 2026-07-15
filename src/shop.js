@@ -119,6 +119,7 @@ function enterShopPhase(){
   renderShop();
   renderStampBar();
   initShopUI();
+  if(window.TUT&&TUT.active)tutEvent('shop-entered');
 }
 
 function leaveShop(){
@@ -128,6 +129,9 @@ function leaveShop(){
   achvCheck('shop_exit');
   saveGame();
   S.phase='play';
+  // Force: the rack is unchanged since the pre-shop draw, but purchases
+  // (stamps, tile transforms) changed what the background solve would score.
+  _rankObserve(true);
   animShopToBoard(function(){
     if((S.stickerInventory||[]).length>0)enterPlacingPhase();
     else _burstHandTiles();
@@ -162,6 +166,7 @@ function confirmPlacement(){
   HP.x=[];HP.vx=[];HP.tiles=[];
   renderHand();renderBoard();renderHUD();renderStampBar();
   if(unplacedSqs.length>0)toast(unplacedSqs.length+' unplaced sticker'+(unplacedSqs.length>1?'s':'')+' returned to inventory.');
+  _rankObserve(true); // newly placed stickers change scoring under the same rack
   if(!fromPlay)_burstHandTiles();
 }
 
@@ -185,6 +190,7 @@ function cancelDevPlacing(){
   document.getElementById('shuffle-btn').style.display='';
   HP.x=[];HP.vx=[];HP.tiles=[];
   renderHand();renderBoard();renderHUD();
+  _rankObserve();
 }
 
 function renderShop(){
@@ -970,6 +976,7 @@ function _chargeSlotSpin(){
 function spinSlots(){
   if(!_chargeSlotSpin())return;
   var results=wrandN(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8,legendary:0.1},3);
+  if(window.TUT&&TUT.active&&TUT.forceSlot){results=TUT.forceSlot.slice();TUT.forceSlot=null;}
   shopPool.slotMode='stamps';
   shopPool.slotResult=results;
   _reelResultShown=false;

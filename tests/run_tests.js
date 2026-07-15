@@ -178,11 +178,14 @@ function eq(name, got, want) {
 }
 
 // ── GADDAG move generation ────────────────────────────────────────────────────
-// _solverGenMoves reads S.bt (board), DICT (cross-checks) and GADDAG.
+// _solverGenMoves reads the sv position view (bt), DICT (cross-checks) and
+// GADDAG. Returns the sv to pass into the pipeline.
 function genSetup(bt, dict) {
-  sandbox.S.bt = bt;
+  sandbox.S.bt = bt; // still read by non-pipeline shims (e.g. chess auras)
   sandbox.DICT = new Set(dict);
   sandbox.buildGaddagSync(dict);
+  return { bt: bt, btTop: null, board: new Array(B * B).fill(null),
+           placed: [], stamps: [], cooldowns: new Set(), bounties: [] };
 }
 function moveKeys(moves) {
   return moves.map(m => m.word + '@' + m.r + ',' + m.c + (m.isH ? 'h' : 'v')).sort().join(' ');
@@ -190,8 +193,8 @@ function moveKeys(moves) {
 
 // ── 10. Empty board: every placement covers the centre, both directions ─────
 {
-  genSetup(new Array(B * B).fill(null), ['CAT', 'CATS', 'AT', 'TA']);
-  const moves = sandbox._solverGenMoves({ C: 1, A: 1, T: 1 }, 0);
+  const sv = genSetup(new Array(B * B).fill(null), ['CAT', 'CATS', 'AT', 'TA']);
+  const moves = sandbox._solverGenMoves(sv, { C: 1, A: 1, T: 1 }, 0);
   // CAT: 3 starts × 2 dirs; AT/TA: 2 starts × 2 dirs each = 6+4+4
   eq('empty board move count', moves.length, 14);
   eq('empty board contains CAT@7,7h', moves.some(m => m.word === 'CAT' && m.r === 7 && m.c === 7 && m.isH), true);
@@ -201,8 +204,8 @@ function moveKeys(moves) {
 {
   const bt = new Array(B * B).fill(null);
   'CAT'.split('').forEach((L, i) => { bt[7 * B + 7 + i] = { letter: L, isBlank: false }; });
-  genSetup(bt, ['CAT', 'CATS', 'AT', 'TA']);
-  const moves = sandbox._solverGenMoves({ S: 1 }, 0);
+  const sv = genSetup(bt, ['CAT', 'CATS', 'AT', 'TA']);
+  const moves = sandbox._solverGenMoves(sv, { S: 1 }, 0);
   eq('extension moves', moveKeys(moves), 'CATS@7,7h');
   eq('extension placements', moves[0].placements.length, 1); // only the S is new
 }
@@ -212,8 +215,8 @@ function moveKeys(moves) {
   const bt = new Array(B * B).fill(null);
   'CAT'.split('').forEach((L, i) => { bt[7 * B + 7 + i] = { letter: L, isBlank: false }; });
   // TA is valid vertically through the A (T above it); TC through C is not a word
-  genSetup(bt, ['CAT', 'TA']);
-  const moves = sandbox._solverGenMoves({ T: 1 }, 0);
+  const sv = genSetup(bt, ['CAT', 'TA']);
+  const moves = sandbox._solverGenMoves(sv, { T: 1 }, 0);
   eq('crossword moves', moveKeys(moves), 'TA@6,8v');
 }
 
@@ -221,8 +224,8 @@ function moveKeys(moves) {
 {
   const bt = new Array(B * B).fill(null);
   'CAT'.split('').forEach((L, i) => { bt[7 * B + 7 + i] = { letter: L, isBlank: false }; });
-  genSetup(bt, ['CAT', 'CATS']);
-  const moves = sandbox._solverGenMoves({}, 1); // empty rack, one blank
+  const sv = genSetup(bt, ['CAT', 'CATS']);
+  const moves = sandbox._solverGenMoves(sv, {}, 1); // empty rack, one blank
   eq('blank moves', moveKeys(moves), 'CATS@7,7h');
   eq('blank flagged', moves[0].placements[0].isBlank, true);
 }
@@ -303,10 +306,10 @@ function moveKeys(moves) {
 {
   const bt = new Array(B * B).fill(null);
   'CAT'.split('').forEach((L, i) => { bt[7 * B + 7 + i] = { letter: L, isBlank: false }; });
-  genSetup(bt, ['CAT', 'CATS', 'COT', 'BAT', 'BOT', 'COTS']);
-  const off = sandbox._solverGenMoves({ O: 1, S: 1, B: 1 }, 0);
+  const sv = genSetup(bt, ['CAT', 'CATS', 'COT', 'BAT', 'BOT', 'COTS']);
+  const off = sandbox._solverGenMoves(sv, { O: 1, S: 1, B: 1 }, 0);
   eq('jenga off: no stacked moves', off.some(m => m.placements.some(p => p.isTop)), false);
-  const on = sandbox._solverGenMoves({ O: 1, S: 1, B: 1 }, 0, true);
+  const on = sandbox._solverGenMoves(sv, { O: 1, S: 1, B: 1 }, 0, true);
   eq('jenga single stack COT', on.some(m => m.word === 'COT' && m.isH
     && m.placements.length === 1 && m.placements[0].isTop && m.placements[0].idx === 7 * B + 8), true);
   eq('jenga mixed COTS', on.some(m => m.word === 'COTS' && m.isH && m.placements.length === 2
@@ -321,7 +324,7 @@ function moveKeys(moves) {
   // Each square stacks only once: a committed tile that was itself stacked
   // (_stackLevel >= 1) must never take another override.
   bt[7 * B + 8]._stackLevel = 1;
-  const on2 = sandbox._solverGenMoves({ O: 1, S: 1, B: 1 }, 0, true);
+  const on2 = sandbox._solverGenMoves(sv, { O: 1, S: 1, B: 1 }, 0, true);
   eq('jenga no double stack', on2.some(m => m.placements.some(p => p.isTop && p.idx === 7 * B + 8)), false);
   delete bt[7 * B + 8]._stackLevel;
 }
@@ -334,8 +337,8 @@ function moveKeys(moves) {
   const bt = new Array(B * B).fill(null);
   'CAT'.split('').forEach((L, i) => { bt[7 * B + 7 + i] = { letter: L, isBlank: false }; });
   'OT'.split('').forEach((L, i) => { bt[(8 + i) * B + 7] = { letter: L, isBlank: false }; });
-  genSetup(bt, ['CAT', 'COT', 'BAT', 'BOT', 'DOT', 'DAT']);
-  const on = sandbox._solverGenMoves({ B: 1, D: 1 }, 0, true);
+  const sv = genSetup(bt, ['CAT', 'COT', 'BAT', 'BOT', 'DOT', 'DAT']);
+  const on = sandbox._solverGenMoves(sv, { B: 1, D: 1 }, 0, true);
   eq('jenga dir: BAT h emitted', on.some(m => m.word === 'BAT' && m.isH
     && m.placements.length === 1 && m.placements[0].isTop), true);
   eq('jenga dir: BOT v suppressed', on.some(m => m.word === 'BOT' && !m.isH
@@ -352,15 +355,15 @@ function moveKeys(moves) {
   const bt = new Array(B * B).fill(null);
   'CAT'.split('').forEach((L, i) => { bt[7 * B + 7 + i] = { letter: L, isBlank: false }; });
   'OT'.split('').forEach((L, i) => { bt[(8 + i) * B + 7] = { letter: L, isBlank: false }; });
-  genSetup(bt, ['CAT', 'BAT', 'COT', 'BOT']);
+  const sv = genSetup(bt, ['CAT', 'BAT', 'COT', 'BOT']);
   sandbox.currentConstraint = () => null;
   Object.assign(sandbox.S, { bag: [], board: new Array(B * B).fill(null), placed: [],
-    stamps: [], localCooldowns: new Set(), bounties: [] });
+    stamps: [], localCooldowns: new Set(), bounties: [] }); // buildEngineState reads S scalars live
   const hm = sandbox._solverHandMaps([{ letter: 'B' }, { letter: 'Q' }, { letter: 'Z' }]);
-  const on = sandbox._solverGenMoves(hm.handCounts, 0, true);
+  const on = sandbox._solverGenMoves(sv, hm.handCounts, 0, true);
   const batMv = on.find(m => m.word === 'BAT' && m.isH && m.placements[0] && m.placements[0].isTop);
   eq('jenga scored move found', !!batMv, true);
-  const res = sandbox._solverScoreMove(batMv, hm);
+  const res = sandbox._solverScoreMove(sv, batMv, hm);
   eq('jenga stacked move score', res.score, 16);
   eq('jenga wt marks top', res.wt[0].isNew && res.wt[0].isTop, true);
 }

@@ -118,7 +118,7 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
           hpDraw();
         }
         _playTileClick('land');
-      } else if(over>=0&&over!==sqIdx&&!S.bt[over]){
+      } else if(over>=0&&over!==sqIdx&&!S.bt[over]&&(!window.TUT||!TUT.active||_tutPlaceOK(btRef,over))){
         var sqEl=document.querySelector('[data-sq-idx="'+over+'"]');var tr=sqEl?sqEl.getBoundingClientRect():null;
         if(tr){face.style.transition='left .13s,top .13s,transform .13s';face.style.left=(tr.left+tr.width/2-_tsz/2)+'px';face.style.top=(tr.top+tr.height/2-_tsz/2)+'px';face.style.transform='scale(1)';}
         setTimeout(function(){
@@ -171,7 +171,7 @@ function attachSqDrag(face,vi,item){
       HP.held=-1;if(clone){clone.remove();clone=null;}face.style.opacity='1';clearHL();
       if(moved){
         var si=sqAt(me.clientX,me.clientY);
-        if(si>=0&&!S.board[si]&&!isSqStaged(si)){
+        if(si>=0&&!S.board[si]&&!isSqStaged(si)&&(!window.TUT||!TUT.active||_tutStickerOK(si))){
           var globalIdx=S.sqHand.indexOf(item);
           S.sqStaged[si]=globalIdx;item.placed=true;
           renderSqHand();renderBoard();
@@ -764,7 +764,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
       var _jt=selTiles[0].t;setTileState(_jt,'hand');_jt.sel=false;
       if(_jt.isBlank&&!_jt.blankAs){renderBoard();renderHand();openBlankChooser(_jt,function(){placeTile(_jt,sq);renderBoard();renderHand();});}
       else{placeTile(_jt,sq);renderBoard();renderHand();}
-    } else if(sq>=0&&_computeFree(_startSq(sq))){
+    } else if(sq>=0&&_computeFree(_startSq(sq))&&(!window.TUT||!TUT.active||_tutDragDropOK(selTiles.length))){
       for(var i=0;i<selTiles.length;i++){setTileState(selTiles[i].t,'hand');}
       // Recompute indices from current S.hand position to avoid stale-index bug
       // (S.hand may have shifted if a recall arc landed between drag start and drop).
@@ -812,6 +812,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
 }
 
 function placeTile(t,sqIdx){
+  if(window.TUT&&TUT.active&&!_tutPlaceOK(t,sqIdx))return;
   if(t)S.hand=S.hand.filter(function(x){return x!==t;});
   setTileState(t,'board',{boardSq:sqIdx,isNew:true});
   if(S.bt[sqIdx]&&!S.bt[sqIdx].isNew&&!S.bt[sqIdx]._stackLevel&&!(S.btTop&&S.btTop[sqIdx])){
@@ -1199,7 +1200,7 @@ function clearBoardLetters(){
   if(S.localCooldowns)S.localCooldowns.clear();
 }
 
-function toggleSel(idx){if(Date.now()-_dragEndTime<300)return;if(S.hand[idx]){S.hand[idx].sel=!S.hand[idx].sel;_playTileClick('select');renderHand();}}
+function toggleSel(idx){if(Date.now()-_dragEndTime<300)return;if(S.hand[idx]){if(!S.hand[idx].sel&&window.TUT&&TUT.active&&!_tutSelTileOK())return;S.hand[idx].sel=!S.hand[idx].sel;_playTileClick('select');renderHand();}}
 
 // Global shift-drag: capture phase intercepts before any tile handler fires.
 // Selection rules:

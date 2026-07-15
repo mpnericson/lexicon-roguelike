@@ -6,6 +6,7 @@ var SAVE_KEY = 'lexicon_save';
 
 function saveGame() {
   if (!S || !S.seed || S.devMode) return;
+  if (S.tutorial) return; // mid-tutorial state is never persisted
   try {
     var data = {
       v: SAVE_VERSION,
@@ -143,5 +144,5 @@ function resumeGame() {
   if (typeof _resetZoom === 'function') _resetZoom();
   drawFull();
   renderAll();
-  if (S.phase === 'play') _scheduleRankSolve();
+  if (S.phase === 'play') _rankObserve();
 }

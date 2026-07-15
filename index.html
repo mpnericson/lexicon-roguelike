@@ -366,7 +366,22 @@ body.focus-exiting #focus-bg{opacity:0}
 /* New shop UI animated sprites */
 #shop-slot-buttons{position:absolute;left:5.2734%;top:50.9375%;width:56.25%;image-rendering:pixelated;z-index:3;pointer-events:none}
 #shop-slot-tray{position:absolute;left:-0.1953%;top:62.5%;width:67.1875%;image-rendering:pixelated;z-index:3;pointer-events:none}
-
+/* ── TUTORIAL ── */
+#tut-layer{position:fixed;inset:0;z-index:20000;pointer-events:none}
+#tut-shade{position:fixed;inset:0;background:rgba(5,8,16,0.58);pointer-events:none}
+#tut-pop{position:fixed;max-width:360px;background:#14142e;border:1px solid #6a6aa0;border-radius:10px;padding:14px 16px;pointer-events:auto;box-shadow:0 8px 30px rgba(0,0,0,0.7);font-family:'Jersey 10',Georgia,serif}
+#tut-pop-title{font-size:32px;color:#f0e080;margin-bottom:4px;line-height:1}
+#tut-pop-text{font-size:25px;color:#d8d8e8;line-height:1.2}
+#tut-pop-text b{color:#f0e080;font-weight:normal}
+#tut-pop-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+#tut-next-btn,.tut-custom-btn{background:#2a6a2a;border:1px solid #4aaa4a;color:#e8ffe8;border-radius:6px;padding:6px 20px;font-family:'Jersey 10',Georgia;font-size:26px;cursor:pointer}
+#tut-next-btn:hover,.tut-custom-btn:hover{background:#358035}
+.tut-custom-btn+.tut-custom-btn{background:#2a2a4a;border-color:#5a5a8a;color:#c0c0d8}
+.tut-custom-btn+.tut-custom-btn:hover{background:#38385a}
+#tut-pop-step{font-size:19px;color:#8880a8;margin-top:6px}
+#tut-arrow{position:fixed;width:0;height:0;border-style:solid;pointer-events:none}
+#tut-exit{position:fixed;left:12px;bottom:12px;background:#2a1414;border:1px solid #8a4a4a;color:#ffb0b0;border-radius:8px;padding:8px 16px;font-family:'Jersey 10',Georgia;font-size:24px;cursor:pointer;pointer-events:auto}
+#tut-exit:hover{background:#3a1a1a}
 </style>
 </head>
 <body>
@@ -671,6 +686,7 @@ body.focus-exiting #focus-bg{opacity:0}
 <script src="src/achievements.js"></script>
 <script src="src/wordbook.js"></script>
 <script src="src/focus.js"></script>
+<script src="src/tutorial.js"></script>
 <script src="src/init.js"></script>
 <div id="solver-panel"></div>
 <div id="dev-palette"></div>
@@ -678,6 +694,7 @@ body.focus-exiting #focus-bg{opacity:0}
   <div class="menu-item" onclick="openCollection()">Collection</div>
   <div class="menu-item" onclick="openWordbookModal()">Dictionary</div>
   <div class="menu-item" onclick="openAchievementsModal()">Achievements</div>
+  <div class="menu-item" onclick="startTutorial()">Tutorial</div>
   <div class="menu-item" id="devmode-item" onclick="toggleDevMode()">Dev Mode: Off</div>
   <div class="menu-item dev-only" style="display:none" onclick="enterShopPhase()">▶ Enter Shop</div>
   <div class="menu-item dev-only" style="display:none" onclick="devTestClose()">▶ Anim: Board → Shop</div>

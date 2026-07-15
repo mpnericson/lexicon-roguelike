@@ -132,6 +132,7 @@ function transformTile(tileId,opts){
       if(S.bt[_i]&&S.bt[_i].id===tileId)S.bt[_i]=null;
       if(S.btTop&&S.btTop[_i]&&S.btTop[_i].id===tileId)S.btTop[_i]=null;
     }
+    _rankObserve();
     return null;
   }
   var _pe=null;
@@ -145,6 +146,7 @@ function transformTile(tileId,opts){
     if(S.btTop&&S.btTop[_i]&&S.btTop[_i].id===tileId)_ap(S.btTop[_i]);
   }
   if(opts.variant==='blue')_autoRegisterBlueAnchors();
+  _rankObserve();
   return _pe;
 }
 
@@ -168,7 +170,8 @@ function drawFull(maxDraw){
   var cap=(_c==='c_draw3')?3:(hm-S.hand.length);
   var n=Math.min(hm-S.hand.length,cap);
   if(maxDraw!==undefined)n=Math.min(n,maxDraw);
-  if(n<=0)return;
+  // No early return on n<=0: the rack may have changed even when nothing is
+  // drawn (empty bag after a play) — the observer below must still run.
   for(var i=0;i<n&&S.bag.length>0;i++){
     var _dt=null;
     try{
@@ -191,7 +194,7 @@ function drawFull(maxDraw){
     setTileState(_dt,'hand');
     S.hand.push(_dt);
   }
-  if(S.phase==='play')_scheduleRankSolve();
+  _rankObserve();
 }
 
 function cb(){
@@ -221,6 +224,7 @@ function roundComplete(){
   document.getElementById('round-modal').style.display='flex';
   saveGame();
   achvCheck('round_complete');
+  if(window.TUT&&TUT.active)tutEvent('round-complete');
 }
 
 function advanceRound(){

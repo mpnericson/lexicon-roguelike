@@ -57,6 +57,7 @@ window.addEventListener('resize',function(){hpBounds();renderBoard();});
 })();
 
 document.addEventListener('keydown',function(e){
+  if(window.TUT&&TUT.active)return; // tutorial: shortcuts stay locked out
   if(window._focusMode){if(e.key==='Escape')exitFocus();return;}
   if(e.key==='Enter'&&S.phase==='play'&&!e.target.closest('.modal-overlay')){if(window._pdFlash)_pdFlash(3);playWord();}
   if((e.key==='Delete'||e.key==='Backspace')&&S.phase==='play'&&!e.target.closest('input,textarea')){if(window._pdFlash)_pdFlash(5);discardTiles();}
@@ -116,7 +117,7 @@ document.addEventListener('click',function(e){
   // Word index for the solver — chunked, ~0.5s. Solver features are inert
   // until it finishes; the rank solve is kicked once it's ready.
   buildGaddag(DICT,function(){
-    if(typeof S!=='undefined'&&S&&S.phase==='play')_scheduleRankSolve();
+    if(typeof S!=='undefined'&&S&&S.phase==='play')_rankObserve();
   });
   buildSQMap();
   achvInit();
