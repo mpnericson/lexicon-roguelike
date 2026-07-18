@@ -1,11 +1,11 @@
 // ── DOUBLE LETTER ────────────────────────────────────────────────────────────
 // type: board · rarity: common · cost: $3
-// Per-tile mult bracket (onTileMult): letter score ×2 (×4 with Purist).
+// Per-tile mult bracket (onTileMult): letter score ×2.
 // bm is metadata only (dev-palette categorisation in ui.js).
 SQ.push({id:'dl',name:'Double Letter',desc:'Letter scores ×2.',
   rarity:'common',cost:3,qty:6,bg:'#14305a',fg:'#6aaaff',icon:'DL',type:'board',bm:'dl',perishable:true,
   onTileMult:function(tile,ctx,ts,sqIdx){
-    var f=ctx.purist?4:2;
+    var f=2;
     ts*=f;
     ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Double Letter ×'+f,floatSqIdx:sqIdx});
     return ts;
@@ -13,35 +13,35 @@ SQ.push({id:'dl',name:'Double Letter',desc:'Letter scores ×2.',
 
 // ── TRIPLE LETTER ─────────────────────────────────────────────────────────────
 // type: board · rarity: common · cost: $3
-// Per-tile mult bracket (onTileMult): letter score ×3 (×9 with Purist).
+// Per-tile mult bracket (onTileMult): letter score ×3.
 SQ.push({id:'tl',name:'Triple Letter',desc:'Letter scores ×3.',
   rarity:'common',cost:3,qty:4,bg:'#0d2050',fg:'#4488ff',icon:'TL',type:'board',bm:'tl',perishable:true,
   onTileMult:function(tile,ctx,ts,sqIdx){
-    var f=ctx.purist?9:3;
+    var f=3;
     ts*=f;
     ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Triple Letter ×'+f,floatSqIdx:sqIdx});
     return ts;
   }});
 
 // ── DOUBLE WORD ───────────────────────────────────────────────────────────────
-// type: board · rarity: common · cost: $3
-// Per-tile mult bracket (onTileMult): pushes ×2 word mult (×4 with Purist).
+// type: board · rarity: uncommon · cost: $5
+// Per-tile mult bracket (onTileMult): pushes ×2 word mult.
 SQ.push({id:'dw',name:'Double Word',desc:'Word ×2 when new tile lands here.',
-  rarity:'common',cost:3,qty:2,bg:'#6a1818',fg:'#ff8080',icon:'DW',type:'board',bm:'dw',perishable:true,
+  rarity:'uncommon',cost:5,qty:1,bg:'#6a1818',fg:'#ff8080',icon:'DW',type:'board',bm:'dw',perishable:true,
   onTileMult:function(tile,ctx,ts,sqIdx){
-    var f=ctx.purist?4:2;
+    var f=2;
     ctx.xmults.push(f);
     ctx.events.push({type:'x-mult',factor:f,sqIdx:sqIdx,label:'Double Word ×'+f,floatSqIdx:sqIdx});
     return ts;
   }});
 
 // ── TRIPLE WORD ───────────────────────────────────────────────────────────────
-// type: board · rarity: common · cost: $3
-// Per-tile mult bracket (onTileMult): pushes ×3 word mult (×9 with Purist).
+// type: board · rarity: rare · cost: $8
+// Per-tile mult bracket (onTileMult): pushes ×3 word mult.
 SQ.push({id:'tw',name:'Triple Word',desc:'Word ×3 when new tile lands here.',
-  rarity:'common',cost:3,qty:1,bg:'#500808',fg:'#ff6060',icon:'TW',type:'board',bm:'tw',perishable:true,
+  rarity:'rare',cost:8,qty:1,bg:'#500808',fg:'#ff6060',icon:'TW',type:'board',bm:'tw',perishable:true,
   onTileMult:function(tile,ctx,ts,sqIdx){
-    var f=ctx.purist?9:3;
+    var f=3;
     ctx.xmults.push(f);
     ctx.events.push({type:'x-mult',factor:f,sqIdx:sqIdx,label:'Triple Word ×'+f,floatSqIdx:sqIdx});
     return ts;
@@ -58,8 +58,8 @@ SQ.push({id:'echo',name:'Red Sticker',desc:'Letter here scores twice.',
 // ── GILDED ────────────────────────────────────────────────────────────────────
 // type: local · rarity: common · cost: $3
 // PRE bracket (onPreScore): turns the tile on this square gold before any
-// scoring happens, so the gold-tile +$1 fires during per-tile scoring.
-SQ.push({id:'gilded',name:'Gilded',desc:'Transforms tile to gold before scoring (gold tiles earn +$1).',
+// scoring happens, so the gold-tile $1 board sweep counts it this play.
+SQ.push({id:'gilded',name:'Gilded',desc:'Transforms tile to gold before scoring (gold tiles pay $1 every play while on the board).',
   rarity:'common',cost:3,qty:3,bg:'#3a2a00',fg:'#f0c060',icon:'GL',type:'local',perishable:true,
   onPreScore:function(tile,ctx,sqIdx){
     if(tile.variant==='gold')return;
@@ -90,10 +90,10 @@ SQ.push({id:'void',name:'Void',desc:'Letter scores 0 letter score but +2 mult.',
 
 // ── PAINT BUCKET ──────────────────────────────────────────────────────────────
 // type: local · rarity: uncommon · cost: $5
-// No scoring hook. Effect fires in play.js at end of stage: any tile committed
+// No scoring hook. Effect fires in play.js at end of board: any tile committed
 // on this square becomes a blank when the board clears.
 SQ.push({id:'paint_bucket',name:'Paint Bucket',
-  desc:'Tile placed here becomes a blank when the board clears at end of stage.',
+  desc:'Tile placed here becomes a blank when the board clears between boards.',
   rarity:'uncommon',cost:5,qty:2,bg:'#0a2a2a',fg:'#60d0d0',icon:'PB',type:'local',perishable:true});
 
 // ── SUPER GLUE ────────────────────────────────────────────────────────────────

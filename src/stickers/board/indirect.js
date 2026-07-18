@@ -113,7 +113,7 @@ SQ.push({id:'proletariat',name:'The Proletariat',
     var n=0;for(var i=0;i<S.placed.length;i++)if(S.placed[i].id==='proletariat')n++;
     var v=parseFloat((0.25*n).toFixed(2));
     return n+' on board → <span style="color:#f0e040">+'+v+' mult</span> per word.'
-      +(S.gold<4?' <span style="color:#f0d060">Gold < $4</span>: 50% chance to spread after each word.':'');
+      +(S.gold<4?' <span style="color:#f0d060">Gold < $4</span>: '+Math.round(_luckOdds(0.5)*100)+'% chance to spread after each word.':'');
   },
   onPostWordAdd:function(w,wt,ctx){
     if(ctx._proletariatDone)return;
@@ -132,7 +132,7 @@ function _proletariatSpread() {
   var pros = [];
   for (var i = 0; i < S.placed.length; i++) if (S.placed[i].id === 'proletariat') pros.push(S.placed[i]);
   if (pros.length === 0 || S.gold >= 4) return;
-  if (_rng() > 0.5) return;
+  if (_rng() >= _luckOdds(0.5)) return;
   var candidates = [], seen = {};
   for (var i = 0; i < pros.length; i++) {
     var sq = pros[i].sqIdx; if (sq == null) continue;

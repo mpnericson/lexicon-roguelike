@@ -12,7 +12,7 @@
 // Cooldowns: local effects are gated by S.localCooldowns (a Set of sqIdx).
 // Within one play no flags are set — a square can fire multiple times.
 // After scorePlay() commits, every activated square is added to
-// S.localCooldowns, which persists until clearBoardLetters() (between stages).
+// S.localCooldowns, which persists until clearBoardLetters() (between boards).
 // =====================================================================
 
 function newTiles(){
@@ -96,7 +96,7 @@ function buildEngineState(freeHandCount){
     freeHandCount:freeHandCount,
     constraint:currentConstraint(),
     usedLetters:S.usedLetters,
-    stickersSold:(S.stickersSoldThisStage||0)>0,
+    stickersSold:(S.stickersSoldThisBoard||0)>0,
     pendingBountyReward:S._pendingBountyReward||0,
     drunkValid:S._drunkValid,
     magicStreak:S.magicStreak||0,
@@ -107,6 +107,7 @@ function buildEngineState(freeHandCount){
     bhMult:S.bhMult||1,
     crossroadsCount:S.crossroadsCount||0,
     ouroborosBonus:S.ouroborosBonus||0,
+    gamblerSpins:S.gamblerSpins||0,
     discardsLeft:S.disc||0,
     discPressure:S.discPressure||0,
     bagColouredCount:S.bag?S.bag.filter(function(t){return t.variant;}).length:0
@@ -887,9 +888,11 @@ async function runScoreAnim(events,total){
       }
 
     }else if(ev.type==='plus-mult'){
+      var tileElP=_evTileEl(ev);
       var curDelay=await _evBeatStart(ev);
       var br=row.getBoundingClientRect();
       showScorePop('+'+ev.delta+' mult',br.left+100,br.top-32,'#500808','#ff8080');
+      if(!ev._skip)_binkEl(tileElP);
       animPlusSum+=ev.delta;
       refreshMult();
       _applyCoApply(ev);
@@ -972,7 +975,7 @@ async function runScoreAnim(events,total){
   // Fill the score toward the target starting at a base rate of 10% of the
   // target per second, then accelerating exponentially as more is added
   // (d(added)/dt = base + growth·added). Base rate is proportional to the target
-  // so every stage starts filling at the same relative pace. The bar is derived
+  // so every board starts filling at the same relative pace. The bar is derived
   // from the SAME running score each frame, so it fills at the exact same rate
   // as the score ticks up — it just clamps at 100% if the score overshoots.
   // growth chosen so a full-bar fill (empty→target) takes ~4.3s:

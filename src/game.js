@@ -90,7 +90,7 @@ function startGame(seed){
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,palUnlocked:false,devMode:false,
      phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,bhMult:1,palMult:1,playerMult:1,cartographerMult:1,palWords:[],localCooldowns:new Set(),
      lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,
-     constraintOrder:_co.slice(0,STAGES.length),usedLetters:new Set(),stickersSoldThisStage:0,crossroadsCount:0,ouroborosBonus:0,
+     constraintOrder:_co.slice(0,BOARDS.length),usedLetters:new Set(),stickersSoldThisBoard:0,crossroadsCount:0,ouroborosBonus:0,gamblerSpins:0,
      stamps:[],bagBlueAnchors:{},pool:_bag.slice(),
      bounties:_generateBounties(3,[])};
   window._easyHint=null;
@@ -198,8 +198,24 @@ function drawFull(maxDraw){
 }
 
 function cb(){
-  if(S.endless)return['Endless '+S.endlessRound,'How far can you go?',Math.round(10000*Math.pow(1.4,S.endlessRound-1)),null];
-  return STAGES[S.ai][S.bi];
+  if(S.endless){
+    var eb=endlessBoard(),er=S.bi;
+    return['Endless '+(eb+1)+'-'+(er+1),'How far can you go?',endlessTgt(eb,er),null];
+  }
+  return BOARDS[S.ai][S.bi];
+}
+// 0-based endless board index (clamped for pre-8-board saves resumed mid-endless).
+function endlessBoard(){return Math.max(0,S.ai-BOARDS.length);}
+// Endless mirrors the main run: 3-round boards on the looping progress
+// tracker. The first endless board opens at 500k×2.5=1.25M, continuing the
+// late-game cadence; each later board's opening jump grows ×1.2 (×3, ×3.6, …)
+// so targets eventually outrun any build. Rounds step ×1 / ×1.4 / ×2.
+function endlessTgt(eb,er){
+  var open=1250000*Math.pow(2.5,eb)*Math.pow(1.2,eb*(eb+1)/2);
+  var t=open*[1,1.4,2][er];
+  if(!isFinite(t))return t;
+  var mag=Math.pow(10,Math.max(0,Math.floor(Math.log(t)/Math.LN10)-2));
+  return Math.round(t/mag)*mag;
 }
 function tgt(){var base=cb()[2];if(S.bi===2&&currentConstraint()==='c_oneplay')return Math.ceil(base/3/10)*10;return base;}
 
@@ -213,32 +229,53 @@ function roundComplete(){
     var _activeWords=[];(S.bounties||[]).forEach(function(sc){(sc.words||[]).forEach(function(w){_activeWords.push(w.word);});});
     var _newB=_generateBounties(1,_activeWords);if(_newB.length){S.bounties=S.bounties||[];S.bounties.push(_newB[0]);sheriffWord=_newB[0].words[0].word;}
   }
-  document.getElementById('round-title').textContent=(cb()[0]?cb()[0]+' cleared!':'Round complete!');
   var msg='You scored '+S.score.toLocaleString()+', beating '+tgt().toLocaleString()+'.';
   if(playsBonus>0)msg+=' +$'+playsBonus+' efficiency bonus!';
   if(sheriffWord)msg+=' Sheriff: free bounty "'+sheriffWord+'"!';
-  document.getElementById('round-msg').textContent=msg;
-  document.getElementById('round-reward').textContent='+$'+(reward+playsBonus)+' gold';
   S.roundsCompleted=(S.roundsCompleted||0)+1;
   try{var _pb=parseInt(localStorage.getItem('lexicon_best_rounds')||'0');if(S.roundsCompleted>_pb)localStorage.setItem('lexicon_best_rounds',S.roundsCompleted);}catch(e){}
-  document.getElementById('round-modal').style.display='flex';
+  var won=!S.endless&&S.ai===BOARDS.length-1&&S.bi===2;
+  if(won){
+    document.getElementById('win-msg').textContent='All '+BOARDS.length+' boards cleared! '+msg;
+    document.getElementById('win-reward').textContent='+$'+(reward+playsBonus)+' gold';
+    document.getElementById('win-modal').style.display='flex';
+    // Tracker frame 25 = every board window filled.
+    var _wSpr=document.getElementById('progress-tracker-sprite');
+    if(_wSpr)_wSpr.src='Assets/animations/progress tracker/progress_tracker25.png';
+    achvCheck('win');
+  }else{
+    document.getElementById('round-title').textContent=(cb()[0]?cb()[0]+' cleared!':'Round complete!');
+    document.getElementById('round-msg').textContent=msg;
+    document.getElementById('round-reward').textContent='+$'+(reward+playsBonus)+' gold';
+    document.getElementById('round-modal').style.display='flex';
+  }
   saveGame();
   achvCheck('round_complete');
   if(window.TUT&&TUT.active)tutEvent('round-complete');
 }
 
+function winContinueEndless(){
+  document.getElementById('win-modal').style.display='none';
+  advanceRound();
+}
+function winNewRun(){
+  document.getElementById('win-modal').style.display='none';
+  startGame();
+}
+
 function advanceRound(){
   document.getElementById('round-modal').style.display='none';
   S.bi++;
-  var newStage=S.bi>=3;
-  if(newStage){S.ai++;S.bi=0;if(S.ai>=STAGES.length){S.endless=true;S.endlessRound=(S.endlessRound||0)+1;}}
+  var newBoard=S.bi>=3;
+  if(newBoard){S.ai++;S.bi=0;if(S.ai>=BOARDS.length)S.endless=true;}
+  if(S.endless)S.endlessRound=(S.endlessRound||0)+1;
 
   var _pbBlanks=0;
-  if(newStage){
+  if(newBoard){
     // Paint bucket: blank the tile that was committed on its square (transforms pool entry in place)
     for(var _pbi=0;_pbi<S.placed.length;_pbi++){var _pb=S.placed[_pbi];if(_pb.id==='paint_bucket'&&_pb.sqIdx!=null&&S.bt[_pb.sqIdx]&&S.bt[_pb.sqIdx].id){_pbBlanks++;transformTile(S.bt[_pb.sqIdx].id,{isBlank:true});}}
-    // End-of-stage sticker/stamp effects (Bourgeois, etc.)
-    _fireAllHooks('onEndStage',[]);
+    // End-of-board sticker/stamp effects (Bourgeois, etc.)
+    _fireAllHooks('onEndBoard',[]);
   }
 
   if(typeof _resetZoom==='function')_resetZoom();
@@ -246,22 +283,22 @@ function advanceRound(){
   if(_bgo&&_bgo.style.display!=='none'){_bgo.style.display='none';delete _bgo.dataset.opening;delete _bgo.dataset.closing;}
   var _bgs=document.getElementById('bag-sprite');if(_bgs)_bgs.style.visibility='';
 
-  _doStageAnimation(newStage,_pbBlanks);
+  _doBoardAnimation(newBoard,_pbBlanks);
 }
 
-function _doStageAnimation(newStage,pbBlanks){
+function _doBoardAnimation(newBoard,pbBlanks){
   animBoardToShop(function(){
-    if(newStage){
+    if(newBoard){
       clearBoardLetters();
       var _handIds=new Set((S.hand||[]).map(function(t){return t&&t.id;}).filter(Boolean));
       var _reBag=(S.pool||[]).filter(function(pt){return !_handIds.has(pt.id);});
       _reBag.forEach(function(pt){setTileState(pt,'stored',{storedIn:'bag'});});
       S.bag=shuffle(_reBag);
       var _pbMsg=pbBlanks?' Paint Bucket: '+pbBlanks+' tile'+(pbBlanks!==1?'s':'')+' blanked.':'';
-      toast(S.endless?'Endless mode! Targets keep rising.':'New stage — board cleared!'+_pbMsg);
+      toast(S.endless?'Endless mode! Targets keep rising.':'New board — tiles cleared!'+_pbMsg);
     }
     S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
-    S.usedLetters=new Set();S.stickersSoldThisStage=0;
+    S.usedLetters=new Set();S.stickersSoldThisBoard=0;
     var _rc=currentConstraint();if(_rc==='c_oneplay')S.plays=1;if(_rc==='c_nodisc')S.disc=0;
     var _insatN=countStamp('insatiable');
     if(_insatN)S.disc+=_insatN;
@@ -285,7 +322,7 @@ function showGO(msg){
 }
 
 function closeAllModals(){
-  ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','gameover-modal','board-preview-modal','collection-modal','achv-modal','wordbook-modal','seed-modal'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
+  ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','win-modal','gameover-modal','board-preview-modal','collection-modal','achv-modal','wordbook-modal','seed-modal'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
   document.getElementById('shop-screen').style.display='none';
 }
 
@@ -1094,6 +1131,14 @@ function countStamp(id){
 }
 function hasStamp(id){return countStamp(id)>0;}
 
+// ── Luck multiplier ──
+// Two Face doubles the odds of every luck-based sticker/stamp effect (stacks
+// multiplicatively: two copies = ×4). Wrap any probability with _luckOdds() so
+// a boosted chance is clamped to a certain 1.0. Call sites: Proletariat spread,
+// Slot Machine rolls.
+function _luckMult(){return Math.pow(2,countStamp('two_face'));}
+function _luckOdds(p){var q=p*_luckMult();return q>1?1:q;}
+
 // ── Shared gold-spend helper ──
 // Returns true and deducts gold on success; toasts and returns false if insufficient.
 function spendGold(cost){
@@ -1104,7 +1149,7 @@ function spendGold(cost){
 
 // ── Fire a hook across all placed board stickers and stamps ──
 // Snapshots both arrays before iterating so hooks that modify S.placed/S.stamps
-// (e.g. Bourgeois destroying itself on onEndStage) don't corrupt the walk.
+// (e.g. Bourgeois destroying itself on onEndBoard) don't corrupt the walk.
 function _fireAllHooks(hookName,args){
   args=args||[];
   var _sp=S.placed.slice();

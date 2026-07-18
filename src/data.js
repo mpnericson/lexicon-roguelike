@@ -41,17 +41,22 @@ function applyBountyReward(ctx){
   else if(r.type==='gold'){ctx.tgold+=r.value;ctx.events.push({type:'gold',delta:r.value,label:'Bounty '+bountyRewardLabel()});}
 }
 
-var STAGES=[
-  [['','',40],['','',80],['Constraint','',130,true]],
-  [['','',200],['','',350],['Constraint','',550,true]],
+// 8 boards × 3 rounds. Hand-tuned targets.
+var BOARDS=[
+  [['','',50],['','',75],['Constraint','',125,true]],
+  [['','',200],['','',300],['Constraint','',450,true]],
   [['','',800],['','',1300],['Constraint','',2000,true]],
-  [['','',3000],['','',5500],['Constraint','',9000,true]],
+  [['','',3200],['','',5600],['Constraint','',9600,true]],
+  [['','',12000],['','',16000],['Constraint','',20000,true]],
+  [['','',30000],['','',40000],['Constraint','',60000,true]],
+  [['','',80000],['','',100000],['Constraint','',150000,true]],
+  [['','',200000],['','',300000],['Constraint','',500000,true]],
 ];
 var CONSTRAINTS=[
   {id:'c_long',name:'Long Words Only',desc:'Only words with 5+ letters score this round.'},
   {id:'c_pal',name:'Palindrome Lock',desc:'Scoring locked until a palindrome is played.'},
   {id:'c_longer',name:'Escalation',desc:'Each word must be longer than your previous word to score.'},
-  {id:'c_letters',name:'No Repeats',desc:'Each letter can only score once this stage.'},
+  {id:'c_letters',name:'No Repeats',desc:'Each letter can only score once this board.'},
   {id:'c_hand',name:'Short Hand',desc:'Hand size reduced to 6 tiles this round.'},
   {id:'c_draw3',name:'Slow Draw',desc:'Draw at most 3 tiles after each word or discard.'},
   {id:'c_nodisc',name:'No Discards',desc:'Discards are disabled this round.'},
@@ -67,7 +72,7 @@ function currentConstraint(){
 
 // Stamps The Thing cannot copy (utility / non-scoring mechanics).
 // Add copyable:false to a stamp definition to block it without editing this list.
-var _THING_BLOCKED={the_thing:true,easy_mode:true,jenga:true,midas_touch:true,insatiable:true,emergency_rations:true,safety_net:true,sheriffs_office:true};
+var _THING_BLOCKED={the_thing:true,easy_mode:true,jenga:true,midas:true,insatiable:true,emergency_rations:true,safety_net:true,sheriffs_office:true};
 
 // Sticker/stamp definitions are split across src/stickers/:
 //   board/squares.js   — dl, tl, dw, tw, echo, gilded, void, paint_bucket, super_glue
@@ -76,9 +81,9 @@ var _THING_BLOCKED={the_thing:true,easy_mode:true,jenga:true,midas_touch:true,in
 //   stamps/economy.js  — inkwell, pressure_cooker, the_miser, bounty_hunter, sheriffs_office,
 //                        bourgeois, insatiable, emergency_rations, the_target, pinata, safety_net
 //   stamps/scoring.js  — the_commons, scholar, aristocrat, the_marshall, the_hangman,
-//                        magic_number, the_purist, crossroads, palindrome_engine, drunk_text,
+//                        magic_number, crossroads, palindrome_engine, drunk_text,
 //                        the_player, chess_king, NATO tiles
-//   stamps/utility.js  — jenga, midas_touch, easy_mode, the_thing
+//   stamps/utility.js  — jenga, midas, easy_mode, the_thing
 var SQ=[];
 
 // ── Tile State Machine ────────────────────────────────────────────────────────

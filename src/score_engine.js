@@ -26,14 +26,14 @@
 //   boardStickers  B*B array of board-sticker ids (S.board equivalent)
 //   placed         board-sticker instances [{id, sqIdx, …}]
 //   stamps         stamp instances, bar order (left → right)
-//   cooldowns      Set of square indices already used this stage
+//   cooldowns      Set of square indices already used this board
 //   bounties       active bounty list (available to sticker/stamp hooks)
 //   preview        true → sticker/stamp hooks skip their commit side effects
 //   state          plain values that influence scoring:
 //     freeHandCount, constraint, usedLetters, stickersSold,
 //     pendingBountyReward, drunkValid, magicStreak, drunkStreak, palMult,
 //     playerMult, cartographerMult, bhMult, crossroadsCount, ouroborosBonus,
-//     discardsLeft, discPressure, bagColouredCount
+//     gamblerSpins, discardsLeft, discPressure, bagColouredCount
 // }
 //
 // Bracket order:
@@ -42,26 +42,40 @@
 //   PER TILE  for every tile of every word (cross words first):
 //             1. base letter score (constraint-aware)
 //             2. additive — board onTileAdd on this square, then additive
-//                aura hooks, then gold-tile +$1, then stamp onPerTile
-//                hooks left → right
+//                aura hooks, then stamp onPerTile hooks left → right
 //             3. multiplicative — board onTileMult on this square
 //                (DL/TL/DW/TW), then multiplicative aura hooks
-//             4. retrigger — def.retrigger squares, then red tile variant,
-//                then stamp onRetrigger hooks left → right (Khoomiich)
+//             4. retrigger — def.retrigger squares, then stamp onRetrigger
+//                hooks left → right (Khoomiich). Retrigger passes re-run
+//                brackets 1-3 (mult squares compound). Red tile rule: "if
+//                this tile triggers for any reason, it triggers again" —
+//                every pass, base or retrigger, is followed by one red
+//                re-pass ((1 + retrigger passes) × 2 total on a red tile)
 //   POST      1. bingo +50
-//             2. board onPostWordAdd, all placed instances
-//             3. board onPostWordMult, all placed instances
-//             4. stamp onPostWord, left → right — stamp bar order matters
-//             5. bounty reward
+//             2. gold-tile board sweep — every gold tile on the board pays
+//                $1 (boardSweep, see below)
+//             3. board onPostWordAdd, all placed instances
+//             4. board onPostWordMult, all placed instances
+//             5. stamp onPostWord, left → right — stamp bar order matters
+//             6. bounty reward
+//
+// On-board effects (boardSweep) — POST-bracket effects that fire once for
+// every tile of a certain type ON THE BOARD (committed and just-played
+// alike), left → right, top → down. Red tile variants retrigger the firing
+// for their tile. The engine's gold payout uses it directly; stamps (Yuan)
+// call boardSweep(ctx, match, fire) from onPostWord so the sweep runs in
+// stamp-bar order.
 //   FINAL     total = round(letters × (1 + Σ plusMults) × Π xmults),
 //             then ctx.finalTransforms apply in order (Palindrome Engine)
 //
 // ctx surface available to sticker/stamp hooks:
 //   letters, plusMults[], xmults[], tgold, events[], scoredTiles[],
+//   tiles (the full board, for boardSweep scans),
+//   curWordTiles (the tiles of the word currently scoring, per-tile bracket),
 //   newTileCount, crossWordCount, mainWord, state, stamps, placed,
 //   boardStickers, cooldowns, bounties, preview, stickerLocked,
 //   auras[], finalTransforms[] ({factor, label, tsId}), plus any fields
-//   hooks set on ctx themselves (purist, slotRoll, springTraps, …).
+//   hooks set on ctx themselves (slotTransforms, springTraps, …).
 //
 // Auras — board stickers whose effect targets OTHER squares (chess pieces,
 // row/column bonuses, …). Register in onBuildCtx:
@@ -251,11 +265,6 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
     var aau = ctx.auras[aai];
     if (aau.onTileAdd && _engAuraHits(aau, sqIdx)) ts = aau.onTileAdd(tile, ctx, ts, sqIdx);
   }
-  // 2. Additive — gold tile variant
-  if (tile.variant === 'gold') {
-    ctx.tgold++;
-    ctx.events.push({type:'gold',delta:1,sqIdx:sqIdx,label:'Gold tile +$1'});
-  }
   // 2. Additive — stamps, left → right
   if (!ctx.stickerLocked) {
     for (var hi = 0; hi < ctx.stamps.length; hi++) {
@@ -264,7 +273,9 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
     }
   }
 
-  // 3. Multiplicative — board sticker on this square (DL/TL/DW/TW)
+  // 3. Multiplicative — board sticker on this square (DL/TL/DW/TW). Runs on
+  // every pass, so retriggers compound mult squares — the balance lever is
+  // DW/TW rarity and cost, not the engine.
   if (sqActive && def && def.onTileMult && !ctx.stickerLocked && !ju) {
     ts = def.onTileMult(tile, ctx, ts, sqIdx);
     if (!ctx.preview) ctx.activatedSqs.add(sqIdx);
@@ -275,16 +286,23 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
     if (amu.onTileMult && _engAuraHits(amu, sqIdx)) ts = amu.onTileMult(tile, ctx, ts, sqIdx);
   }
 
-  // 4. Retrigger — continues from current ts, does NOT reset to 0
+  // 4. Retrigger — continues from current ts, does NOT reset to 0.
+  // Red tile rule: "if this tile triggers for any reason, it triggers again"
+  // — the base pass and every retrigger source's pass is each followed by a
+  // red re-pass, so a red tile runs (1 + retrigger passes) × 2 total.
   if (!skipRetrigger) {
+    var _isRed = tile.variant === 'red';
+    var _redouble = function () {
+      if (!_isRed) return;
+      ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:'Red'});
+      ts = _engTilePasses(tile, ctx, ts, true);
+    };
+    _redouble(); // red doubles the base pass
     if (sqActive && def && def.retrigger && !ctx.stickerLocked && !ju) {
       if (!ctx.preview) ctx.activatedSqs.add(sqIdx);
       ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:def.name,floatSqIdx:sqIdx});
       ts = _engTilePasses(tile, ctx, ts, true);
-    }
-    if (tile.variant === 'red') {
-      ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:'Red'});
-      ts = _engTilePasses(tile, ctx, ts, true);
+      _redouble();
     }
     // Stamp-driven retriggers (Khoomiich), left → right. onRetrigger returns
     // how many extra times this tile should re-score.
@@ -298,11 +316,44 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
           // re-score pass's base-letter event so it lands with the score bump.
           ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:_srd.name});
           ts = _engTilePasses(tile, ctx, ts, true, ctx.stamps[_sri].id);
+          _redouble();
         }
       }
     }
   }
   return ts;
+}
+
+// ---- On-board sweep (POST bracket) ----
+// Shared driver for "on-board" effects: fire(tile, sqIdx) runs once for every
+// tile on the board that match(tile) accepts — committed and just-played
+// alike — left → right, top → down (index order). ctx.boardRetriggers
+// (registered in onBuildCtx by The Eagle, +1 per copy) adds that many extra
+// triggerings per tile. Every triggering routes through _sweepTrigger, where
+// the red-tile rule lives: "if this tile triggers for any reason, it triggers
+// again" — so red doubles the base firing AND each Eagle repeat
+// ((1 + eagles) × 2 firings for a red tile). fire() pushes its own events,
+// one per firing, so each tile bounces individually in the score animation.
+// Used by the engine's gold-tile payout and by stamps (Yuan) inside
+// onPostWord, which keeps stamp-bar order.
+function _sweepTrigger(ctx, t, i, fire) {
+  fire(t, i);
+  if (t.variant === 'red') {
+    ctx.events.push({type:'retrigger',sqIdx:i,label:'Red'});
+    fire(t, i);
+  }
+}
+function boardSweep(ctx, match, fire) {
+  var extra = ctx.boardRetriggers || 0;
+  for (var i = 0; i < ctx.tiles.length; i++) {
+    var t = ctx.tiles[i];
+    if (!t || !match(t)) continue;
+    _sweepTrigger(ctx, t, i, fire);
+    for (var r = 0; r < extra; r++) {
+      ctx.events.push({type:'retrigger',sqIdx:i,label:'The Eagle',floatStampId:'the_eagle'});
+      _sweepTrigger(ctx, t, i, fire);
+    }
+  }
 }
 
 // Runs all passes for one tile, then adds the completed tile score to
@@ -336,7 +387,8 @@ function _engScoreTile(tile, ctx) {
 
 // ---- Main entry point ----
 // Returns {total, tgold, events, mainWord, bingo, letters, plusMults,
-// xmults, mult, allWords, crossWordCount, springTraps, activatedSqs}
+// xmults, mult, allWords, crossWordCount, springTraps, slotTransforms,
+// activatedSqs}
 // or null if no legal word can be derived from the new tiles.
 
 function runScoreEngine(input) {
@@ -380,7 +432,7 @@ function runScoreEngine(input) {
   var state = input.state || {};
   var ctx = {
     letters: 0, plusMults: [], xmults: [], tgold: 0, events: [],
-    activatedSqs: new Set(), scoredTiles: [],
+    activatedSqs: new Set(), scoredTiles: [], tiles: tiles,
     mainWord: main.word, newTileCount: nt.length, crossWordCount: crossWords.length,
     state: state,
     stamps: input.stamps || [], placed: input.placed || [],
@@ -438,6 +490,7 @@ function runScoreEngine(input) {
   // per-tile pass for those words. The reversed word is display-only.
   var mirrorSet = input.mirrorWords || null;
   function _engScoreWord(wt, word, buriedAxis) {
+    ctx.curWordTiles = wt; // the word now scoring — per-tile hooks can target it (Slot Machine jackpot)
     var reps = (mirrorSet && mirrorSet.has(_engWordKey(wt))) ? 2 : 1;
     for (var rp = 0; rp < reps; rp++) {
       if (rp > 0) ctx.events.push({ type: 'retrigger',
@@ -469,18 +522,24 @@ function runScoreEngine(input) {
     ctx.letters += 50;
     ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Bingo +50',bingo:true});
   }
+  // 2. Gold tiles — every gold tile on the board pays $1 (game mechanic,
+  // like bingo: not gated by stickerLocked). Red gold tiles pay twice.
+  boardSweep(ctx, function(t){ return t.variant === 'gold'; }, function(t, gi){
+    ctx.tgold++;
+    ctx.events.push({type:'gold',delta:1,sqIdx:gi,label:'Gold tile +$1'});
+  });
   if (!ctx.stickerLocked) {
-    // 2. Board stickers — additive effects
+    // 3. Board stickers — additive effects
     for (var pai = 0; pai < ctx.placed.length; pai++) {
       var pad = sqd(ctx.placed[pai].id);
       if (pad && pad.onPostWordAdd) pad.onPostWordAdd(main.word, main.tiles, ctx, ctx.placed[pai]);
     }
-    // 3. Board stickers — multiplicative effects
+    // 4. Board stickers — multiplicative effects
     for (var pmi = 0; pmi < ctx.placed.length; pmi++) {
       var pmd = sqd(ctx.placed[pmi].id);
       if (pmd && pmd.onPostWordMult) pmd.onPostWordMult(main.word, main.tiles, ctx, ctx.placed[pmi]);
     }
-    // 4. Stamps — left → right, each fires all its effects in turn
+    // 5. Stamps — left → right, each fires all its effects in turn
     for (var hwi = 0; hwi < ctx.stamps.length; hwi++) {
       var hwd = sqd(ctx.stamps[hwi].id);
       if (hwd && hwd.onPostWord) {
@@ -494,7 +553,7 @@ function runScoreEngine(input) {
       }
     }
   }
-  // 5. Bounty reward — applied last so it multiplies everything. Count is the
+  // 6. Bounty reward — applied last so it multiplies everything. Count is the
   // number of bounty scrolls completed this play (each applies its own reward).
   if (state.pendingBountyReward && !ctx.preview) {
     var _bqty = (typeof state.pendingBountyReward === 'number') ? state.pendingBountyReward : 1;
@@ -524,6 +583,7 @@ function runScoreEngine(input) {
     letters: ctx.letters, plusMults: ctx.plusMults, xmults: ctx.xmults, mult: mult,
     allWords: allWords, crossWordCount: crossWords.length,
     springTraps: ctx.springTraps || [],
+    slotTransforms: ctx.slotTransforms || [],
     activatedSqs: ctx.activatedSqs
   };
 }

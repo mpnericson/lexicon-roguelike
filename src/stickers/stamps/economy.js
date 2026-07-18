@@ -7,9 +7,10 @@ SQ.push({id:'inkwell',name:'Inkwell',desc:'+$1 every word played.',
 
 // ── GOLD RUSH ─────────────────────────────────────────────────────────────────
 // type: stamp · rarity: uncommon · cost: $5
-// onPerTile: every gold tile scored earns an extra +$2 and +2 mult. Fires once
-// per instance per gold tile, on top of the gold variant's own +$1 (engine).
-SQ.push({id:'gold_rush',name:'Gold Rush',desc:'Each gold tile scored grants an additional +$2 and +2 mult.',
+// onPerTile: every gold tile scored in a word earns +$2 and +2 mult. Fires
+// once per instance per gold tile. (Gold tiles' own $1 pays for every gold
+// tile on the board in the POST board sweep, not per-tile.)
+SQ.push({id:'gold_rush',name:'Gold Rush',desc:'Gold tiles gain +$2 when scored, and +2 mult.',
   rarity:'uncommon',cost:5,bg:'#2a1f00',fg:'#f0d040',icon:'GR',type:'stamp',
   onPerTile:function(tile,ctx,ts){
     if(tile.variant==='gold'){
@@ -52,20 +53,20 @@ SQ.push({id:'bounty_hunter',name:'Bounty Hunter',
 // ── SHERIFF'S OFFICE ──────────────────────────────────────────────────────────
 // type: stamp · rarity: uncommon · cost: $5
 // No scoring hook. Effect is purely in play.js: fires _awardFreeBounty() whenever
-// the player hits a score milestone within a stage.
+// the player hits a score milestone within a board.
 SQ.push({id:'sheriffs_office',name:"Sheriff's Office",
   desc:'Gain 1 free random bounty whenever you meet a score target.',
   rarity:'uncommon',cost:5,bg:'#2a1a00',fg:'#f0b060',icon:'SO',type:'stamp'});
 
 // ── THE BOURGEOIS ─────────────────────────────────────────────────────────────
 // type: stamp · rarity: uncommon · cost: $5
-// onEndStage: pays $1 per placed sticker, then self-destructs if 20+ Proletariats
+// onEndBoard: pays $1 per placed sticker, then self-destructs if 20+ Proletariats
 // are on the board (the revolution).
 SQ.push({id:'bourgeois',name:'The Bourgeois',
-  desc:'End of stage: earn $1 per sticker. Destroyed if there are 20+ Proletariats.',
+  desc:'End of board: earn $1 per sticker. Destroyed if there are 20+ Proletariats.',
   rarity:'uncommon',cost:5,qty:1,bg:'#2a2000',fg:'#f0d060',icon:'BG',type:'stamp',
-  liveDesc:function(p){var count=0;for(var _bi2=0;_bi2<B*B;_bi2++){if(S.board[_bi2])count++;}return 'End of stage: earn <span style="color:#f0e040">$'+count+'</span> ('+count+' sticker'+(count!==1?'s':'')+').';},
-  onEndStage:function(placed){
+  liveDesc:function(p){var count=0;for(var _bi2=0;_bi2<B*B;_bi2++){if(S.board[_bi2])count++;}return 'End of board: earn <span style="color:#f0e040">$'+count+'</span> ('+count+' sticker'+(count!==1?'s':'')+').';},
+  onEndBoard:function(placed){
     var count=0;
     for(var _bi2=0;_bi2<B*B;_bi2++){if(S.board[_bi2])count++;}
     if(count>0){S.gold+=count;renderHUD();}
@@ -155,5 +156,5 @@ SQ.push({id:'pinata',name:'Piñata',
 // No scoring hook. Checked in game.js showGO: if the player scored ≥25% of the
 // target, advances to the shop instead of game over. Removed on use.
 SQ.push({id:'safety_net',name:'Safety Net',
-  desc:'If you fail a stage but scored at least 25% of the target, advance to the shop anyway. Destroyed on use.',
+  desc:'If you fail a round but scored at least 25% of the target, advance to the shop anyway. Destroyed on use.',
   rarity:'uncommon',cost:5,qty:1,bg:'#001a2a',fg:'#60c8ff',icon:'SN',type:'stamp'});

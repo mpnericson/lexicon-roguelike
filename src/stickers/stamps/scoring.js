@@ -90,15 +90,33 @@ SQ.push({id:'magic_number',name:'Magic Number',
     else{S.magicStreak=0;}
   }});
 
-// ── THE PURIST ────────────────────────────────────────────────────────────────
+// ── YUAN ──────────────────────────────────────────────────────────────────────
+// type: stamp · rarity: rare · cost: $8
+// onPostWord: board sweep (boardSweep, score_engine.js) — ×1.5 mult for every
+// Y on the board, committed or just played, blanks-as-Y included. Red Y tiles
+// fire twice. One x-mult event per Y (sqIdx) so each Y binks in reading
+// order; the stamp loop's auto-tag adds floatStampId so the bar face bounces
+// too, in stamp-bar order.
+SQ.push({id:'yuan',name:'Yuan',desc:'×1.5 mult for every Y on the board.',
+  rarity:'rare',cost:8,bg:'#2a0a0a',fg:'#f0c040',icon:'¥',type:'stamp',
+  onPostWord:function(w,wt,ctx){
+    boardSweep(ctx,function(t){return t.letter==='Y';},function(t,i){
+      ctx.xmults.push(1.5);
+      ctx.events.push({type:'x-mult',factor:1.5,sqIdx:i,label:'Yuan ×1.5'});
+    });
+  }});
+
+// ── THE EAGLE ─────────────────────────────────────────────────────────────────
 // type: stamp · rarity: uncommon · cost: $5
-// onBuildCtx: sets ctx.purist = true. The DL/TL/DW/TW onTileMult hooks
-// (stickers/board/squares.js) read this flag and double their multipliers
-// (DL→×4, TL→×9, DW→×4, TW→×9).
-SQ.push({id:'the_purist',name:'The Purist',
-  desc:'DL, TL, DW, and TW squares each trigger their bonus twice (DL→×4, TL→×9, DW→×4, TW→×9).',
-  rarity:'uncommon',cost:5,bg:'#1a1a3a',fg:'#a0a0ff',icon:'PU',type:'stamp',
-  onBuildCtx:function(ctx){ctx.purist=true;}});
+// onBuildCtx: bumps ctx.boardRetriggers, which boardSweep (score_engine.js)
+// reads — every on-board effect triggering (gold tile payout, Yuan, …)
+// repeats once more per Eagle. Touches ONLY boardSweep-driven effects:
+// retrigger:true squares and board stickers are unaffected. Eagles stack
+// linearly with each other, but red tiles double EVERY triggering including
+// Eagle repeats ((1 + eagles) × 2 firings on a red tile).
+SQ.push({id:'the_eagle',name:'The Eagle',desc:'Retriggers all on-board effects (gold tile payouts, Yuan, …).',
+  rarity:'uncommon',cost:5,bg:'#0a1420',fg:'#d0e0f0',icon:'EA',type:'stamp',
+  onBuildCtx:function(ctx){ctx.boardRetriggers=(ctx.boardRetriggers||0)+1;}});
 
 // ── CROSSROADS ────────────────────────────────────────────────────────────────
 // type: stamp · rarity: uncommon · cost: $5
@@ -114,6 +132,21 @@ SQ.push({id:'crossroads',name:'Crossroads',desc:'Every crossword you form perman
   onPostWord:function(w,wt,ctx){
     var n=(ctx.state.crossroadsCount||0)+(ctx.crossWordCount||0);
     if(n>0){ctx.plusMults.push(n*2);ctx.events.push({type:'plus-mult',delta:n*2,label:'Crossroads +'+(n*2)+' mult'});}
+  }});
+
+// ── SKILLED GAMBLER ───────────────────────────────────────────────────────────
+// type: stamp · rarity: uncommon · cost: $5
+// Every slot machine spin made while this stamp is owned permanently adds +1
+// mult. The counter (S.gamblerSpins) is bumped in _chargeSlotSpin (shop.js) —
+// the shared gate both machines spin through — so every paid spin counts,
+// stamp reels and symbol reels alike.
+SQ.push({id:'skilled_gambler',name:'Skilled Gambler',
+  desc:'Every slot machine spin permanently adds +1 mult to this stamp.',
+  rarity:'uncommon',cost:5,bg:'#1a0014',fg:'#f060c0',icon:'SG',type:'stamp',
+  liveDesc:function(p){var n=S.gamblerSpins||0;return 'Each slot machine spin adds +1 permanent mult. Currently: <span style="color:#f0e040">+'+n+' mult</span> ('+n+' spin'+(n!==1?'s':'')+').';},
+  onPostWord:function(w,wt,ctx){
+    var n=ctx.state.gamblerSpins||0;
+    if(n>0){ctx.plusMults.push(n);ctx.events.push({type:'plus-mult',delta:n,label:'Skilled Gambler +'+n+' mult',floatStampId:'skilled_gambler'});}
   }});
 
 // ── OUROBOROS ─────────────────────────────────────────────────────────────────
@@ -268,7 +301,7 @@ SQ.push({id:'cartographer',name:'Cartographer',
 // every new tile that falls in a chess piece's aura (stacks per piece).
 SQ.push({id:'chess_king',name:'The King',
   desc:'Every square in any chess piece aura becomes a Triple Word square.',
-  rarity:'rare',cost:8,qty:1,bg:'#1a1500',fg:'#ffd700',icon:'♚',type:'stamp',
+  rarity:'legendary',cost:8,qty:1,bg:'#1a1500',fg:'#ffd700',icon:'♚',type:'stamp',
   onBuildCtx:function(ctx){ctx.chessKingActive=true;}});
 
 // ── KHOOMIICH ─────────────────────────────────────────────────────────────────
@@ -287,13 +320,13 @@ SQ.push({id:'khoomiich',name:'Khoomiich',
 
 // ── NATO PHONETIC ALPHABET ────────────────────────────────────────────────────
 // 12 stamps, one per letter. Each fires its onPerTile hook independently
-// for every matching letter scored. Stacks: 2× Alpha = +6 pts and +2 mult per A.
+// for every matching letter scored. Stacks: 2× Alpha = +8 pts and +2 mult per A.
 // The IIFE captures d (letter data), ls (bonus pts), lm (bonus mult) per stamp.
 (function(){
   var _defs=[
     {l:'A',n:'Alpha',v:1},{l:'R',n:'Romeo',v:1},
     {l:'T',n:'Tango',v:1},{l:'U',n:'Uniform',v:1},
-    {l:'G',n:'Golf',v:2},
+    {l:'G',n:'Golf',v:3},
     {l:'H',n:'Hotel',v:4},{l:'V',n:'Victor',v:4},
     {l:'W',n:'Whiskey',v:4},{l:'Y',n:'Yankee',v:4},
     {l:'K',n:'Kilo',v:5},
@@ -307,7 +340,7 @@ SQ.push({id:'khoomiich',name:'Khoomiich',
   }
   for(var _i=0;_i<_defs.length;_i++){
     (function(d){
-      var c=_col(d.v),ls=d.v*3,lm=d.v;
+      var c=_col(d.v),ls=4,lm=d.v;
       var id=d.n.toLowerCase();
 
       // ── NATO: [name] ──────────────────────────────────────────────────────

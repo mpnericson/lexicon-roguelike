@@ -19,16 +19,16 @@ SQ.push({id:'spring_trap',name:'Spring Trap',
 
 // ── WHACK-A-MOLE ─────────────────────────────────────────────────────────────
 // type: board · rarity: uncommon · cost: $5
-// Per-tile additive bracket (onTileAdd): applies ×3 word mult and +$5 gold
+// Per-tile additive bracket (onTileAdd): applies +5 mult and +$5 gold
 // when a tile lands here. After scoring, play.js teleports this sticker to a
 // random empty square within Manhattan distance 5. One-time-fire per play
 // (perishable square).
 SQ.push({id:'whack_a_mole',name:'Whack-a-Mole',
-  desc:'×3 mult, +$5. Moves to a random empty square within 5 of here after scoring.',
-  rarity:'uncommon',cost:5,qty:3,bg:'#1a1000',fg:'#c08040',icon:'WM',type:'board',perishable:true,
+  desc:'+5 mult, +$5. Moves to a random empty square within 5 of here after scoring.',
+  rarity:'uncommon',cost:5,qty:1,bg:'#1a1000',fg:'#c08040',icon:'WM',type:'board',perishable:true,
   onTileAdd:function(tile,ctx,ts,baseSc,sqIdx){
-    ctx.xmults.push(3);
-    ctx.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'Whack-a-Mole ×3',floatSqIdx:sqIdx});
+    ctx.plusMults.push(5);
+    ctx.events.push({type:'plus-mult',delta:5,sqIdx:sqIdx,label:'Whack-a-Mole +5 mult',floatSqIdx:sqIdx});
     ctx.tgold+=5;
     ctx.events.push({type:'gold',delta:5,sqIdx:sqIdx,label:'Whack-a-Mole +$5',floatSqIdx:sqIdx});
     return ts;
@@ -55,36 +55,41 @@ SQ.push({id:'virus',name:'Virus',
 
 // ── SLOT MACHINE ─────────────────────────────────────────────────────────────
 // type: board · rarity: rare · cost: $8
-// Per-tile additive bracket (onTileAdd): rolls all random effects once per
-// play when a tile lands on this square and stores the result in ctx.slotRoll.
-// Post-word mult bracket (onPostWordMult): reads ctx.slotRoll and applies the
-// mult/gold payouts. Uses ctx._stickerActed to ensure activatedSqs is marked
-// even when no events are pushed during the setup phase.
+// Per-tile additive bracket (onTileAdd): one roll per square per play
+// (ctx._slotFired — a cross-word/main-word double pass or retrigger re-pass
+// never re-rolls). Five independent effects, any combination can hit at once;
+// each hit pushes its OWN event carrying sqIdx so the tile bounces once per
+// hit in the score animation. Only the first event carries floatSqIdx (the
+// sticker peel) — same-float events would merge into a single bounce. Odds
+// scale with Two Face (_luckOdds; falls back to raw odds under the pure-engine
+// test harness, where game.js isn't loaded). The 1% jackpot records every
+// tile of the word through this square in ctx.slotTransforms (each gets an
+// independent random colour); play.js applies the transforms after scoring.
+// Never rolls in preview, so the solver can't see random payouts.
 SQ.push({id:'slot_machine',name:'Slot Machine',
-  desc:'Word through here: 50% ×2 mult, 5% ×10 mult, 30% +$3, 5% +$10, 1% all tiles go gold/red/blue — all independent.',
-  rarity:'rare',cost:8,qty:8,bg:'#2a0a30',fg:'#d060ff',icon:'$?',perishable:true,
+  desc:'Word through here: 30% +20 mult, 15% +$3, 2% ×4 mult, 2% +$10, 1% every tile in the word turns a random colour — all independent.',
+  rarity:'rare',cost:8,qty:8,bg:'#2a0a30',fg:'#d060ff',icon:'$?',type:'board',perishable:true,
   onTileAdd:function(tile,ctx,ts,baseSc,sqIdx){
-    if(ctx.slotUsed)return ts;
-    ctx.slotUsed=true;
+    if(ctx.preview)return ts;
+    if(!ctx._slotFired)ctx._slotFired={};
+    if(ctx._slotFired[sqIdx])return ts;
+    ctx._slotFired[sqIdx]=true;
     ctx._stickerActed=true;
-    if(!ctx.preview&&!ctx.slotRoll){
-      var roll={wm_mult:1,gold:0,variant:null,parts:[]};
-      if(Math.random()<0.50){roll.wm_mult*=2;roll.parts.push('×2 mult');}
-      if(Math.random()<0.05){roll.wm_mult*=10;roll.parts.push('×10 mult');}
-      if(Math.random()<0.30){roll.gold+=3;roll.parts.push('+$3');}
-      if(Math.random()<0.05){roll.gold+=10;roll.parts.push('+$10');}
-      if(Math.random()<0.01){var v=Math.random();roll.variant=v<1/3?'red':v<2/3?'blue':'gold';roll.parts.push('All '+roll.variant+'!');}
-      ctx.slotRoll=roll;
-      if(roll.parts.length)(function(p){setTimeout(function(){toast('🎰 Slot: '+p);},400);})(roll.parts.join(' | '));
+    var lo=typeof _luckOdds==='function'?_luckOdds:function(p){return p;};
+    var first=true;
+    var ev=function(e){if(first){e.floatSqIdx=sqIdx;first=false;}ctx.events.push(e);};
+    if(Math.random()<lo(0.30)){ctx.plusMults.push(20);ev({type:'plus-mult',delta:20,sqIdx:sqIdx,label:'Slot +20 mult'});}
+    if(Math.random()<lo(0.15)){ctx.tgold+=3;ev({type:'gold',delta:3,sqIdx:sqIdx,label:'Slot +$3'});}
+    if(Math.random()<lo(0.02)){ctx.xmults.push(4);ev({type:'x-mult',factor:4,sqIdx:sqIdx,label:'Slot ×4'});}
+    if(Math.random()<lo(0.02)){ctx.tgold+=10;ev({type:'gold',delta:10,sqIdx:sqIdx,label:'Slot +$10'});}
+    if(Math.random()<lo(0.01)){
+      if(!ctx.slotTransforms)ctx.slotTransforms=[];
+      var wt=ctx.curWordTiles||[tile];
+      for(var i=0;i<wt.length;i++){
+        var v=Math.random();
+        ctx.slotTransforms.push({idx:wt[i].idx,variant:v<1/3?'red':v<2/3?'blue':'gold'});
+      }
+      ev({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Slot: Jackpot!'});
     }
     return ts;
-  },
-  onPostWordMult:function(w,wt,ctx,inst){
-    if(ctx._slotApplied||!ctx.slotRoll)return;
-    ctx._slotApplied=true;
-    var smr=ctx.slotRoll;
-    var _slotSq=inst?inst.sqIdx:null;
-    if(smr.wm_mult>1){ctx.xmults.push(smr.wm_mult);ctx.events.push({type:'x-mult',factor:smr.wm_mult,label:'Slot ×'+smr.wm_mult,floatSqIdx:_slotSq});}
-    if(smr.gold>0){ctx.tgold+=smr.gold;ctx.events.push({type:'gold',delta:smr.gold,label:'Slot +$'+smr.gold,floatSqIdx:_slotSq});}
-    if(smr.variant){if(!ctx.preview){for(var _si=0;_si<wt.length;_si++){var _sIdx=wt[_si].idx;var _sGt=(S.btTop&&S.btTop[_sIdx]&&S.btTop[_sIdx].isNew)?S.btTop[_sIdx]:S.bt[_sIdx];if(_sGt&&_sGt.id)transformTile(_sGt.id,{variant:smr.variant});}}ctx.events.push({type:'letter',lettersAfter:ctx.letters,isTileLocal:true,label:'Slot: All '+smr.variant+'!'});}
   }});

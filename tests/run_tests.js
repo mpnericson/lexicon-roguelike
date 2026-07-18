@@ -75,15 +75,13 @@ function eq(name, got, want) {
   eq('DW total', res.total, 10);
 }
 
-// ── 3. Double Letter, alone and doubled by The Purist ────────────────────────
+// ── 3. Double Letter ──────────────────────────────────────────────────────────
 {
   const tiles = emptyBoard();
   place(tiles, 7, 7, 'h', 'CAT');
   const board = emptyBoard();
   board[7 * B + 8] = 'dl'; // under the A
   eq('DL total', score({ tiles, boardStickers: board }).total, 6); // 3 + 1×2 + 1
-  eq('DL + Purist total',
-    score({ tiles, boardStickers: board, stamps: [{ id: 'the_purist' }] }).total, 8); // 3 + 1×4 + 1
 }
 
 // ── 4. Bingo: whole hand used adds +50 letters ────────────────────────────────
@@ -431,6 +429,17 @@ function moveKeys(moves) {
   eq('sesq 6-letter word', score({ tiles: long, stamps: sesq }).total, 80);
 }
 
+// ── Skilled Gambler: +1 mult per slot machine spin banked in gamblerSpins ────
+{
+  const tiles = emptyBoard();
+  place(tiles, 7, 7, 'h', 'CAT'); // 5 letters × 1
+  const gambler = [{ id: 'skilled_gambler' }];
+  eq('gambler no spins no-op', score({ tiles, stamps: gambler, state: { gamblerSpins: 0 } }).total, 5);
+  eq('gambler 4 spins', score({ tiles, stamps: gambler, state: { gamblerSpins: 4 } }).total, 25); // 5×(1+4)
+  const two = [{ id: 'skilled_gambler' }, { id: 'skilled_gambler' }];
+  eq('two gamblers stack', score({ tiles, stamps: two, state: { gamblerSpins: 4 } }).total, 45); // 5×(1+4+4)
+}
+
 // ── Cartographer: applies accumulated corner mult, ×1 is a no-op ─────────────
 {
   const tiles = emptyBoard();
@@ -450,6 +459,87 @@ function moveKeys(moves) {
   // letters: C3 + (A1+10) + T1 = 15; mult (1+2)=3 → 45
   eq('virus total', res.total, 45);
   eq('virus costs $1', res.tgold, -1);
+}
+
+// ── Gold tiles: board sweep pays $1 per gold tile in POST ────────────────────
+{
+  const tiles = emptyBoard();
+  place(tiles, 7, 7, 'h', 'CAT');
+  tiles[7 * B + 8].variant = 'gold';                        // played gold A
+  tiles[3 * B + 3] = { letter: 'E', isNew: false, variant: 'gold' }; // committed gold elsewhere
+  eq('gold sweep pays committed + played', score({ tiles }).tgold, 2);
+  tiles[3 * B + 3].variant = 'red';                         // red alone: no gold
+  eq('gold sweep ignores non-gold', score({ tiles }).tgold, 1);
+}
+
+// ── Yuan: ×1.5 per Y on the board, committed and played ──────────────────────
+{
+  const yuan = [{ id: 'yuan' }];
+  const tiles = emptyBoard();
+  place(tiles, 7, 7, 'h', 'CAT'); // 5 letters
+  eq('yuan no Y no-op', score({ tiles, stamps: yuan }).total, 5);
+  tiles[3 * B + 3] = { letter: 'Y', isNew: false };
+  eq('yuan one committed Y', score({ tiles, stamps: yuan }).total, 8);  // 5×1.5=7.5→8
+  tiles[4 * B + 4] = { letter: 'Y', isNew: false };
+  eq('yuan two Ys', score({ tiles, stamps: yuan }).total, 11);          // 5×2.25=11.25→11
+}
+
+// ── Yuan: blanks played as Y count; red Y fires twice ────────────────────────
+{
+  const yuan = [{ id: 'yuan' }];
+  const tiles = emptyBoard();
+  place(tiles, 7, 7, 'h', 'CAT');
+  tiles[3 * B + 3] = { letter: 'Y', isNew: false, isBlank: true, sc: 0 };
+  eq('yuan blank-as-Y counts', score({ tiles, stamps: yuan }).total, 8); // 5×1.5=7.5→8
+  tiles[3 * B + 3] = { letter: 'Y', isNew: false, variant: 'red' };
+  eq('yuan red Y fires twice', score({ tiles, stamps: yuan }).total, 11); // 5×1.5²=11.25→11
+}
+
+// ── The Eagle: retriggers on-board effects only ──────────────────────────────
+{
+  const tiles = emptyBoard();
+  place(tiles, 7, 7, 'h', 'CAT');
+  tiles[3 * B + 3] = { letter: 'E', isNew: false, variant: 'gold' };
+  eq('eagle doubles gold sweep', score({ tiles, stamps: [{ id: 'the_eagle' }] }).tgold, 2);
+  eq('two eagles triple gold sweep',
+    score({ tiles, stamps: [{ id: 'the_eagle' }, { id: 'the_eagle' }] }).tgold, 3);
+
+  const ytiles = emptyBoard();
+  place(ytiles, 7, 7, 'h', 'CAT'); // 5 letters
+  ytiles[3 * B + 3] = { letter: 'Y', isNew: false };
+  const ye = [{ id: 'yuan' }, { id: 'the_eagle' }];
+  eq('eagle doubles yuan', score({ tiles: ytiles, stamps: ye }).total, 11); // 5×1.5²=11.25→11
+  ytiles[3 * B + 3].variant = 'red'; // red doubles every triggering: (1+1 eagle)×2 = 4 firings
+  eq('eagle + red Y = 4 firings', score({ tiles: ytiles, stamps: ye }).total, 25); // 5×1.5⁴=25.3→25
+
+  // Eagle must NOT touch sticker retriggers: echo square still fires exactly twice
+  const etiles = emptyBoard();
+  place(etiles, 7, 7, 'h', 'CAT');
+  const eboard = emptyBoard();
+  eboard[7 * B + 7] = 'echo'; // C scores twice: (3+3)+1+1 = 8
+  eq('eagle ignores echo squares',
+    score({ tiles: etiles, boardStickers: eboard, stamps: [{ id: 'the_eagle' }] }).total, 8);
+}
+
+// ── Per-tile retriggers: passes re-run the mult bracket; red doubles all ─────
+{
+  // Red tile on a DW square: the red re-pass re-runs DW too — two ×2 pushes.
+  // Letters C(3)+red(3)+A(1)+T(1) = 8, ×2×2 = 32.
+  const tiles = emptyBoard();
+  place(tiles, 7, 7, 'h', 'CAT');
+  tiles[7 * B + 7].variant = 'red';
+  const board = emptyBoard();
+  board[7 * B + 7] = 'dw';
+  eq('red on DW fires DW twice', score({ tiles, boardStickers: board }).total, 32);
+
+  // Red tile on a DL square compounds: ((3×2)+3)×2 = 18, +1+1 = 20.
+  board[7 * B + 7] = 'dl';
+  eq('red on DL compounds', score({ tiles, boardStickers: board }).total, 20);
+
+  // Red tile on an echo square: red doubles the base pass AND the echo pass —
+  // 4 passes of C. 3×4 + 1 + 1 = 14.
+  board[7 * B + 7] = 'echo';
+  eq('red doubles echo pass', score({ tiles, boardStickers: board }).total, 14);
 }
 
 console.log(failed ? '\n' + failed + ' test(s) FAILED' : '\nAll tests passed');

@@ -969,7 +969,9 @@ function _chargeSlotSpin(){
   if(!spendGold(cost))return false;
   shopPool.slotSpinsThisVisit=(shopPool.slotSpinsThisVisit||0)+1;
   shopPool.slotSpinCost=5+shopPool.slotSpinsThisVisit*3;
+  if(hasStamp('skilled_gambler'))S.gamblerSpins=(S.gamblerSpins||0)+1;
   renderHUD();renderShop();
+  if(hasStamp('skilled_gambler'))stampScaleBounce('skilled_gambler');
   return true;
 }
 

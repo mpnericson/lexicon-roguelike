@@ -106,7 +106,7 @@ async function playWord(){
     S.score+=res.total;S.gold+=res.tgold;
     // Record every formed word (main + crosswords) with this play's score.
     for(var _wbi=0;_wbi<_words.length;_wbi++)wordbookRecord(_words[_wbi].word,res.total);
-    var _hasMT=hasStamp('midas_touch');
+    var _hasMT=hasStamp('midas');
     // Gild the tile actually played on each square. Runs before the Jenga
     // commit below, so a fresh stacked tile is still in S.btTop (the visible
     // played tile); S.bt holds the buried committed tile — gild the top.
@@ -132,6 +132,16 @@ async function playWord(){
       if(Object.keys(_peSeen).length){stampScaleBounce('palindrome_engine');toast('Palindrome Engine: ×'+fmtMult(S.palMult)+'!');}
     }
   }else{toast(scoreLockMsg);}
+  // Slot machine jackpot: every tile of the word through the machine takes
+  // its rolled colour variant (res.slotTransforms, one entry per tile)
+  if(res&&res.slotTransforms&&res.slotTransforms.length){
+    for(var _sli=0;_sli<res.slotTransforms.length;_sli++){
+      var _sl=res.slotTransforms[_sli];
+      var _slT=(S.btTop&&S.btTop[_sl.idx]&&S.btTop[_sl.idx].isNew)?S.btTop[_sl.idx]:S.bt[_sl.idx];
+      if(_slT&&_slT.id)transformTile(_slT.id,{variant:_sl.variant});
+    }
+    toast('🎰 Jackpot! Every tile in the word changed colour!');
+  }
   // Spring trap: eject tile(s) into bag before commit
   if(res&&res.springTraps&&res.springTraps.length){
     for(var _sti=0;_sti<res.springTraps.length;_sti++){

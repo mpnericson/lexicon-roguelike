@@ -95,19 +95,18 @@ document.addEventListener('click',function(e){
   var dd=document.getElementById('menu-dropdown');
   if(dd&&m&&!m.contains(e.target))dd.style.display='none';
 });
-// Auto-detect sticker/stamp sprite PNGs. For each def without an iconPng, try
-// loading Assets/stickers/{id}/{id}.png — if the file exists it loads and the
-// property is set; if not, the image silently fails and the text icon is kept.
-// To add a sprite: drop a 32×32 PNG at Assets/stickers/{sticker_id}/{sticker_id}.png.
-// Adding a new sticker or stamp to the code? Create a matching folder — no other changes needed.
+// Auto-detect sticker/stamp sprite PNGs. Board stickers live in Assets/stickers/{id}/{id}.png;
+// stamps live in Assets/stamps/{id}/{id}.png. If the file exists it loads and iconPng is set;
+// otherwise the image silently fails and the text icon is kept.
 (function(){
   if(!window.SQ)return;
   for(var _i=0;_i<SQ.length;_i++){
     if(SQ[_i].iconPng)continue;
     (function(def){
+      var dir=def.type==='stamp'?'Assets/stamps/':'Assets/stickers/';
       var img=new Image();
-      img.onload=function(){def.iconPng='Assets/stickers/'+def.id+'/'+def.id+'.png';};
-      img.src='Assets/stickers/'+def.id+'/'+def.id+'.png';
+      img.onload=function(){def.iconPng=dir+def.id+'/'+def.id+'.png';};
+      img.src=dir+def.id+'/'+def.id+'.png';
     })(SQ[_i]);
   }
 })();

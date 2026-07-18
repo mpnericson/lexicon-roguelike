@@ -630,7 +630,7 @@ function _tutBuildScript(){
        TUT._blueId=ys.length?ys[0].id:null;
        renderShop();
      },
-     text:'The last round of the stage is next, and it has a constraint. Set up for it here.'},
+     text:'The last round of the board is next, and it has a constraint. Set up for it here.'},
 
     {title:'Spin Again',passthrough:true,
      onEnter:function(){TUT.forceSlot=['yankee','hotel','kilo'];},
@@ -728,7 +728,7 @@ function _tutBuildScript(){
      holes:function(){return _tutWordHoles(_TUT_PYLON);},
      text:'Spell <b>PYLON</b> from PLANET\'s P, placing tiles any way you like — the Y lands on your Triple Letter, and the Yankee stamp triggers. Press <b>Play</b>.'},
 
-    {title:'Stage Cleared',
+    {title:'Board Cleared',
      holes:function(){return[_tutRect('#round-modal .modal',8)];},
      buttons:[
        {label:'Continue this run →',fn:function(){

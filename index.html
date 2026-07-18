@@ -105,10 +105,6 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .hud-val.red{color:#ff8080}
 #round-name{font-size:22px;color:#f0e080;font-weight:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #round-sub{font-size:30px;color:#8880a8}
-.stage-dots{display:flex;gap:5px;margin-top:4px}
-.stage-dot{width:11px;height:11px;border-radius:50%;border:1px solid #4a4a6a}
-.stage-dot.done{background:#5aaa5a;border-color:#5aaa5a}
-.stage-dot.cur{background:#f0e080;border-color:#f0e080}
 #board-wrap{display:inline-grid;gap:0}
 #board-wrap.tiles-hidden .board-tile{visibility:hidden}
 #board-preview-wrap.tiles-hidden .tile{visibility:hidden}
@@ -116,6 +112,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .sq.drop-target{outline:2px solid #f0e080;outline-offset:-2px}
 .sq-chess-hover::before,.sq-easy-hover::before{content:'';position:absolute;inset:0;border-radius:3px;background:white;pointer-events:none;animation:chess-aura-pulse 1.8s ease-in-out infinite}
 @keyframes chess-aura-pulse{0%,100%{opacity:0.03}50%{opacity:0.13}}
+.sq-easy-hover::before{background:#58a0ff;z-index:4;animation:easy-aura-pulse 1.8s ease-in-out infinite}
+@keyframes easy-aura-pulse{0%,100%{opacity:0.12}50%{opacity:0.38}}
 .sq-lbl{font-size:30px;line-height:1;text-align:center;pointer-events:none}
 .tile{border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#d4c5a0;border:2px solid #8B7355;position:relative;touch-action:none}
 .tile.blank-t{background:#c8b896}
@@ -333,12 +331,8 @@ body.focus-exiting #focus-bg{opacity:0}
 #hud-gold{font-size:clamp(16px,2.6vw,46px);color:#5a3800;line-height:1}
 #hud-plays{font-size:clamp(16px,2.6vw,46px);color:#2a2a2a;line-height:1}
 #hud-disc{font-size:clamp(16px,2.6vw,46px);color:#6a1a1a;line-height:1}
-/* Bottom info box (y=140-155, x=4-55): stage progress + boards left */
+/* Bottom info box (y=140-155, x=4-55): upcoming constraint */
 #stat-rounds-box{position:absolute;top:87.5%;left:6.25%;width:81.25%;height:10%;display:flex;align-items:stretch;overflow:hidden}
-#stat-stage-prog{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border-right:1px solid rgba(58,40,0,0.25)}
-#stat-boards-left{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
-#hud-stage-prog{font-size:clamp(10px,1.8vw,30px);color:#3a2800;line-height:1;font-weight:normal}
-#hud-boards-left{font-size:clamp(10px,1.8vw,30px);color:#3a2800;line-height:1;font-weight:normal}
 .stat-box-label{font-size:clamp(5px,0.75vw,11px);color:#7a5a40;line-height:1;text-transform:uppercase;letter-spacing:0.5px}
 #bounty-row{overflow:visible;display:flex;flex-direction:column;gap:6px;align-items:center;padding:0 4px;flex-shrink:0}
 #score-bar-wrap{position:absolute;right:0.5vw;top:0.78125%;bottom:0.78125%;width:1vw;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
@@ -404,7 +398,7 @@ body.focus-exiting #focus-bg{opacity:0}
       <div id="stat-rounds-box" style="display:none">
         <div id="stat-constraint-upcoming" style="width:100%;display:flex;align-items:flex-start;justify-content:flex-start;padding:3px 6px;text-align:left;font-size:clamp(10px,1.4vw,22px);color:#3a2800;line-height:1.3;overflow:hidden"></div>
       </div>
-      <img id="progress-tracker-sprite" src="Assets/animations/progress tracker/progress_tracker1.png" style="position:absolute;bottom:14.375%;left:1.5625%;width:90.625%;height:auto;image-rendering:pixelated;pointer-events:none">
+      <img id="progress-tracker-sprite" src="Assets/animations/progress tracker/progress_tracker1.png" draggable="false" style="position:absolute;bottom:14.375%;left:1.5625%;width:90.625%;height:auto;image-rendering:pixelated">
       <div id="score-bar-wrap">
         <div id="score-bar"></div>
       </div>
@@ -654,6 +648,14 @@ body.focus-exiting #focus-bg{opacity:0}
     <button class="btn btn-green" style="width:auto;padding:9px 24px" onclick="advanceRound()">Continue</button>
   </div>
 </div>
+<div id="win-modal" class="modal-overlay" style="display:none">
+  <div class="modal" style="text-align:center"><h2 style="color:#f0c060">You won!</h2>
+    <p style="color:#a0a0c0;font-size:32px;margin-bottom:8px" id="win-msg"></p>
+    <div id="win-reward" style="font-size:32px;color:#f0c060;margin-bottom:14px"></div>
+    <button class="btn btn-green" style="width:auto;display:inline-block;padding:9px 24px;margin:0 6px" onclick="winContinueEndless()">Endless mode →</button>
+    <button class="btn btn-red" style="width:auto;display:inline-block;padding:9px 24px;margin:0 6px" onclick="winNewRun()">New run</button>
+  </div>
+</div>
 <div id="gameover-modal" class="modal-overlay" style="display:none">
   <div class="modal" style="text-align:center"><h2 style="color:#ff6060">Out of ink</h2>
     <p style="color:#a0a0c0;font-size:32px;margin-bottom:8px" id="gameover-msg"></p>
@@ -687,6 +689,7 @@ body.focus-exiting #focus-bg{opacity:0}
 <script src="src/wordbook.js"></script>
 <script src="src/focus.js"></script>
 <script src="src/tutorial.js"></script>
+<script src="src/tips.js"></script>
 <script src="src/init.js"></script>
 <div id="solver-panel"></div>
 <div id="dev-palette"></div>
@@ -695,6 +698,7 @@ body.focus-exiting #focus-bg{opacity:0}
   <div class="menu-item" onclick="openWordbookModal()">Dictionary</div>
   <div class="menu-item" onclick="openAchievementsModal()">Achievements</div>
   <div class="menu-item" onclick="startTutorial()">Tutorial</div>
+  <div class="menu-item" id="tips-item" onclick="toggleTips()">Tips: Off</div>
   <div class="menu-item" id="devmode-item" onclick="toggleDevMode()">Dev Mode: Off</div>
   <div class="menu-item dev-only" style="display:none" onclick="enterShopPhase()">▶ Enter Shop</div>
   <div class="menu-item dev-only" style="display:none" onclick="devTestClose()">▶ Anim: Board → Shop</div>

@@ -18,7 +18,7 @@ Open `index.html` directly in a browser also works.
 | File | Role |
 |------|------|
 | `index.html` | All CSS + HTML structure. Loads every JS file via `<script>` tags. |
-| `src/data.js` | Constants: `B=15` (board size), `LS` (letter scores), `DIST` (tile counts), `STAGES`/`CONSTRAINTS` (progression), `setTileState` (tile state machine), utility fns (`uid`, `_rng`, `shuffle`, `sqd`). `SQ` sticker defs live in `src/stickers/`. |
+| `src/data.js` | Constants: `B=15` (board size), `LS` (letter scores), `DIST` (tile counts), `BOARDS`/`CONSTRAINTS` (progression), `setTileState` (tile state machine), utility fns (`uid`, `_rng`, `shuffle`, `sqd`). `SQ` sticker defs live in `src/stickers/`. |
 | `src/game.js` | Global state `S`, `startGame`, `roundComplete`/`advanceRound`, `showGO`, `toast`, modals, bag modal + letter expand/collapse, WebAudio SFX, `transformTile`, `openBlankChooser`, `hasStamp`/`countStamp`. |
 | `src/save.js` | localStorage run persistence: `saveGame`, `loadGame`, `resumeGame`, `clearSave`. |
 | `src/achievements.js` | Achievement defs, `achvInit`/`achvCheck`/`achvUnlock`, achievements modal. |
@@ -45,7 +45,7 @@ All mutable game state lives in `S` (declared in `game.js`):
 S = {
   bag, hand, board,   // board: B*B array of sticker IDs (or null)
   bt,                 // bt: B*B array of placed tile objects (or null)
-  ai, bi,             // stage index, round index into STAGES
+  ai, bi,             // board index, round index into BOARDS
   score, gold, plays, disc,
   phase,              // 'play' | 'placing' | 'shop'
   placed,             // stickers the player has placed on the board
@@ -107,8 +107,9 @@ Tile dimensions must be consistent across CSS, physics, render, and drag:
 The engine only controls the ORDER effects fire in; all effect logic lives in the sticker definitions. Bracket order:
 
 - **PRE** — tile-count bonus (+1 mult per tile beyond 3), then board-sticker `onPreScore` per played square (Gilded).
-- **PER TILE** (cross words first, then main word): base letter score → additive (board `onTileAdd` on the square, additive aura hooks, gold-tile +$1, stamp `onPerTile` hooks **left→right**) → multiplicative (board `onTileMult`: DL/TL/DW/TW, then multiplicative aura hooks: chess pieces) → retrigger (`retrigger:true` squares, red tiles).
-- **POST** — bingo +50 → board `onPostWordAdd` → board `onPostWordMult` → stamp `onPostWord` **left→right** (stamp bar order is a gameplay mechanic) → bounty reward.
+- **PER TILE** (cross words first, then main word): base letter score → additive (board `onTileAdd` on the square, additive aura hooks, stamp `onPerTile` hooks **left→right**) → multiplicative (board `onTileMult`: DL/TL/DW/TW, then multiplicative aura hooks: chess pieces) → retrigger (`retrigger:true` squares, stamp `onRetrigger` hooks). Retrigger passes re-run all three brackets (mult squares compound — DW/TW rarity is the balance lever). Red tile rule: every pass, base or retrigger, is followed by one red re-pass — `(1 + retrigger passes) × 2` total on a red tile.
+- **POST** — bingo +50 → gold-tile board sweep (every gold tile on the board pays $1) → board `onPostWordAdd` → board `onPostWordMult` → stamp `onPostWord` **left→right** (stamp bar order is a gameplay mechanic) → bounty reward.
+- **On-board sweeps** — `boardSweep(ctx, match, fire)` (score_engine.js) runs `fire(tile, sqIdx)` for every matching tile on the board (committed + just played) in reading order. `ctx.boardRetriggers` (The Eagle's `onBuildCtx`, +1 per copy) adds extra triggerings per tile; every triggering routes through `_sweepTrigger`, where the red-tile rule lives ("if this tile triggers for any reason, it triggers again") — so a red tile fires `(1 + eagles) × 2` times. Used by the engine gold payout and by stamps like Yuan inside `onPostWord` (keeps stamp-bar order). Push one event per firing so each tile bounces individually.
 - **FINAL** — `total = round(letters × (1 + Σ plusMults) × Π xmults)`, then `ctx.finalTransforms` (Palindrome Engine).
 
 The solver scores hypothetical moves through the same engine (board overlay + `preview:true`). `preview:true` skips cooldown commits and sticker side effects. Engine inputs/ctx surface are documented at the top of `score_engine.js`.
@@ -169,9 +170,15 @@ Corollaries enforced in the codebase:
 ## Progression
 
 ```
-STAGES[ai][bi] = [name, subtitle, target, constraint?]
-4 stages × 3 rounds each = 12 rounds, then endless mode (targets ×1.4/round).
-Round 3 of each stage applies a constraint from CONSTRAINTS (order shuffled
+BOARDS[ai][bi] = [name, subtitle, target, constraint?]
+8 boards × 3 rounds each = 24 rounds, then endless mode. Targets are
+hand-tuned in the BOARDS table (50 → 500,000 across the run).
+Endless mirrors the run structure: 3-round boards, board index = S.ai -
+BOARDS.length (endlessBoard() in game.js). Openings continue from 500k at
+×2.5, with the jump growing ×1.2 per board (endlessTgt(eb,er)); rounds step
+×1/×1.4/×2 — eventually unbeatable. The progress tracker (frames 1-24,
+25 = complete) loops back to board 1 in endless.
+Round 3 of each board applies a constraint from CONSTRAINTS (order shuffled
 per run into S.constraintOrder): c_long, c_pal, c_longer, c_letters, c_hand,
 c_draw3, c_nodisc, c_oneplay, c_stickers.
 ```
@@ -182,15 +189,15 @@ Two families: **stickers** (`type:'board'`/`'local'`, live in `S.placed` with a 
 
 Scoring hooks (all receive `ctx`; read game state via `ctx.state`, never `S`, so the engine stays pure/testable):
 
-- `onBuildCtx(ctx, inst)` — register flags/auras/final transforms before scoring (Purist, chess pieces, Palindrome Engine, The King).
+- `onBuildCtx(ctx, inst)` — register flags/auras/final transforms before scoring (chess pieces, Palindrome Engine, The King).
 - Auras — for board stickers whose effect targets *other* squares: in `onBuildCtx`, `ctx.auras.push({squares, onTileAdd, onTileMult})`. `squares` is a Set/array of covered indices (omit to evaluate every tile in the hook); `onTileAdd` fires in the per-tile additive bracket, `onTileMult` in the mult bracket. Every matching aura fires — overlapping auras **stack** (two chess pieces covering a square = ×9). Note: DL/TL/DW/TW are NOT auras — they're square-local `onTileMult` hooks on the sticker def; auras are only for ranged effects.
 - `onPreScore(tile, ctx, sqIdx)` — board, PRE bracket (Gilded).
-- `onTileAdd(tile, ctx, ts, baseSc, sqIdx)` — board, per-tile additive (Void, Spring Trap, Slot Machine setup).
+- `onTileAdd(tile, ctx, ts, baseSc, sqIdx)` — board, per-tile additive (Void, Spring Trap, Slot Machine). `ctx.curWordTiles` holds the word currently scoring.
 - `onPerTile(tile, ctx, ts, inst)` — stamp, per-tile additive, left→right (Commons, NATO letters).
 - `onTileMult(tile, ctx, ts, sqIdx)` — board, per-tile multiplicative (DL/TL/DW/TW).
-- `onPostWordAdd` / `onPostWordMult(w, wt, ctx, inst)` — board, post-word (Proletariat / Slot Machine payout).
+- `onPostWordAdd` / `onPostWordMult(w, wt, ctx, inst)` — board, post-word (Proletariat).
 - `onPostWord(w, wt, ctx, inst)` — stamp, post-word, left→right (Scholar, Crossroads, Drunk Text, …).
 - `onCrossword(ctx, inst)` — stamp, fired before each cross word scores (Crossroads tooltip tick).
 - `retrigger:true` — board flag; engine re-runs the per-tile passes (Red Sticker).
-- Non-engine hooks fired from play/game code: `onWordPlayed`, `onEndStage`, `onSell`, `onAcquire`.
+- Non-engine hooks fired from play/game code: `onWordPlayed`, `onEndBoard`, `onSell`, `onAcquire`.
 - Chess pieces (`chess_*`) — hover to preview attack pattern; click to inspect.

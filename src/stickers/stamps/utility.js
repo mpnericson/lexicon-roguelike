@@ -19,7 +19,7 @@ SQ.push({id:'jenga',name:'Jenga',
 // type: stamp · rarity: uncommon · cost: $5
 // No scoring hook. Effect fires in play.js after committing a 5+ letter word:
 // every tile in the word is gilded (variant set to 'gold') in both S.bt and S.bag.
-SQ.push({id:'midas_touch',name:'Midas Touch',
+SQ.push({id:'midas',name:'Midas',
   desc:'5+ letter words: gild all tiles in the word after scoring.',
   rarity:'uncommon',cost:5,bg:'#3a2a00',fg:'#f0d040',icon:'MD',type:'stamp'});
 
@@ -32,12 +32,25 @@ SQ.push({id:'easy_mode',name:'Easy Mode',
   desc:'Hover this stamp to reveal the squares of the best available play.',
   rarity:'uncommon',cost:5,bg:'#0a2a0a',fg:'#60e060',icon:'EM',type:'stamp'});
 
+// ── TWO FACE ──────────────────────────────────────────────────────────────────
+// type: stamp · rarity: uncommon · cost: $5 · qty: 1
+// No scoring hook. Its effect is ambient: the _luckMult()/_luckOdds() helpers
+// (game.js) read countStamp('two_face') and double the odds of every luck-based
+// sticker/stamp effect. Stacks multiplicatively (two copies = ×4). Wired at:
+// Proletariat spread (indirect.js) and Slot Machine rolls (effects.js).
+SQ.push({id:'two_face',name:'Two Face',
+  desc:'Twice as lucky. Every luck-based sticker and stamp is twice as likely to trigger — Proletariat always spreads, Slot Machine odds double, and so on.',
+  rarity:'uncommon',cost:5,qty:1,bg:'#1a0a2a',fg:'#c060ff',icon:'🎭',type:'stamp',
+  liveDesc:function(p){
+    return 'All luck-based effects are <span style="color:#f0e040">×'+_luckMult()+'</span> as likely to happen.';
+  }});
+
 // ── THE THING ─────────────────────────────────────────────────────────────────
 // type: stamp · rarity: rare · cost: $8 · qty: 1
 // Copies the stamp immediately to its right in the stamp bar.
 // onBuildCtx: delegates to the right stamp's onBuildCtx (if any).
 // onPostWord: delegates to the right stamp's onPostWord (if any).
-// onEndStage: delegates to the right stamp's onEndStage (if any).
+// onEndBoard: delegates to the right stamp's onEndBoard (if any).
 // _THING_BLOCKED (data.js) lists stamp IDs that cannot be copied. Stamp
 // definitions can also set copyable:false to opt out.
 SQ.push({id:'the_thing',name:'The Thing',
@@ -74,10 +87,10 @@ SQ.push({id:'the_thing',name:'The Thing',
     if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return;
     if(rDef.onPostWord)rDef.onPostWord(w,wt,ctx,rTs);
   },
-  onEndStage:function(ts){
+  onEndBoard:function(ts){
     var myIdx=-1;for(var _i=0;_i<S.stamps.length;_i++){if(S.stamps[_i]===ts){myIdx=_i;break;}}
     if(myIdx<0||myIdx>=S.stamps.length-1)return;
     var rTs=S.stamps[myIdx+1];var rDef=sqd(rTs.id);
     if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return;
-    if(rDef.onEndStage)rDef.onEndStage(rTs);
+    if(rDef.onEndBoard)rDef.onEndBoard(rTs);
   }});

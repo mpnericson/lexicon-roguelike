@@ -148,19 +148,12 @@ function renderHUD(){
   var pct=Math.min(100,S.score/tgt()*100);
   document.getElementById('score-bar').style.height=pct+'%';
   document.getElementById('score-txt').textContent=S.score.toLocaleString()+' / '+tgt().toLocaleString();
-  var dots=document.getElementById('stage-dots');if(dots){dots.innerHTML='';
-  if(S.endless){var ed=document.createElement('div');ed.style.cssText='font-size:11px;color:#f0c060;letter-spacing:1px;padding:2px 4px';ed.textContent='∞ ENDLESS '+S.endlessRound;dots.appendChild(ed);}
-  else{for(var a=0;a<STAGES.length;a++)for(var b2=0;b2<3;b2++){
-    var d=document.createElement('div');var g=a*3+b2,cg=S.ai*3+S.bi;
-    d.className='stage-dot'+(g<cg?' done':g===cg?' cur':'');
-    if(b2===2)d.style.marginRight='8px';dots.appendChild(d);
-  }}}
   var brow=document.getElementById('bounty-row');if(brow){brow.innerHTML='';var blist=S.bounties||[];for(var bi=0;bi<blist.length;bi++)brow.appendChild(_makeBountyScroll(blist[bi]));}
-  var _sp=document.getElementById('hud-stage-prog'),_bl=document.getElementById('hud-boards-left');
-  if(_sp){if(S.endless){_sp.textContent='∞';}else{_sp.textContent=(S.bi+1)+'/3'+(S.bi===2?' ★':'');}}
-  if(_bl){if(S.endless){_bl.textContent='∞';}else{_bl.textContent=STAGES.length-S.ai;}}
+  // Tracker frames 1-24 = the 24 rounds; frame 25 = all boards complete.
+  // Endless loops back through the tracker from board 1 (frame 1), one
+  // window per endless board.
   var _ptSpr=document.getElementById('progress-tracker-sprite');
-  if(_ptSpr){var _ptF=(S.endless||S.ai>=STAGES.length)?13:(S.ai*3+S.bi+1);_ptSpr.src='Assets/animations/progress tracker/progress_tracker'+_ptF+'.png';}
+  if(_ptSpr){var _ptF=S.endless?(endlessBoard()%BOARDS.length)*3+S.bi+1:Math.min(BOARDS.length*3,S.ai*3+S.bi+1);_ptSpr.src='Assets/animations/progress tracker/progress_tracker'+_ptF+'.png';}
   var _scrb=document.getElementById('stat-rounds-box'),_scru=document.getElementById('stat-constraint-upcoming');
   if(_scrb&&_scru){
     var _ucdef=null;
@@ -183,7 +176,7 @@ function renderBoard(){
   wrap.style.gridTemplateColumns='repeat('+B+','+sz+'px)';wrap.innerHTML='';
   var center=Math.floor(B/2)*B+Math.floor(B/2);
   var _bcon=currentConstraint();
-  var _stickerLocked=_bcon==='c_stickers'&&!(S.stickersSoldThisStage>0);
+  var _stickerLocked=_bcon==='c_stickers'&&!(S.stickersSoldThisBoard>0);
   var _lettersUsed=_bcon==='c_letters'&&S.usedLetters&&S.usedLetters.size>0;
   for(var i=0;i<B*B;i++){
     var sq=document.createElement('div');sq.className='sq';sq.dataset.sqIdx=i;
@@ -395,7 +388,7 @@ function _sqTooltipFreeze(sqIdx,id){
     sellBtn.textContent='Sell $'+sell;
     sellBtn.onclick=(function(si,_di,sv,dn){return function(){
       S.gold+=sv;S.board[si]=null;S.placed=S.placed.filter(function(p){return p.sqIdx!==si;});
-      if(currentConstraint()==='c_stickers')S.stickersSoldThisStage=(S.stickersSoldThisStage||0)+1;
+      if(currentConstraint()==='c_stickers')S.stickersSoldThisBoard=(S.stickersSoldThisBoard||0)+1;
       _sqTooltipUnfreeze();renderBoard();renderHUD();toast(dn+' sold for $'+sv);
       _rankObserve(true); // board scoring changed under the same rack
     };})(sqIdx,id,sell,d.name);
@@ -627,7 +620,7 @@ function _openStampModal(idx,id){
     sellBtn.onclick=(function(i,sv,dn,dd){return function(){
       S.stamps.splice(i,1);
       S.gold+=sv;
-      if(currentConstraint()==='c_stickers')S.stickersSoldThisStage=(S.stickersSoldThisStage||0)+1;
+      if(currentConstraint()==='c_stickers')S.stickersSoldThisBoard=(S.stickersSoldThisBoard||0)+1;
       document.getElementById('sq-modal').style.display='none';
       renderStampBar();renderHUD();
       toast(dn+' sold for $'+sv+'!');
