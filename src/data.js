@@ -21,8 +21,13 @@ var SQ_MAP = {};
 function buildSQMap(){SQ_MAP={};for(var i=0;i<SQ.length;i++)SQ_MAP[SQ[i].id]=SQ[i];}
 function sqd(id){return SQ_MAP[id]||null;}
 function sqIconHTML(d,sz){sz=sz||24;if(d&&d.iconPng)return '<img src="'+d.iconPng+'" width="'+sz+'" height="'+sz+'" style="image-rendering:pixelated;vertical-align:middle">';return d?d.icon:'';}
-function blankTileSpr(letter,variant,sz){var vr=variant==='blue'?2:variant==='red'?4:variant==='gold'?6:0;var li=letter?letter.charCodeAt(0)-65:-1;var col,row;if(li<0||li>25){col=10;row=vr+1;}else{col=li<16?li:li-16;row=vr+(li>=16?1:0);}return 'background-image:url(Assets/sprites/blank-tiles.png);background-size:'+(16*sz)+'px '+(8*sz)+'px;background-position:-'+(col*sz)+'px -'+(row*sz)+'px;background-repeat:no-repeat;image-rendering:pixelated;';}
-function tileSpr(letter,isBlank,variant,sz){var vr=variant==='blue'?2:variant==='red'?4:variant==='gold'?6:0;var col,row;if(isBlank||!letter){col=10;row=vr+1;}else{var li=letter.charCodeAt(0)-65;if(li<0||li>25){col=10;row=vr+1;}else{col=li<16?li:li-16;row=vr+(li>=16?1:0);}}return 'background-image:url(Assets/sprites/tile.png);background-size:'+(16*sz)+'px '+(8*sz)+'px;background-position:-'+(col*sz)+'px -'+(row*sz)+'px;background-repeat:no-repeat;image-rendering:pixelated;';}
+// tiles.png: rows 0-1 = plain letter faces (blank face at col 10 row 1);
+// rows 2-7 = blank colour×material bases sliced by tile_layers.js. Colour and
+// material looks are composited by applyTileLayers — the variant param is kept
+// for signature compatibility but no longer selects sprite rows. Blanks never
+// show a glyph: always the empty face, even when assigned a letter.
+function blankTileSpr(letter,variant,sz){return tileSpr(null,true,variant,sz);}
+function tileSpr(letter,isBlank,variant,sz){var col,row;if(isBlank||!letter){col=10;row=1;}else{var li=letter.charCodeAt(0)-65;if(li<0||li>25){col=10;row=1;}else{col=li<16?li:li-16;row=li>=16?1:0;}}return 'background-image:url(Assets/sprites/tiles.png);background-size:'+(16*sz)+'px '+(8*sz)+'px;background-position:-'+(col*sz)+'px -'+(row*sz)+'px;background-repeat:no-repeat;image-rendering:pixelated;';}
 function wordAsTilesHTML(word,sz,variant){sz=sz||24;var h='<span style="display:flex;gap:2px;flex-wrap:nowrap;flex-shrink:1;min-width:0;align-items:center">';for(var i=0;i<word.length;i++){var spr=tileSpr(word[i],false,variant||null,sz);h+='<span style="display:inline-block;width:'+sz+'px;height:'+sz+'px;flex-shrink:0;'+spr+'"></span>';}return h+'</span>';}
 function rcl(i){return String.fromCharCode(65+i%B)+(Math.floor(i/B)+1);}
 

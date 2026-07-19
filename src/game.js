@@ -92,6 +92,7 @@ function startGame(seed){
      lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,
      constraintOrder:_co.slice(0,BOARDS.length),usedLetters:new Set(),stickersSoldThisBoard:0,crossroadsCount:0,ouroborosBonus:0,gamblerSpins:0,
      stamps:[],bagBlueAnchors:{},pool:_bag.slice(),
+     consumables:[],lastTicket:null,
      bounties:_generateBounties(3,[])};
   window._easyHint=null;
   shopPool={sq:[],packs:[],bounties:[]};activeDrag=null;
@@ -106,13 +107,15 @@ function startGame(seed){
 
 function handMax(){return(S.bi===2&&currentConstraint()==='c_hand')?6:7;}
 
+// Anchor mechanic (draw priority) — lives on VARNISHED tiles now, formerly
+// blue. S.bagBlueAnchors keeps its name for save compatibility.
 function _autoRegisterBlueAnchors(){
   if(!S.bag||!S.bag.length)return;
   if(!S.bagBlueAnchors)S.bagBlueAnchors={};
   var lc={};
   for(var i=0;i<S.bag.length;i++){var k=S.bag[i].isBlank?'_':(S.bag[i].letter||'_');lc[k]=(lc[k]||0)+1;}
   for(var i=0;i<S.bag.length;i++){
-    var t=S.bag[i];if(t.variant!=='blue')continue;
+    var t=S.bag[i];if(t.material!=='varnished')continue;
     var k=t.isBlank?'_':(t.letter||'_');
     if(lc[k]===1&&!S.bagBlueAnchors[k])S.bagBlueAnchors[k]=t.id;
   }
@@ -120,7 +123,7 @@ function _autoRegisterBlueAnchors(){
 
 // ---- Tile mutation ----
 // transformTile: mutate or destroy a tile wherever it lives (pool, bag, hand, board).
-// opts: { variant:'gold'|'red'|'blue'|null, isBlank:true, destroy:true }
+// opts: { variant:'gold'|'red'|'blue'|'jade'|'purple'|null, material:'metallic'|'glass'|'varnished'|null, isBlank:true, destroy:true }
 function transformTile(tileId,opts){
   if(!tileId)return null;
   opts=opts||{};
@@ -137,7 +140,7 @@ function transformTile(tileId,opts){
   }
   var _pe=null;
   if(S.pool){for(var _i=0;_i<S.pool.length;_i++){if(S.pool[_i].id===tileId){_pe=S.pool[_i];break;}}}
-  var _ap=function(o){if(!o)return;if('variant' in opts)o.variant=opts.variant;if(opts.isBlank){o.isBlank=true;o.letter='_';if('blankAs' in o)o.blankAs=null;}};
+  var _ap=function(o){if(!o)return;if('variant' in opts)o.variant=opts.variant;if('material' in opts)o.material=opts.material;if(opts.isBlank){o.isBlank=true;o.letter='_';if('blankAs' in o)o.blankAs=null;}};
   _ap(_pe);
   for(var _i=0;_i<S.bag.length;_i++){if(S.bag[_i]&&S.bag[_i].id===tileId&&S.bag[_i]!==_pe){_ap(S.bag[_i]);break;}}
   for(var _i=0;_i<S.hand.length;_i++){if(S.hand[_i]&&S.hand[_i].id===tileId){_ap(S.hand[_i]);break;}}
@@ -145,14 +148,14 @@ function transformTile(tileId,opts){
     if(S.bt[_i]&&S.bt[_i].id===tileId)_ap(S.bt[_i]);
     if(S.btTop&&S.btTop[_i]&&S.btTop[_i].id===tileId)_ap(S.btTop[_i]);
   }
-  if(opts.variant==='blue')_autoRegisterBlueAnchors();
+  if(opts.material==='varnished')_autoRegisterBlueAnchors();
   _rankObserve();
   return _pe;
 }
 
 // addTileToBag: create a new tile and add it to both the bag and pool.
 function addTileToBag(opts){
-  var t={letter:opts.letter||'_',isBlank:!!opts.isBlank,id:uid(),variant:opts.variant||null,state:'stored',storedIn:'bag'};
+  var t={letter:opts.letter||'_',isBlank:!!opts.isBlank,id:uid(),variant:opts.variant||null,material:opts.material||null,state:'stored',storedIn:'bag'};
   S.bag.push(t);(S.pool=S.pool||[]).push(t);
   return t;
 }
@@ -179,7 +182,7 @@ function drawFull(maxDraw){
       if(_anch){
         var _ai=[];
         for(var j=0;j<S.bag.length;j++){
-          var _bt=S.bag[j];if(!_bt||_bt.variant!=='blue')continue;
+          var _bt=S.bag[j];if(!_bt||_bt.material!=='varnished')continue;
           var _bk=_bt.isBlank?'_':(_bt.letter||'_');
           if(_anch[_bk]===_bt.id)_ai.push(j);
         }
@@ -322,7 +325,8 @@ function showGO(msg){
 }
 
 function closeAllModals(){
-  ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','win-modal','gameover-modal','board-preview-modal','collection-modal','achv-modal','wordbook-modal','seed-modal'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
+  ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','win-modal','gameover-modal','board-preview-modal','collection-modal','achv-modal','wordbook-modal','seed-modal','tk-overlay'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
+  if(typeof _tkCloseOverlay==='function'&&window._tkOv){_tkOv=null;_tkBusy=false;}
   document.getElementById('shop-screen').style.display='none';
 }
 
@@ -384,42 +388,44 @@ function _renderBagFloatTiles(cont,tiles,sz){
   var groups={},order=[];
   for(var i=0;i<tiles.length;i++){
     var t=tiles[i],key=t.isBlank?'_':(t.letter||'_');
-    if(!groups[key]){groups[key]={letter:t.isBlank?'':t.letter,isBlank:!!t.isBlank,count:0,variants:{}};order.push(key);}
+    if(!groups[key]){groups[key]={letter:t.isBlank?'':t.letter,isBlank:!!t.isBlank,count:0,variants:{},materials:{}};order.push(key);}
     groups[key].count++;
     if(t.variant)groups[key].variants[t.variant]=(groups[key].variants[t.variant]||0)+1;
+    if(t.material)groups[key].materials[t.material]=(groups[key].materials[t.material]||0)+1;
   }
   order.sort(function(a,b){
     var ga=groups[a],gb=groups[b];
     if(ga.isBlank!==gb.isBlank)return ga.isBlank?1:-1;
     return ga.letter<gb.letter?-1:1;
   });
-  var _vdotColors={red:'#b83030',blue:'#3870a8',gold:'#c8a020'};
+  var _vdotColors={red:'#b83030',blue:'#3870a8',gold:'#c8a020',jade:'#2a9a5a',purple:'#8a30c0'};
   for(var oi=0;oi<order.length;oi++){
     var g=groups[order[oi]],f=fc[oi%fc.length];
     var _gkey=order[oi];
-    // Determine if a blue tile is the anchor for this group:
-    // (a) explicitly promoted, or (b) the only tile of this letter and it's blue
+    // Determine if a varnished tile is the anchor for this group:
+    // (a) explicitly promoted, or (b) the only tile of this letter and it's varnished
     var _isBlueAnchor=false;
     var _pref=S.bagBlueAnchors&&S.bagBlueAnchors[_gkey];
-    if(_pref){for(var _ai=0;_ai<tiles.length;_ai++){if(tiles[_ai].id===_pref&&tiles[_ai].variant==='blue'){_isBlueAnchor=true;break;}}}
-    if(!_isBlueAnchor&&g.count===1&&g.variants.blue===1)_isBlueAnchor=true;
+    if(_pref){for(var _ai=0;_ai<tiles.length;_ai++){if(tiles[_ai].id===_pref&&tiles[_ai].material==='varnished'){_isBlueAnchor=true;break;}}}
+    if(!_isBlueAnchor&&g.count===1&&g.materials.varnished===1)_isBlueAnchor=true;
     var item=document.createElement('div');
     item.className='bag-float-item';
     item.dataset.letter=g.isBlank?'_':(g.letter||'_');
     item.style.cssText='cursor:pointer;position:relative';
     var inner=document.createElement('div');
     inner.style.cssText='display:flex;flex-direction:column;align-items:center;animation:'+f.a+' '+f.d+' ease-in-out '+f.dl+' infinite';
-    var spr=tileSpr(g.isBlank?null:g.letter,g.isBlank,_isBlueAnchor?'blue':null,sz);
+    var spr=tileSpr(g.isBlank?null:g.letter,g.isBlank,null,sz);
     var te=document.createElement('div');
-    te.className='tile tile-spr'+(g.isBlank?' blank-t':'')+(_isBlueAnchor?' var-blue':'');
+    te.className='tile tile-spr'+(g.isBlank?' blank-t':'');
     te.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+spr;
+    if(_isBlueAnchor)applyTileLayers(te,{letter:g.isBlank?null:g.letter,isBlank:g.isBlank,material:'varnished',variant:null},sz,spr);
     inner.appendChild(te);
     var ct=document.createElement('div');
     ct.style.cssText='color:#7ac07a;font-family:\'Jersey 10\',Georgia;font-size:'+Math.round(sz*0.38)+'px;margin-top:4px;line-height:1;text-align:center';
     ct.textContent='×'+g.count;inner.appendChild(ct);
     item.appendChild(inner);
-    // Variant dots float independently ABOVE the tile — suppress blue dot when blue is the anchor
-    var vkeys=(['red','blue','gold']).filter(function(v){return g.variants[v]&&!(v==='blue'&&_isBlueAnchor);});
+    // Variant dots float independently ABOVE the tile
+    var vkeys=(['red','blue','gold','jade','purple']).filter(function(v){return g.variants[v];});
     if(vkeys.length){
       var dotAnims=[{a:'bfloat0',d:'1.9s',dl:'0s'},{a:'bfloat2',d:'2.2s',dl:'0.35s'},{a:'bfloat4',d:'1.7s',dl:'0.7s'}];
       var dotsRow=document.createElement('div');
@@ -440,7 +446,7 @@ function _renderBagFloatTiles(cont,tiles,sz){
     (function(letter_,oi_){
       item.addEventListener('click',function(e){
         e.stopPropagation();
-        _bagToggleExpand(letter_,oi_,document.getElementById('bag-ui-tiles'),S.bag);
+        _bagToggleExpand(letter_,oi_,cont,tiles);
       });
     })(g.isBlank?'_':(g.letter||'_'),oi);
     cont.appendChild(item);
@@ -516,10 +522,14 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles,speedMult){
   anchorRow=Math.max(0,Math.min(numGridRows-1,anchorRow));
 
   var matchTiles=allTiles.filter(function(t){return(t.isBlank?'_':t.letter)===letter;});
-  var vord={'':0,'red':1,'blue':2,'gold':3};
+  var vord={'':0,'red':1,'blue':2,'gold':3,'jade':4,'purple':5};
   matchTiles.sort(function(a,b){
     var pref=S.bagBlueAnchors&&S.bagBlueAnchors[letter];
     if(pref){if(a.id===pref)return -1;if(b.id===pref)return 1;}
+    // Unpromoted varnished tiles go to the stack (not the anchor slot) —
+    // the promotion click handler only exists on stack tiles.
+    var av=a.material==='varnished'?1:0,bv=b.material==='varnished'?1:0;
+    if(av!==bv)return av-bv;
     return(vord[a.variant||'']||0)-(vord[b.variant||'']||0);
   });
   var fc=[{a:'bfloat0',d:'2.5s',dl:'0s'},{a:'bfloat1',d:'2.8s',dl:'0.5s'},{a:'bfloat2',d:'3.1s',dl:'1.0s'},{a:'bfloat3',d:'2.6s',dl:'0.3s'},{a:'bfloat4',d:'3.0s',dl:'0.8s'},{a:'bfloat5',d:'2.7s',dl:'1.4s'}];
@@ -639,8 +649,9 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles,speedMult){
       var inner=document.createElement('div');
       inner.style.cssText='width:'+sz+'px;height:'+sz+'px;animation:'+f.a+' '+f.d+' ease-in-out '+f.dl+' infinite';
       var te=document.createElement('div');
-      te.className='tile tile-spr'+(p.t.isBlank?' blank-t':'')+(p.t.variant?' var-'+p.t.variant:'');
+      te.className='tile tile-spr'+(p.t.isBlank?' blank-t':'')+(p.t.variant?' var-'+p.t.variant:'')+(p.t.material?' mat-'+p.t.material:'');
       te.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+spr;
+      applyTileLayers(te,p.t,sz,spr);
       inner.appendChild(te);outer.appendChild(inner);stackEl.appendChild(outer);
       var initDX=clickedRect.left+(clickedRect.width-sz)/2-p.fL;
       var initDY=clickedRect.top+(clickedRect.height-sz)/2-p.fT;
@@ -695,7 +706,7 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles,speedMult){
       outer.style.transition='transform '+Math.round(450*speedMult)+'ms cubic-bezier(0.4,0,0.2,1) '+delay+'ms, opacity '+Math.round(200*speedMult)+'ms ease '+delay+'ms';
       outer.style.transform='translateX(0) translateY(0) scale(1.1)';
       outer.style.opacity='1';
-      if(!window._bagPickMode&&placements[pi].t.variant==='blue'){
+      if(!window._bagPickMode&&placements[pi].t.material==='varnished'){
         _blueOuters.push(outer);
         (function(bOuter,bTile){
           bOuter.addEventListener('mouseenter',function(){bOuter.style.filter='drop-shadow(0 0 8px #f0e080) drop-shadow(0 0 18px rgba(240,224,128,0.5))';});
@@ -728,11 +739,10 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles,speedMult){
                 bOuter.style.transform='translateX('+mvdx+'px) translateY('+mvdy+'px) scale(1)';
                 setTimeout(function(){
                   if(_bagExpandGen!==gen)return;
-                  // Blue tile arrived — update anchor item sprite to blue tile
+                  // Varnished tile arrived — restyle the anchor item as varnished
                   var ai=items[clickedIdx];
                   var aDiv=ai.querySelector('div');
-                  if(aDiv){var aTe=aDiv.querySelector('.tile.tile-spr');if(aTe){var bSpr=tileSpr(bTile.isBlank?null:bTile.letter,!!bTile.isBlank,'blue',sz);aTe.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+bSpr;aTe.className='tile tile-spr var-blue';}}
-                  var aiDots=ai.querySelector('.variant-dots');if(aiDots){var bDotW=aiDots.querySelector('[data-vdot="blue"]');if(bDotW&&bDotW.parentNode)bDotW.parentNode.removeChild(bDotW);}
+                  if(aDiv){var aTe=aDiv.querySelector('.tile.tile-spr');if(aTe){var bSpr=tileSpr(bTile.isBlank?null:bTile.letter,!!bTile.isBlank,null,sz);aTe.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+bSpr;aTe.className='tile tile-spr';applyTileLayers(aTe,{letter:bTile.isBlank?null:bTile.letter,isBlank:!!bTile.isBlank,material:'varnished',variant:null},sz,bSpr);}}
                   ai.style.transition='opacity 0.12s ease';ai.style.opacity='1';ai.style.transform='';ai.style.pointerEvents='';
                   if(bOuter.parentNode)bOuter.parentNode.removeChild(bOuter);
                   // Capture arch rise time before collapsing

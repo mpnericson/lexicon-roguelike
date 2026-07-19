@@ -71,7 +71,8 @@ function _liveTiles(){
   function addUnder(idx,src){
     if(!jengaUnder)jengaUnder={};
     jengaUnder[idx]={letter:tileDisplayLetter(src),isBlank:!!src.isBlank,
-      sc:src.isBlank?(src._alchSc||0):(LS[src.letter]||0),variant:src.variant||null};
+      sc:src.isBlank?(src._alchSc||0):(LS[src.letter]||0),variant:src.variant||null,
+      material:src.material||null};
   }
   for(var i=0;i<B*B;i++){
     var tt=S.btTop&&S.btTop[i];
@@ -512,7 +513,7 @@ async function animGoldTick(delta,bounceFn){
 // a stamp (floatStampId), a board sticker's tile (floatSqIdx), or the
 // scoring tile itself (sqIdx). Returns null when there's nothing to bounce.
 function _goldBounceFn(ev){
-  if(ev.floatStampId){var id=ev.floatStampId;return function(){_bounceStamp(id);};}
+  if(ev.floatStampId){var id=ev.floatStampId,gin=ev._stampInst;return function(){_bounceStamp(id,gin);};}
   if(ev.floatSqIdx!=null){var bel=document.querySelector('[data-sq-idx="'+ev.floatSqIdx+'"] .board-tile');return function(){_binkEl(bel);};}
   if(ev.sqIdx!=null){var tel=_evTileEl(ev);return function(){_binkEl(tel);};}
   return null;
@@ -546,14 +547,19 @@ function _evTileEl(ev){
 // regenerates the sprite with the gold variant and swaps the var-* class.
 function _goldifyTileEl(sqIdx){
   var el=_jengaTopEl(sqIdx)||document.querySelector('[data-sq-idx="'+sqIdx+'"] .board-tile');
-  if(!el||el.classList.contains('var-gold'))return;
+  if(!el||el.dataset.goldified)return;
   var bt=(S.btTop&&S.btTop[sqIdx]&&S.btTop[sqIdx].isNew)?S.btTop[sqIdx]:S.bt[sqIdx];
   if(!bt)return;
+  el.dataset.goldified='1';
   var sz=parseInt(el.dataset.tsz,10)||el.offsetWidth||64;
   var spr=(bt.isBlank&&bt.blankAs)?blankTileSpr(bt.blankAs,'gold',sz):tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,'gold',sz);
-  el.classList.remove('var-blue','var-red');el.classList.add('var-gold');
   el.dataset.spr=spr;
   el.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+spr;
+  // Repaint through the compositor: strip existing layers, re-apply as gold
+  // (keeping the tile's material — gold glass stays glass).
+  var olds=el.querySelectorAll('.tile-mat,.tile-sheen,.tile-glyph');
+  for(var i=0;i<olds.length;i++)olds[i].parentNode.removeChild(olds[i]);
+  applyTileLayers(el,{letter:bt.letter,isBlank:bt.isBlank,blankAs:bt.blankAs,variant:'gold',material:bt.material||null},sz,spr);
 }
 // Axis-aligned translate (one tile over). sign +1 = right/down, -1 = left/up.
 function _jengaAxisXform(axis,sign){return axis==='h'?'translateX('+(sign*100)+'%)':'translateY('+(sign*100)+'%)';}
@@ -609,8 +615,16 @@ function _binkEl(el){
 }
 
 // Bounces the matching stamp face(s) when its effect contributes to scoring.
-function _bounceStamp(id){
-  var els=document.querySelectorAll('#stamp-bar .stamp-tile[data-stamp-id="'+id+'"]');
+// inst (optional) = index into S.stamps: bounce that specific copy — needed
+// when the same stamp is owned twice, and it also makes The Thing's own face
+// bounce when it fires a copied effect. Falls back to every face with the id.
+function _bounceStamp(id,inst){
+  var els=null;
+  if(inst!=null){
+    var iel=document.querySelector('#stamp-bar .stamp-tile[data-stamp-vi="'+inst+'"]');
+    if(iel)els=[iel];
+  }
+  if(!els)els=document.querySelectorAll('#stamp-bar .stamp-tile[data-stamp-id="'+id+'"]');
   for(var i=0;i<els.length;i++){
     var el=els[i];
     el.classList.remove('sq-binking');
@@ -628,7 +642,7 @@ function _bounceStamp(id){
 //     display ticks too, e.g. Crossroads' crossword-tick).
 //   • Outside scoring — call stampScaleBounce('<stampId>') directly (e.g. play.js
 //     when a bounty resolves for Bounty Hunter).
-function stampScaleBounce(id){if(id)_bounceStamp(id);}
+function stampScaleBounce(id,inst){if(id)_bounceStamp(id,inst);}
 
 // Waits for the sticker peel+flatten to reach 'hold' before the ding fires.
 // Starts the peel now if it hasn't been started yet (handles events[0] edge case).
@@ -736,8 +750,8 @@ async function runScoreAnim(events,total){
     if(ev.floatSqIdx!=null&&!ev._skip)await _awaitPeelHold(ev.floatSqIdx);
     if(!ev._skip&&!ev.silent)_playScoreDing();
     if(ev.floatSqIdx!=null&&!ev._skip)_activateStickerFloat(ev.floatSqIdx);
-    if(ev.floatStampId&&!ev._skip)_bounceStamp(ev.floatStampId);
-    if(ev.scaleBounce&&!ev._skip)stampScaleBounce(ev.scaleBounce);
+    if(ev.floatStampId&&!ev._skip)_bounceStamp(ev.floatStampId,ev._stampInst);
+    if(ev.scaleBounce&&!ev._skip)stampScaleBounce(ev.scaleBounce,ev._stampInst);
     return curDelay;
   }
 
@@ -749,7 +763,9 @@ async function runScoreAnim(events,total){
   // Gold keeps its own $-tick animation but shares the beat (_skip → no extra
   // ding/delay/re-activation). A tile-local letter ends the group: its running
   // "+X" delta drives the letter display and must own its beat.
-  function _floatKey(e){return e.floatStampId?('ts:'+e.floatStampId):(e.floatSqIdx!=null?('sq:'+e.floatSqIdx):null);}
+  // Stamp keys include the instance index (_stampInst) so two copies of the
+  // same stamp never merge into one beat — each copy fires its own trigger.
+  function _floatKey(e){return e.floatStampId?('ts:'+e.floatStampId+(e._stampInst!=null?'#'+e._stampInst:'')):(e.floatSqIdx!=null?('sq:'+e.floatSqIdx):null);}
   for(var _gi=0;_gi<events.length;_gi++){
     var _he=events[_gi];
     if(_he._consumed)continue;
@@ -847,7 +863,7 @@ async function runScoreAnim(events,total){
             if(ev.floatSqIdx!=null)await _awaitPeelHold(ev.floatSqIdx);
             _playScoreDing();
             if(ev.floatSqIdx!=null)_activateStickerFloat(ev.floatSqIdx);
-            if(ev.floatStampId)_bounceStamp(ev.floatStampId);
+            if(ev.floatStampId)_bounceStamp(ev.floatStampId,ev._stampInst);
             // Scaling stamps riding this tile's beat (Ouroboros per O, Cartographer
             // per corner): bump the persistent counter LIVE, in sync with the bounce
             // above and the tile's bink below. Score is already locked in res.total,
@@ -904,7 +920,7 @@ async function runScoreAnim(events,total){
       // event in the post-word phase (see crossroads' onPostWord in data.js).
       // Bounce Crossroads' bar face as each crossword scales it (scaleBounce hook).
       S._crossroadsLiveCount=(S._crossroadsLiveCount||0)+1;
-      if(ev.scaleBounce)stampScaleBounce(ev.scaleBounce);
+      if(ev.scaleBounce)stampScaleBounce(ev.scaleBounce,ev._stampInst);
       _tooltipRefreshIfOpen();
 
     }else if(ev.type==='x-mult'){

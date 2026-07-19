@@ -96,6 +96,7 @@ function refreshShop(){
   for(var i=0;i<sqIds.length;i++)shopPool.sq.push({id:sqIds[i],sold:false});
   var shuffledPacks=shuffle(ALL_PACK_TYPES.slice());
   shopPool.packs=shuffledPacks.slice(0,2).map(function(p){return{type:p.type,sqId:p.sqId||null,label:p.label,desc:p.desc,cost:p.cost,sold:false};});
+  shopPool.tkPacks=_tkRollShopPacks(2);
   var _bActiveWords=[];(S.bounties||[]).forEach(function(sc){(sc.words||[]).forEach(function(w){_bActiveWords.push(w.word);});});
   shopPool.bounties=_generateBounties(3,_bActiveWords).map(function(sc){
     return{theme:sc.theme,words:sc.words,cost:2,accepted:false};
@@ -105,9 +106,6 @@ function refreshShop(){
   shopPool.slotResult=null;
   shopPool.slotMode=null;
   shopPool.slotArmed='stamps';
-  shopPool.bagEnchantUsed=false;
-  shopPool.bagDestroyUsed=false;
-  shopPool.bagDupUsed=false;
 }
 
 function enterShopPhase(){
@@ -201,6 +199,7 @@ function renderShop(){
   if(qbar){qbar.style.display=n>0?'block':'none';qbar.textContent=n+' sticker'+(n!==1?'s':'')+' in inventory — place during play.';}
   var priceEl=document.getElementById('shop-slot-price');
   if(priceEl)priceEl.textContent='$'+(shopPool.slotSpinCost||4);
+  if(typeof renderTkShop==='function'){renderTkShop();renderConsumables();}
   var sqItems=shopPool.sq||[];
   for(var pi=0;pi<2;pi++){
     var box=document.getElementById('shop-pack-'+pi);if(!box)continue;
@@ -821,6 +820,10 @@ function _showPillowPrizes(ids,canvas){
       :'<span style="font-size:clamp(8px,2.5vw,40px);line-height:1">'+d.icon+'</span>';
     el.innerHTML=iconHtml;
     el.onclick=(function(sid){return function(){
+      // Full stamp bar: keep the pillows up so the prize isn't lost — the player
+      // can sell a stamp from the shop stamp bar and then pick, or dismiss the tray.
+      var pd=sqd(sid);
+      if(pd&&pd.type==='stamp'&&(S.stamps||[]).length>=5){toast('Stamp bar is full — sell a stamp first!');return;}
       _pillowEls.forEach(function(e){if(e&&e.parentNode)e.parentNode.removeChild(e);});
       _pillowEls=[];
       _shopTipHideImmediate();
@@ -855,7 +858,10 @@ function _pickReelResult(id){
   var rl=document.getElementById('shop-reel-layer');
   if(rl){rl.style.transition='none';rl.style.opacity='1';}
   var d=sqd(id);if(!d)return;
-  if(!addPrizeFromShop(id))return;
+  // Even if the prize can't be claimed (full stamp bar), fall through to the reel
+  // reset below — bailing here used to leave the reels non-idle and slotResult set,
+  // permanently blocking further spins.
+  var claimed=addPrizeFromShop(id);
   document.querySelectorAll('.reel-item.reel-sel').forEach(function(el){el.classList.remove('reel-sel');el.onclick=null;});
   if(_reels){
     for(var ri=0;ri<_reels.length;ri++){
@@ -872,6 +878,7 @@ function _pickReelResult(id){
   }
   shopPool.slotResult=null;shopPool.slotMode=null;
   renderShop();renderHUD();
+  if(!claimed)return; // addPrizeFromShop already toasted the reason
   var isStamp=d.type==='stamp',qty=d.qty||1;
   if(isStamp)toast(d.name+' added to stamp bar!');
   else toast((qty>1?qty+'× ':'')+d.name+' queued!');
@@ -1111,108 +1118,40 @@ function _resetSymbolReels(){
   }
 }
 
-// ── SHOP BAG MINI-UI ──
+// ── SHOP BAG UI ──
+// Identical to the play-phase bag modal — a read-only view of the bag
+// (letter groups, expand/collapse, varnish promotion). Tile modification
+// lives in the consumables system.
 function openShopBagUI(){
   var ovr=document.getElementById('shop-bag-overlay');if(!ovr||ovr.dataset.opening||ovr.dataset.closing)return;
   ovr.dataset.opening='1';
-  if(!shopPool.bagDisplay){
-    var bagCopy=S.bag.slice();
-    for(var i=bagCopy.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=bagCopy[i];bagCopy[i]=bagCopy[j];bagCopy[j]=tmp;}
-    shopPool.bagDisplay=bagCopy.slice(0,8);
+  if(!ovr._bagExpandBound){
+    ovr._bagExpandBound=true;
+    ovr.addEventListener('click',function(e){
+      if(e.target.closest('.bag-float-item'))return;
+      var t=document.getElementById('sbovr-tiles');
+      if(t&&t.dataset.expandedLetter)_bagCollapseLetter(t);
+    });
   }
-  var display=shopPool.bagDisplay;
-  var selected={tile:null};
   _bagTransitionOpen('shop-bag-sprite',function(){
     delete ovr.dataset.opening;
-    ovr.style.display='flex';
-    document.getElementById('sbovr-count').textContent=S.bag.length+' tiles in bag';
+    ovr.style.visibility='';ovr.style.pointerEvents='';
+  },function(){
+    ovr.style.display='flex';ovr.style.visibility='hidden';ovr.style.pointerEvents='none';
+    document.getElementById('sbovr-count').textContent=S.bag.length+' tiles remaining';
+    _autoRegisterBlueAnchors();
     var tilesDiv=document.getElementById('sbovr-tiles');
-    var actDiv=document.getElementById('sbovr-actions');
-    tilesDiv.innerHTML='';actDiv.innerHTML='';
+    _renderBagFloatTiles(tilesDiv,S.bag,73);
     tilesDiv.style.animation='none';void tilesDiv.offsetHeight;
-    tilesDiv.style.animation='bagTunnelZoom 0.65s ease-out both';
-    var sz=60;
-    var fc=[
-      {a:'bfloat0',d:'2.5s',dl:'0s'},{a:'bfloat1',d:'2.8s',dl:'0.5s'},
-      {a:'bfloat2',d:'3.1s',dl:'1.0s'},{a:'bfloat3',d:'2.6s',dl:'0.3s'},
-      {a:'bfloat4',d:'3.0s',dl:'0.8s'},{a:'bfloat5',d:'2.7s',dl:'1.4s'}
-    ];
-    if(!display.length){tilesDiv.innerHTML='<div style="color:#8880a8;font-size:24px">Bag is empty!</div>';}
-    display.forEach(function(t,idx){
-      var f=fc[idx%fc.length];
-      var item=document.createElement('div');
-      item.className='sbag-float-item';
-      var inner=document.createElement('div');
-      inner.style.cssText='display:flex;flex-direction:column;align-items:center;animation:'+f.a+' '+f.d+' ease-in-out '+f.dl+' infinite';
-      var spr=tileSpr(t.isBlank?null:t.letter,t.isBlank,t.variant||null,sz);
-      var te=document.createElement('div');
-      te.className='tile tile-spr'+(t.isBlank?' blank-t':'')+(t.variant?' var-'+t.variant:'');
-      te.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+spr;
-      inner.appendChild(te);
-      item.appendChild(inner);
-      item.onclick=(function(tile,el){
-        return function(){
-          tilesDiv.querySelectorAll('.sbag-float-item').forEach(function(e){e.classList.remove('sbag-sel');});
-          if(selected.tile===tile){selected.tile=null;}
-          else{selected.tile=tile;el.classList.add('sbag-sel');}
-          _renderBagActions(selected,actDiv);
-        };
-      })(t,item);
-      tilesDiv.appendChild(item);
-    });
-    actDiv.innerHTML='<div style="color:#8880a8;font-size:24px">Select a tile above</div>';
+    tilesDiv.style.animation='bagTunnelZoom 0.52s ease-out both';
   });
-}
-
-function _renderBagActions(sel,actDiv){
-  actDiv.innerHTML='';
-  if(!sel.tile){actDiv.innerHTML='<div style="color:#8880a8;font-size:24px">Select a tile above</div>';return;}
-  var t=sel.tile;
-  function mkBtn(label,used,fn){
-    var b=document.createElement('button');
-    b.style.cssText='background:'+(used?'#1a1a3a':'#2a4a2a')+';border:1px solid '+(used?'#3a3a5a':'#4a8a4a')+';color:'+(used?'#5a5a8a':'#80c080')+';font-family:\'Jersey 10\',Georgia;font-size:28px;cursor:'+(used?'default':'pointer')+';padding:8px 16px;border-radius:4px';
-    b.textContent=label+(used?' (used)':'');if(!used)b.onclick=fn;return b;
-  }
-  actDiv.appendChild(mkBtn('Enchant $2',shopPool.bagEnchantUsed,function(){_bagEnchantFlow(t,sel,actDiv);}));
-  actDiv.appendChild(mkBtn('Destroy $2',shopPool.bagDestroyUsed,function(){
-    if(!spendGold(2))return;
-    transformTile(t.id,{destroy:true});shopPool.bagDestroyUsed=true;shopPool.bagDisplay=null;
-    renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
-    toast((t.isBlank?'Blank':t.letter)+' destroyed!');closeShopBagUI();renderShop();
-  }));
-  actDiv.appendChild(mkBtn('Duplicate $2',shopPool.bagDupUsed,function(){
-    if(!spendGold(2))return;
-    addTileToBag({letter:t.letter,isBlank:t.isBlank,variant:t.variant});S.bag=shuffle(S.bag);shopPool.bagDupUsed=true;shopPool.bagDisplay=null;
-    renderHUD();document.getElementById('bag-count').textContent=S.bag.length;
-    toast((t.isBlank?'Blank':t.letter)+' duplicated!');closeShopBagUI();renderShop();
-  }));
-}
-
-function _bagEnchantFlow(t,sel,actDiv){
-  actDiv.innerHTML='';
-  var variants=[{v:'gold',label:'Gold',desc:'+$1 when scored',col:'#f0c060'},{v:'blue',label:'Blue',desc:'Drawn from the bag first',col:'#60b8ff'},{v:'red',label:'Red',desc:'Triggers twice',col:'#ff8080'}];
-  variants.forEach(function(vt){
-    if(t.variant===vt.v)return;
-    var b=document.createElement('button');
-    b.style.cssText='background:#1a1a3a;border:1px solid '+vt.col+';color:'+vt.col+';font-family:\'Jersey 10\',Georgia;font-size:28px;cursor:pointer;padding:8px 16px;border-radius:4px';
-    b.textContent=vt.label+' $2';
-    b.onclick=function(){
-      if(!spendGold(2))return;
-      transformTile(t.id,{variant:vt.v});
-      shopPool.bagEnchantUsed=true;shopPool.bagDisplay=null;
-      renderHUD();toast(vt.label+' '+t.letter+' enchanted!');closeShopBagUI();renderShop();
-    };
-    actDiv.appendChild(b);
-  });
-  var cancel=document.createElement('button');
-  cancel.style.cssText='background:#2a2a4a;border:1px solid #5a5a8a;color:#a0a0c0;font-family:\'Jersey 10\',Georgia;font-size:28px;cursor:pointer;padding:8px 16px;border-radius:4px';
-  cancel.textContent='Cancel';cancel.onclick=function(){_renderBagActions(sel,actDiv);};
-  actDiv.appendChild(cancel);
 }
 
 function closeShopBagUI(){
   var ovr=document.getElementById('shop-bag-overlay');if(!ovr||ovr.dataset.closing)return;
   delete ovr.dataset.opening;ovr.dataset.closing='1';
+  var _bst=document.getElementById('_bag-expand-stack');if(_bst&&_bst.parentNode)_bst.parentNode.removeChild(_bst);
+  var _btd=document.getElementById('sbovr-tiles');if(_btd)delete _btd.dataset.expandedLetter;
   _fadeBridge('#0f2018',350);
   ovr.style.display='none';
   _bagTransitionClose('shop-bag-sprite',function(){delete ovr.dataset.closing;});
@@ -1227,7 +1166,7 @@ function buyPack(i){
     var contents=wrandN(SQ.map(function(d){return d.id;}),{common:4,uncommon:2,rare:1},3);
     openPackReveal('Prize Pack',contents);
   } else if(pack.type==='tile'){
-    var packLetters=Object.keys(DIST);var varTypes=['gold','blue','red'];var added=[];
+    var packLetters=Object.keys(DIST);var varTypes=['gold','blue','red','jade','purple'];var added=[];
     for(var ti=0;ti<5;ti++){
       var l=packLetters[Math.floor(_rng()*packLetters.length)];
       var v=_rng()<0.25?varTypes[Math.floor(_rng()*varTypes.length)]:null;

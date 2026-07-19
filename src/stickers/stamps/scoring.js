@@ -276,10 +276,12 @@ SQ.push({id:'the_player',name:'The Player',desc:'Each best play permanently adds
 // ── CARTOGRAPHER ──────────────────────────────────────────────────────────────
 // type: stamp · rarity: rare · cost: $8
 // onPerTile: each newly-played corner tile pushes a tile-local letter event
-// (adds 0 score) carrying floatStampId + scaleField, deduped by square so a corner
-// tile in two words / on retrigger grows once. scoring.js bumps S.cartographerMult
-// +0.5 and bounces the stamp in sync with that tile's bink. onPostWord applies the
-// CURRENT (pre-play) mult, so this play's corners feed the next play.
+// (adds 0 score) carrying floatStampId + scaleField, deduped per stamp copy and
+// square (ctx._stampIdx, set by the engine's per-tile stamp loop) so a corner
+// tile in two words / on retrigger grows once per copy — two Cartographers each
+// register the corner. scoring.js bumps S.cartographerMult +0.5 and bounces the
+// stamp in sync with that tile's bink. onPostWord applies the CURRENT (pre-play)
+// mult, so this play's corners feed the next play.
 SQ.push({id:'cartographer',name:'Cartographer',
   desc:'Each tile you play in a corner of the board permanently adds ×0.5 mult. Starts at ×1.',
   rarity:'rare',cost:8,bg:'#0a1a14',fg:'#60e0a0',icon:'CG',type:'stamp',
@@ -288,7 +290,8 @@ SQ.push({id:'cartographer',name:'Cartographer',
   onPerTile:function(tile,ctx,ts){
     if(tile.isNew&&(tile.idx===0||tile.idx===B-1||tile.idx===(B-1)*B||tile.idx===B*B-1)){
       if(!ctx._cartoScored)ctx._cartoScored={};
-      if(!ctx._cartoScored[tile.idx]){ctx._cartoScored[tile.idx]=1;ctx.events.push({type:'letter',sqIdx:tile.idx,lettersAfter:ts,isTileLocal:true,floatStampId:'cartographer',scaleField:'cartographerMult',scaleDelta:0.5});}
+      var _ck=(ctx._stampIdx!=null?ctx._stampIdx:'')+':'+tile.idx;
+      if(!ctx._cartoScored[_ck]){ctx._cartoScored[_ck]=1;ctx.events.push({type:'letter',sqIdx:tile.idx,lettersAfter:ts,isTileLocal:true,floatStampId:'cartographer',scaleField:'cartographerMult',scaleDelta:0.5});}
     }
     return ts;
   },

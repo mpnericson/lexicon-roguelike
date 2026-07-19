@@ -19,7 +19,7 @@ function saveGame() {
       hand: (S.hand || []).map(function(t) {
         if (!t) return null;
         return {letter:t.letter,isBlank:t.isBlank,id:t.id,blankAs:t.blankAs||null,
-                sel:false,onBoard:false,variant:t.variant||null,_alchSc:t._alchSc||0};
+                sel:false,onBoard:false,variant:t.variant||null,material:t.material||null,_alchSc:t._alchSc||0};
       }),
       board: S.board,
       bt: (S.bt || []).map(function(bt) {
@@ -50,7 +50,9 @@ function saveGame() {
       gamblerSpins: S.gamblerSpins||0,
       stamps: (S.stamps||[]).map(function(ts){return{id:ts.id};}),
       stickerInventory: (S.stickerInventory||[]).map(function(p){return{id:p.id};}),
-      pool: (S.pool||[]).map(function(t){return{letter:t.letter,isBlank:!!t.isBlank,id:t.id,variant:t.variant||null};})
+      consumables: (S.consumables||[]).map(function(c){return{id:c.id};}),
+      lastTicket: S.lastTicket||null,
+      pool: (S.pool||[]).map(function(t){return{letter:t.letter,isBlank:!!t.isBlank,id:t.id,variant:t.variant||null,material:t.material||null};})
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
   } catch(e) {}
@@ -116,6 +118,8 @@ function loadGame() {
       ouroborosBonus: d.ouroborosBonus||0,
       gamblerSpins: d.gamblerSpins||0,
       stamps: ((d.stamps||d.tileStickers)||[]).map(function(ts){return(ts&&ts.id&&sqd(ts.id))?{id:ts.id}:null;}).filter(Boolean), // d.tileStickers: pre-rename saves; sqd check drops stamps removed from the game (the_purist)
+      consumables: (d.consumables||[]).map(function(c){return(c&&c.id&&tkd(c.id))?{id:c.id}:null;}).filter(Boolean),
+      lastTicket: (d.lastTicket&&tkd(d.lastTicket))?d.lastTicket:null,
       devMode: false,
       pool: d.pool || (function(){
         var pm={};

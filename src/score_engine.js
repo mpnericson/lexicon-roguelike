@@ -100,6 +100,7 @@ function _engCopy(cache, tiles, idx, jengaTops) {
     letter: tileDisplayLetter(t), isNew: !!t.isNew, isBlank: !!t.isBlank,
     sc: t.isBlank ? (t._alchSc || 0) : (LS[t.letter] || 0),
     variant: t.variant || null,
+    material: t.material || null,
     jengaTop: !!(jengaTops && jengaTops.has(idx))
   };
   cache[idx] = c;
@@ -212,7 +213,8 @@ function _engScoreBuried(tile, ctx, jengaUnder, axis) {
   var u = jengaUnder[tile.idx];
   _engScoreTile({
     idx: tile.idx, row: tile.row, col: tile.col, letter: u.letter,
-    isBlank: u.isBlank, sc: u.sc, variant: u.variant || null, isNew: false,
+    isBlank: u.isBlank, sc: u.sc, variant: u.variant || null,
+    material: u.material || null, isNew: false,
     jengaUnder: true, jengaAxis: axis
   }, ctx);
 }
@@ -231,8 +233,9 @@ function _engAuraHits(aura, sqIdx) {
 
 // retrigFloat (optional): stamp id to attach to this pass's base-letter event
 // so the stamp bounces on the tile's re-score bounce (Khoomiich), not a beat
-// earlier on the retrigger announce event.
-function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
+// earlier on the retrigger announce event. retrigInst is that stamp's index
+// in ctx.stamps, so the right copy bounces when the stamp is owned twice.
+function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat, retrigInst) {
   var sqIdx = tile.idx;
   var sid = ctx.boardStickers[sqIdx];
   var def = sid ? sqd(sid) : null;
@@ -250,8 +253,19 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
   ts += baseSc;
   var _baseEv = {type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,
     label:tile.letter+(tile.isBlank?' (blank)':'')+(_letterUsed?' (used-0)':'')};
-  if (retrigFloat) _baseEv.floatStampId = retrigFloat;
+  if (retrigFloat) { _baseEv.floatStampId = retrigFloat; if (retrigInst != null) _baseEv._stampInst = retrigInst; }
   ctx.events.push(_baseEv);
+
+  // 2. Additive — colour bonuses (game mechanics, fire every pass like base
+  // letters, so retriggers re-fire them)
+  if (tile.variant === 'blue') {
+    ts += 10;
+    ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Blue +10'});
+  }
+  if (tile.variant === 'red') {
+    ctx.plusMults.push(4);
+    ctx.events.push({type:'plus-mult',delta:4,sqIdx:sqIdx,label:'Red +4 mult'});
+  }
 
   // 2. Additive — board sticker on this square (cooldown-gated)
   if (sqActive && def && def.onTileAdd && !ctx.stickerLocked && !ju) {
@@ -265,12 +279,23 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
     var aau = ctx.auras[aai];
     if (aau.onTileAdd && _engAuraHits(aau, sqIdx)) ts = aau.onTileAdd(tile, ctx, ts, sqIdx);
   }
-  // 2. Additive — stamps, left → right
+  // 2. Additive — stamps, left → right. Each copy of a stamp is its own
+  // trigger: events pushed during a hook call are tagged with the instance
+  // index (_stampInst), so the animation gives every copy its own beat and
+  // bounces the right bar face (two copies must not share a float key).
+  // ctx._stampIdx exposes the firing instance's index to the hook itself
+  // (Cartographer keys its per-square dedupe on it).
   if (!ctx.stickerLocked) {
     for (var hi = 0; hi < ctx.stamps.length; hi++) {
       var hd = sqd(ctx.stamps[hi].id);
-      if (hd && hd.onPerTile) ts = hd.onPerTile(tile, ctx, ts, ctx.stamps[hi]);
+      if (!hd || !hd.onPerTile) continue;
+      var _ptEv = ctx.events.length;
+      ctx._stampIdx = hi;
+      ts = hd.onPerTile(tile, ctx, ts, ctx.stamps[hi]);
+      for (; _ptEv < ctx.events.length; _ptEv++)
+        if (ctx.events[_ptEv]._stampInst == null) ctx.events[_ptEv]._stampInst = hi;
     }
+    ctx._stampIdx = null;
   }
 
   // 3. Multiplicative — board sticker on this square (DL/TL/DW/TW). Runs on
@@ -285,19 +310,28 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
     var amu = ctx.auras[ami];
     if (amu.onTileMult && _engAuraHits(amu, sqIdx)) ts = amu.onTileMult(tile, ctx, ts, sqIdx);
   }
+  // 3. Multiplicative — purple: ×2 word mult every pass; each scored purple
+  // square is recorded so the commit path can roll its 1-in-4 vanish (the
+  // engine stays pure — no RNG here, preview/solver just see the ×2).
+  if (tile.variant === 'purple') {
+    ctx.xmults.push(2);
+    ctx.events.push({type:'x-mult',factor:2,sqIdx:sqIdx,label:'Purple ×2'});
+    if (!ju) ctx.purpleScored.add(sqIdx);
+  }
 
   // 4. Retrigger — continues from current ts, does NOT reset to 0.
-  // Red tile rule: "if this tile triggers for any reason, it triggers again"
-  // — the base pass and every retrigger source's pass is each followed by a
-  // red re-pass, so a red tile runs (1 + retrigger passes) × 2 total.
+  // Metallic tile rule: "if this tile triggers for any reason, it triggers
+  // again" — the base pass and every retrigger source's pass is each followed
+  // by a metallic re-pass, so a metallic tile runs (1 + retrigger passes) × 2
+  // total. (Formerly the red rule; red is now +4 mult.)
   if (!skipRetrigger) {
-    var _isRed = tile.variant === 'red';
+    var _isMet = tile.material === 'metallic';
     var _redouble = function () {
-      if (!_isRed) return;
-      ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:'Red'});
+      if (!_isMet) return;
+      ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:'Metallic'});
       ts = _engTilePasses(tile, ctx, ts, true);
     };
-    _redouble(); // red doubles the base pass
+    _redouble(); // metallic doubles the base pass
     if (sqActive && def && def.retrigger && !ctx.stickerLocked && !ju) {
       if (!ctx.preview) ctx.activatedSqs.add(sqIdx);
       ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:def.name,floatSqIdx:sqIdx});
@@ -315,7 +349,7 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
           // Announce event binks the tile only; the stamp bounce rides the
           // re-score pass's base-letter event so it lands with the score bump.
           ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:_srd.name});
-          ts = _engTilePasses(tile, ctx, ts, true, ctx.stamps[_sri].id);
+          ts = _engTilePasses(tile, ctx, ts, true, ctx.stamps[_sri].id, _sri);
           _redouble();
         }
       }
@@ -338,8 +372,8 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat) {
 // onPostWord, which keeps stamp-bar order.
 function _sweepTrigger(ctx, t, i, fire) {
   fire(t, i);
-  if (t.variant === 'red') {
-    ctx.events.push({type:'retrigger',sqIdx:i,label:'Red'});
+  if (t.material === 'metallic') {
+    ctx.events.push({type:'retrigger',sqIdx:i,label:'Metallic'});
     fire(t, i);
   }
 }
@@ -433,6 +467,7 @@ function runScoreEngine(input) {
   var ctx = {
     letters: 0, plusMults: [], xmults: [], tgold: 0, events: [],
     activatedSqs: new Set(), scoredTiles: [], tiles: tiles,
+    purpleScored: new Set(),
     mainWord: main.word, newTileCount: nt.length, crossWordCount: crossWords.length,
     state: state,
     stamps: input.stamps || [], placed: input.placed || [],
@@ -505,7 +540,11 @@ function runScoreEngine(input) {
     if (!ctx.stickerLocked) {
       for (var cbi = 0; cbi < ctx.stamps.length; cbi++) {
         var cbd = sqd(ctx.stamps[cbi].id);
-        if (cbd && cbd.onCrossword) cbd.onCrossword(ctx, ctx.stamps[cbi]);
+        if (!cbd || !cbd.onCrossword) continue;
+        var _cwEv = ctx.events.length;
+        cbd.onCrossword(ctx, ctx.stamps[cbi]);
+        for (; _cwEv < ctx.events.length; _cwEv++)
+          if (ctx.events[_cwEv]._stampInst == null) ctx.events[_cwEv]._stampInst = cbi;
       }
     }
     // Jenga: the buried tile scores inside the cross word; its top slides along
@@ -523,10 +562,16 @@ function runScoreEngine(input) {
     ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Bingo +50',bingo:true});
   }
   // 2. Gold tiles — every gold tile on the board pays $1 (game mechanic,
-  // like bingo: not gated by stickerLocked). Red gold tiles pay twice.
+  // like bingo: not gated by stickerLocked). Metallic gold tiles pay twice.
   boardSweep(ctx, function(t){ return t.variant === 'gold'; }, function(t, gi){
     ctx.tgold++;
     ctx.events.push({type:'gold',delta:1,sqIdx:gi,label:'Gold tile +$1'});
+  });
+  // 2b. Jade tiles — every jade tile on the board gives ×1.5 mult, every play
+  // (same shape as a Y under Yuan; metallic jade fires twice per sweep).
+  boardSweep(ctx, function(t){ return t.variant === 'jade'; }, function(t, ji){
+    ctx.xmults.push(1.5);
+    ctx.events.push({type:'x-mult',factor:1.5,sqIdx:ji,label:'Jade ×1.5'});
   });
   if (!ctx.stickerLocked) {
     // 3. Board stickers — additive effects
@@ -539,19 +584,25 @@ function runScoreEngine(input) {
       var pmd = sqd(ctx.placed[pmi].id);
       if (pmd && pmd.onPostWordMult) pmd.onPostWordMult(main.word, main.tiles, ctx, ctx.placed[pmi]);
     }
-    // 5. Stamps — left → right, each fires all its effects in turn
+    // 5. Stamps — left → right, each fires all its effects in turn. Every
+    // event a hook pushes is tagged with the instance index (_stampInst) so
+    // two copies of the same stamp keep separate animation beats and each
+    // bounces its own bar face, in bar order.
     for (var hwi = 0; hwi < ctx.stamps.length; hwi++) {
       var hwd = sqd(ctx.stamps[hwi].id);
       if (hwd && hwd.onPostWord) {
         var _evStart = ctx.events.length;
+        ctx._stampIdx = hwi;
         hwd.onPostWord(main.word, main.tiles, ctx, ctx.stamps[hwi]);
         for (var evi = _evStart; evi < ctx.events.length; evi++) {
           var tev = ctx.events[evi];
           if ((tev.type==='letter'||tev.type==='plus-mult'||tev.type==='x-mult'||tev.type==='gold')
             && tev.floatSqIdx == null && tev.floatStampId == null) tev.floatStampId = ctx.stamps[hwi].id;
+          if (tev._stampInst == null) tev._stampInst = hwi;
         }
       }
     }
+    ctx._stampIdx = null;
   }
   // 6. Bounty reward — applied last so it multiplies everything. Count is the
   // number of bounty scrolls completed this play (each applies its own reward).
@@ -584,6 +635,7 @@ function runScoreEngine(input) {
     allWords: allWords, crossWordCount: crossWords.length,
     springTraps: ctx.springTraps || [],
     slotTransforms: ctx.slotTransforms || [],
+    purpleScored: Array.from(ctx.purpleScored),
     activatedSqs: ctx.activatedSqs
   };
 }

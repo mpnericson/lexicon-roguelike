@@ -124,7 +124,7 @@ function _makeBountyScroll(bounty){
   return div;
 }
 
-function renderAll(){renderHUD();renderBoard();renderHand();renderStampBar();document.getElementById('bag-count').textContent=S.bag.length;_tooltipRefreshIfOpen();}
+function renderAll(){renderHUD();renderBoard();renderHand();renderStampBar();if(typeof renderConsumables==='function')renderConsumables();document.getElementById('bag-count').textContent=S.bag.length;_tooltipRefreshIfOpen();}
 
 function renderHUD(){
   var dhb=document.getElementById('dev-hotbar');if(dhb)dhb.style.display=S.devMode?'flex':'none';
@@ -139,6 +139,10 @@ function renderHUD(){
   if(S.devMode&&typeof _devTab!=='undefined'&&_devTab==='stickers'&&dp&&dp.style.display!=='none')devRenderPalette();
   var solb=document.getElementById('solver-btn');if(solb)solb.style.display=S.devMode?'':'none';
   document.getElementById('hud-gold').textContent=S.devMode?'∞ DEV':'$'+S.gold;
+  // During shop phase the visible gold counter is the shop's, not the left panel's —
+  // keep both in sync so mid-shop gold changes (stamp sells, slot payouts) show immediately.
+  var _shg=document.getElementById('shop-gold-display');if(_shg)_shg.textContent='$'+S.gold;
+  var _shs=document.getElementById('shop-sub');if(_shs)_shs.textContent='Gold: $'+S.gold;
   document.getElementById('hud-plays').textContent=S.plays;
   document.getElementById('hud-disc').textContent=S.disc;
   var b=cb();
@@ -204,6 +208,7 @@ function renderBoard(){
         var _buFace=document.createElement('div');
         _buFace.className='tile board-tile'+(_bu.variant?' var-'+_bu.variant:'')+' tile-spr';
         _buFace.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+_buSpr;
+        applyTileLayers(_buFace,_bu,sz,_buSpr);
         sq.appendChild(_buFace);
       }
       var _stkCls=(!bt.isNew&&bt._stackLevel>0)?(bt._stackLevel>=2?' jenga-stacked-2':' jenga-stacked'):'';
@@ -211,6 +216,7 @@ function renderBoard(){
       var face=document.createElement('div');face.className='tile board-tile'+(bt.isNew?' is-new':'')+_stkCls+_topCls+(bt.variant?' var-'+bt.variant:'')+' tile-spr';
       face.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+spr;
       face.dataset.spr=spr;face.dataset.tsz=sz;
+      applyTileLayers(face,bt,sz,spr);
       if(bt.isNew){if(_fm)attachFocusBoardDrag(face,i,false);else attachBoardTileDrag(face,i,sz);}
       // Jenga: click on committed tile to stack a selected hand tile
       if(!bt.isNew&&!bt._stackLevel&&!(S.btTop&&S.btTop[i])&&S.phase==='play'&&typeof hasJenga==='function'&&hasJenga()){
@@ -283,6 +289,7 @@ function renderBoard(){
       topFace.className='tile board-tile is-new jenga-top'+(btt.variant?' var-'+btt.variant:'')+' tile-spr '+(_btopLvl>=2?'jenga-stacked-2':'jenga-stacked');
       topFace.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;'+sprT;
       topFace.dataset.spr=sprT;topFace.dataset.tsz=sz;
+      applyTileLayers(topFace,btt,sz,sprT);
       if(btt.isNew){if(_fm)attachFocusBoardDrag(topFace,i,true);else attachBoardTileDrag(topFace,i,sz,true);}
       sq.appendChild(topFace);
     }
@@ -482,8 +489,7 @@ function renderHand(){
     face.style.cssText='width:68px;height:68px;left:'+(HP.x[vi]-34-HP.left)+'px;top:0;'+spr;
     face.dataset.spr=spr;
     face.dataset.tileId=t.id;
-    var isDragging=activeDrag&&activeDrag.src==='hand'&&activeDrag.vi===vi;
-    if(isDragging)face.style.opacity='0';
+    applyTileLayers(face,t,68,spr);
     area.appendChild(face);
     attachHandTileDrag(face,oi,vi,t,vis);
   }
@@ -494,10 +500,10 @@ function isSqStaged(idx){return S.sqStaged&&S.sqStaged.hasOwnProperty(idx);}
 function renderSqHand(){
   hpBounds();
   var area=document.getElementById('hand-area');area.innerHTML='';
-  var vis=S.sqHand.filter(function(sq){return !sq.placed;});
-  var n=vis.length;
-  HP.tiles=vis.slice();
-  if(HP.x.length!==n){HP.x=hpRest(n);HP.vx=Array(n).fill(0);}
+  // A stale _dragging flag with no active drag (e.g. restored from a save) must not
+  // hide the item forever, hence the activeDrag guard.
+  var vis=S.sqHand.filter(function(sq){return !sq.placed&&!(sq._dragging&&activeDrag);});
+  hpRebuild(vis);
   for(var vi=0;vi<vis.length;vi++){
     var item=vis[vi];var d=sqd(item.id);if(!d)continue;
     var face=document.createElement('div');
@@ -520,25 +526,36 @@ function renderSqHand(){
 
 function _renderStampBarInto(bar,ph,src){
   bar.innerHTML='';
-  var stamps=S.stamps||[];
+  // A dragging stamp lives on document.body (detached drag) — exclude it from the
+  // bar. Stale _dragging with no active drag (e.g. from a save) must not hide it.
+  var stamps=(S.stamps||[]).filter(function(t){return !(t._dragging&&activeDrag);});
   ph.rebuild(stamps);
   for(var vi=0;vi<stamps.length;vi++){
     var ts=stamps[vi];var d=sqd(ts.id);if(!d)continue;
     var face=document.createElement('div');
-    face.className='stamp-tile';
+    face.className='stamp-tile'+(ts.sel?' selected':'');
     face.setAttribute('data-stamp-id',ts.id);
+    face.setAttribute('data-stamp-vi',S.stamps.indexOf(ts)); // index into S.stamps — lets _bounceStamp target one copy
     var tw=ph.TILE_W;
     var topPx=src==='shop-stamp'?2:8;
     var baseCss='position:absolute;width:'+tw+'px;height:'+tw+'px;top:'+topPx+'px;left:'+(ph.x[vi]-tw/2-ph.left)+'px;';
     if(d.iconPng){
-      face.style.cssText=baseCss+'border-radius:8px;overflow:hidden;';
-      face.innerHTML='<img src="'+d.iconPng+'" style="width:'+tw+'px;height:'+tw+'px;image-rendering:pixelated;display:block;pointer-events:none">';
+      // Rounded clip on an inner wrap, not the face — the face must be free to host
+      // the sell button above itself when selected.
+      face.style.cssText=baseCss;
+      face.innerHTML='<div style="width:'+tw+'px;height:'+tw+'px;border-radius:8px;overflow:hidden"><img src="'+d.iconPng+'" style="width:'+tw+'px;height:'+tw+'px;image-rendering:pixelated;display:block;pointer-events:none"></div>';
     } else {
       face.style.cssText=baseCss+'background:#12122a;border:2px solid '+d.fg+';border-radius:8px;color:'+d.fg+';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;';
       face.innerHTML=sqIconHTML(d,Math.round(tw*28/68))+'<span style="font-size:'+Math.round(tw*10/68)+'px;text-align:center;pointer-events:none;overflow:hidden;width:'+Math.round(tw*64/68)+'px;white-space:nowrap;text-overflow:ellipsis">'+d.name+'</span>';
     }
-    var isDragging=activeDrag&&activeDrag.src===src&&activeDrag.vi===vi;
-    if(isDragging)face.style.opacity='0';
+    if(ts.sel){
+      var sb=document.createElement('div');
+      sb.className='stamp-sell-btn';
+      sb.textContent='Sell $'+Math.floor(d.cost/2);
+      sb.addEventListener('pointerdown',function(e){e.stopPropagation();e.preventDefault();});
+      sb.addEventListener('click',function(tsRef){return function(e){e.stopPropagation();sellStamp(S.stamps.indexOf(tsRef));};}(ts));
+      face.appendChild(sb);
+    }
     if(ts.id==='easy_mode'){face.addEventListener('mouseenter',_easyHintShow);face.addEventListener('mouseleave',_easyHintHide);}
     face.addEventListener('mouseenter',function(tsRef){return function(){_stampTooltipShow(tsRef);};}(ts));
     face.addEventListener('mouseleave',_stampTooltipHide);
@@ -604,29 +621,15 @@ function _renderPreviewStampBar(container){
   }
 }
 
-function _openStampModal(idx,id){
-  var d=sqd(id);if(!d)return;
-  var iconEl=document.getElementById('sq-icon');
-  if(iconEl)iconEl.innerHTML=d.iconPng?'<img src="'+d.iconPng+'" style="max-width:80px;max-height:80px;image-rendering:pixelated">':sqIconHTML(d,40);
-  var nameEl=document.getElementById('sq-name');if(nameEl)nameEl.textContent=d.name;
-  var rc=d.rarity==='legendary'?'rl':d.rarity==='rare'?'rr':d.rarity==='uncommon'?'ru':'rc';
-  var rarEl=document.getElementById('sq-rarity');if(rarEl)rarEl.innerHTML='<span class="scr '+rc+'">'+d.rarity+'</span>';
-  var descEl=document.getElementById('sq-desc');if(descEl)descEl.innerHTML=_sqDescHTML(id,null);
-  var posEl=document.getElementById('sq-pos');if(posEl)posEl.textContent='Stamp slot '+(idx+1);
-  var sell=Math.floor(d.cost/2);
-  var sellBtn=document.getElementById('sq-sell-btn');
-  if(sellBtn){
-    sellBtn.textContent='Sell $'+sell;
-    sellBtn.onclick=(function(i,sv,dn,dd){return function(){
-      S.stamps.splice(i,1);
-      S.gold+=sv;
-      if(currentConstraint()==='c_stickers')S.stickersSoldThisBoard=(S.stickersSoldThisBoard||0)+1;
-      document.getElementById('sq-modal').style.display='none';
-      renderStampBar();renderHUD();
-      toast(dn+' sold for $'+sv+'!');
-      if(dd&&dd.onSell)dd.onSell();
-      _rankObserve(true); // stamp scoring changed under the same rack
-    };})(idx,sell,d.name,d);
-  }
-  document.getElementById('sq-modal').style.display='flex';
+function sellStamp(idx){
+  var ts=S.stamps[idx];if(!ts)return;
+  var d=sqd(ts.id);if(!d)return;
+  var sv=Math.floor(d.cost/2);
+  S.stamps.splice(idx,1);
+  S.gold+=sv;
+  if(currentConstraint()==='c_stickers')S.stickersSoldThisBoard=(S.stickersSoldThisBoard||0)+1;
+  renderStampBar();renderHUD();
+  toast(d.name+' sold for $'+sv+'!');
+  if(d.onSell)d.onSell();
+  _rankObserve(true); // stamp scoring changed under the same rack
 }

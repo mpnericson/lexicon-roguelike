@@ -419,6 +419,7 @@ function animSpringTrap(fromRect, tileData, onDone) {
   flyEl.className = 'tile tile-spr';
   flyEl.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;'
     + 'width:' + sz + 'px;height:' + sz + 'px;transform-origin:center center;' + spr;
+  applyTileLayers(flyEl, tileData, sz, spr);
   layer.appendChild(flyEl);
 
   // Bag opens immediately and holds at frame 5, waiting for the tile

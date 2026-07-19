@@ -280,7 +280,8 @@ function _solverScoreMove(sv, mv, hm) {
       if (!jengaUnder) jengaUnder = {};
       var _bu = _cb._buried;
       jengaUnder[_ci] = { letter: tileDisplayLetter(_bu), isBlank: !!_bu.isBlank,
-        sc: _bu.isBlank ? (_bu._alchSc || 0) : (LS[_bu.letter] || 0), variant: _bu.variant || null };
+        sc: _bu.isBlank ? (_bu._alchSc || 0) : (LS[_bu.letter] || 0), variant: _bu.variant || null,
+        material: _bu.material || null };
     }
   }
   for (var i = 0; i < mv.placements.length; i++) {
@@ -300,7 +301,8 @@ function _solverScoreMove(sv, mv, hm) {
       if (!jengaUnder) jengaUnder = {};
       jengaTops.add(p.idx);
       jengaUnder[p.idx] = { letter: tileDisplayLetter(un), isBlank: !!un.isBlank,
-        sc: un.isBlank ? (un._alchSc || 0) : (LS[un.letter] || 0), variant: un.variant || null };
+        sc: un.isBlank ? (un._alchSc || 0) : (LS[un.letter] || 0), variant: un.variant || null,
+        material: un.material || null };
     }
     overlay[p.idx] = {
       letter: p.letter, isNew: true, isBlank: p.isBlank,
@@ -489,7 +491,7 @@ function _rankObserve(force) {
   var parts = [];
   for (var i = 0; i < pos.hand.length; i++) {
     var t = pos.hand[i];
-    parts.push(t.id + '|' + (t.isBlank ? '_' : t.letter) + '|' + (t.variant || ''));
+    parts.push(t.id + '|' + (t.isBlank ? '_' : t.letter) + '|' + (t.variant || '') + '|' + (t.material || ''));
   }
   parts.sort();
   var sig = parts.join(',');

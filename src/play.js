@@ -142,20 +142,33 @@ async function playWord(){
     }
     toast('🎰 Jackpot! Every tile in the word changed colour!');
   }
+  // Super glue coverage — collected before the spring-trap block so glue can
+  // protect traps too (glue keeps adjacent perishable stickers on the board;
+  // their effects still fire).
+  var _glueSquares=[];
+  for(var _sgi=0;_sgi<S.placed.length;_sgi++){if(S.placed[_sgi].id==='super_glue'&&S.placed[_sgi].sqIdx!=null)_glueSquares.push(S.placed[_sgi].sqIdx);}
+  function _gluedSq(idx){for(var _g=0;_g<_glueSquares.length;_g++){if(adjSq(idx,_glueSquares[_g]))return true;}return false;}
   // Spring trap: eject tile(s) into bag before commit
   if(res&&res.springTraps&&res.springTraps.length){
     for(var _sti=0;_sti<res.springTraps.length;_sti++){
       var _stIdx=res.springTraps[_sti];
       if(!S.bt[_stIdx]||S.board[_stIdx]!=='spring_trap')continue;
       var _stTile=S.bt[_stIdx];
-      var _stRoll=_rng();var _stVariant=_stRoll<0.25?'gold':_stRoll<0.5?'blue':_stRoll<0.75?'red':(_stTile.variant||null);
+      var _stRoll=_rng();var _stVariant=_stRoll<0.15?'gold':_stRoll<0.3?'blue':_stRoll<0.45?'red':_stRoll<0.6?'jade':_stRoll<0.75?'purple':(_stTile.variant||null);
       var _stOrigId=_stTile.id||null;
       if(_stOrigId)transformTile(_stOrigId,{destroy:true});
       var _stBagTile=addTileToBag({letter:_stTile.isBlank?'_':_stTile.letter,isBlank:!!_stTile.isBlank,variant:_stVariant});
       var _stCell=document.querySelector('[data-sq-idx="'+_stIdx+'"]');
       var _stRect=_stCell?_stCell.getBoundingClientRect():null;
-      S.bt[_stIdx]=null;S.board[_stIdx]=null;
-      for(var _spi=S.placed.length-1;_spi>=0;_spi--){if(S.placed[_spi].id==='spring_trap'&&S.placed[_spi].sqIdx===_stIdx){S.placed.splice(_spi,1);break;}}
+      S.bt[_stIdx]=null;
+      // Adjacent super glue keeps the trap on the board (the tile still ejects,
+      // so a glued trap can fire again on the next tile placed here). The
+      // square's cooldown is lifted too — the square is empty again, and the
+      // surviving trap must catch the next tile.
+      if(!_gluedSq(_stIdx)){
+        S.board[_stIdx]=null;
+        for(var _spi=S.placed.length-1;_spi>=0;_spi--){if(S.placed[_spi].id==='spring_trap'&&S.placed[_spi].sqIdx===_stIdx){S.placed.splice(_spi,1);break;}}
+      }else if(S.localCooldowns)S.localCooldowns.delete(_stIdx);
 
       var _stVLabel=_stVariant?(' as '+_stVariant):'';
       toast('Spring Trap! '+(_stBagTile.isBlank?'?':_stBagTile.letter)+' returned to bag'+_stVLabel+'.');
@@ -166,14 +179,12 @@ async function playWord(){
   }
   // Consume perishable board stickers where new tiles landed
   var _perishableChanged=false;
-  var _glueSquares=[];
-  for(var _sgi=0;_sgi<S.placed.length;_sgi++){if(S.placed[_sgi].id==='super_glue'&&S.placed[_sgi].sqIdx!=null)_glueSquares.push(S.placed[_sgi].sqIdx);}
   var _wamConsumed=[];
   var _virusConsumed=[];
   for(var _pi=0;_pi<nt.length;_pi++){
     var _pIdx=nt[_pi].idx;var _pSid=S.board[_pIdx];if(!_pSid)continue;
     var _pDef=sqd(_pSid);if(!_pDef||!_pDef.perishable)continue;
-    if(_pSid!=='super_glue'){var _glued=false;for(var _sgi2=0;_sgi2<_glueSquares.length;_sgi2++){if(adjSq(_pIdx,_glueSquares[_sgi2])){_glued=true;break;}}if(_glued)continue;}
+    if(_pSid!=='super_glue'&&_gluedSq(_pIdx))continue;
     if(_pSid==='whack_a_mole')_wamConsumed.push(_pIdx);
     if(_pSid==='virus')_virusConsumed.push(_pIdx);
     S.board[_pIdx]=null;
@@ -232,11 +243,43 @@ async function playWord(){
   S.wtr=(S.wtr||0)+1;S.discPressure=0;
   if(_con==='c_letters'){var _mts=main.tiles;for(var _li2=0;_li2<_mts.length;_li2++){if(!_mts[_li2].isBlank&&_mts[_li2].letter)(S.usedLetters=S.usedLetters||new Set()).add(_mts[_li2].letter);}}
   S.lastWordLen=main.word.length;
+  // Purple tiles: the ×2 already scored; every scored purple now rolls its
+  // 1-in-4 vanish (rolled here at commit with _rng, never in preview/solver).
+  var _purpleGone={};
+  if(res&&res.purpleScored&&res.purpleScored.length){
+    var _ppN=0;
+    for(var _ppi=0;_ppi<res.purpleScored.length;_ppi++){
+      var _ppIdx=res.purpleScored[_ppi];
+      var _ppT=(S.btTop&&S.btTop[_ppIdx])?S.btTop[_ppIdx]:S.bt[_ppIdx];
+      if(!_ppT||_ppT.variant!=='purple')continue;
+      if(_rng()<0.25){
+        _purpleGone[_ppIdx]=1;_ppN++;
+        transformTile(_ppT.id,{destroy:true});
+      }
+    }
+    if(_ppN){renderBoard();toast(_ppN>1?(_ppN+' purple tiles vanished!'):'A purple tile vanished!');}
+  }
+  // Glass tiles: after scoring, played glass returns to the hand and its
+  // square empties. Runs before the commit loops below, so a stacked glass
+  // top simply vacates and the buried tile stays put.
+  var _glassBack=0;
+  for(var _gbi=0;_gbi<nt.length;_gbi++){
+    var _gbIdx=nt[_gbi].idx;
+    if(_purpleGone[_gbIdx])continue;
+    var _gbTop=S.btTop&&S.btTop[_gbIdx]&&S.btTop[_gbIdx].isNew;
+    var _gbT=_gbTop?S.btTop[_gbIdx]:S.bt[_gbIdx];
+    if(!_gbT||_gbT.material!=='glass'||!_gbT.isNew)continue;
+    if(_gbTop)S.btTop[_gbIdx]=null;else S.bt[_gbIdx]=null;
+    setTileState(_gbT,'hand');
+    if(S.hand.indexOf(_gbT)<0)S.hand.push(_gbT);
+    _glassBack++;
+  }
+  if(_glassBack){renderBoard();renderHand();toast(_glassBack>1?(_glassBack+' glass tiles returned to hand!'):'Glass tile returned to hand!');}
   for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){setTileState(S.bt[i],'board',{boardSq:i,isNew:false});}}
   // Commit Jenga stacked tiles: btTop replaces bt at that square, but the buried
   // tile's scoring/render info is preserved on _buried so it keeps scoring in
   // future words that pass through this square (and can still be revealed).
-  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var _btt=S.btTop[i];var _bur=S.bt[i];setTileState(_btt,'board',{boardSq:i,isNew:false});_btt._stackLevel=(_bur&&_bur._stackLevel?_bur._stackLevel:0)+1;if(_bur)_btt._buried={letter:_bur.letter,isBlank:!!_bur.isBlank,blankAs:_bur.blankAs||null,variant:_bur.variant||null,_alchSc:_bur._alchSc||0};S.bt[i]=_btt;S.btTop[i]=null;}}}
+  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var _btt=S.btTop[i];var _bur=S.bt[i];setTileState(_btt,'board',{boardSq:i,isNew:false});_btt._stackLevel=(_bur&&_bur._stackLevel?_bur._stackLevel:0)+1;if(_bur)_btt._buried={letter:_bur.letter,isBlank:!!_bur.isBlank,blankAs:_bur.blankAs||null,variant:_bur.variant||null,material:_bur.material||null,_alchSc:_bur._alchSc||0};S.bt[i]=_btt;S.btTop[i]=null;}}}
   // Save positions of kept tiles before filtering
   var pwKept={};var _pwvi=0;for(var _pwki=0;_pwki<S.hand.length;_pwki++){var _pwt=S.hand[_pwki];if(_pwt){if(HP.x[_pwvi]!==undefined)pwKept[_pwt.id]=HP.x[_pwvi];_pwvi++;}}
   S.hand=S.hand.filter(function(t){return!t._done;});

@@ -81,6 +81,22 @@ function devRenderPalette() {
       + '<span class="tl" style="font-size:32px">&nbsp;</span>'
       + '<span class="ts" style="font-size:28px">0</span></div>';
     html += '</div>';
+    html += '<div style="font-size:32px;color:#606080;margin:8px 0 4px">Material &mdash; selected tiles</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:3px">'
+      + '<button class="btn btn-gray" onclick="devSetMaterial(\'metallic\')" style="padding:4px;font-size:26px">Metallic</button>'
+      + '<button class="btn btn-gray" onclick="devSetMaterial(\'glass\')" style="padding:4px;font-size:26px">Glass</button>'
+      + '<button class="btn btn-gray" onclick="devSetMaterial(\'varnished\')" style="padding:4px;font-size:26px">Varnished</button>'
+      + '<button class="btn btn-gray" onclick="devSetMaterial(null)" style="padding:4px;font-size:26px">Clear</button>'
+      + '</div>';
+    html += '<div style="font-size:32px;color:#606080;margin:8px 0 4px">Colour &mdash; selected tiles</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px">'
+      + '<button class="btn btn-gray" onclick="devSetColor(\'red\')" style="padding:4px;font-size:26px">Red</button>'
+      + '<button class="btn btn-gray" onclick="devSetColor(\'blue\')" style="padding:4px;font-size:26px">Blue</button>'
+      + '<button class="btn btn-gray" onclick="devSetColor(\'gold\')" style="padding:4px;font-size:26px">Gold</button>'
+      + '<button class="btn btn-gray" onclick="devSetColor(\'jade\')" style="padding:4px;font-size:26px">Jade</button>'
+      + '<button class="btn btn-gray" onclick="devSetColor(\'purple\')" style="padding:4px;font-size:26px">Purple</button>'
+      + '<button class="btn btn-gray" onclick="devSetColor(null)" style="padding:4px;font-size:26px">Clear</button>'
+      + '</div>';
     p.innerHTML = html;
   } else if (_devTab === 'blanks') {
     var bn = S.hand.filter(function(t){return t&&t.isBlank&&!t.onBoard;}).length;
@@ -96,6 +112,31 @@ function devRenderPalette() {
       + (n > 0 ? '<button class="btn btn-gold" onclick="enterPlacingFromDev()" style="padding:5px;font-size:30px;margin-bottom:6px">Place on Board</button>' : '')
       + '<button class="btn btn-gray" onclick="openCollection()" style="padding:5px;font-size:28px">Browse Collection</button>';
   }
+}
+
+function devSetColor(col) {
+  if (!S.devMode) return;
+  var n = 0;
+  for (var i = 0; i < S.hand.length; i++) {
+    var t = S.hand[i];
+    if (t && t.sel) { t.variant = col || null; n++; }
+  }
+  if (!n) { toast('Select tiles in your hand first'); return; }
+  if (col === 'blue' && typeof _autoRegisterBlueAnchors === 'function') _autoRegisterBlueAnchors();
+  renderHand();
+  toast(n + ' tile' + (n === 1 ? '' : 's') + (col ? ' → ' + col : ' colour cleared'));
+}
+
+function devSetMaterial(mat) {
+  if (!S.devMode) return;
+  var n = 0;
+  for (var i = 0; i < S.hand.length; i++) {
+    var t = S.hand[i];
+    if (t && t.sel) { t.material = mat || null; n++; }
+  }
+  if (!n) { toast('Select tiles in your hand first'); return; }
+  renderHand();
+  toast(n + ' tile' + (n === 1 ? '' : 's') + (mat ? ' → ' + mat : ' cleared'));
 }
 
 function devAddTile(letter) {
@@ -140,6 +181,7 @@ function renderBoardPreview(){
     if(bt){
       var spr=tileSpr(bt.isBlank?null:bt.letter,bt.isBlank,bt.variant||null,sz);
       var face=document.createElement('div');face.className='tile board-tile tile-spr'+(bt.variant?' var-'+bt.variant:'');face.style.cssText='position:absolute;inset:1px;'+spr;
+      applyTileLayers(face,bt,sz,spr);
       sq.style.position='relative';sq.appendChild(face);
     } else {var lbl=ss.lbl;if(i===center&&!sid)lbl='*';if(lbl){var s2=document.createElement('div');s2.className='sq-lbl';s2.textContent=lbl;sq.appendChild(s2);}}
     wrap.appendChild(sq);
@@ -155,12 +197,22 @@ function _refreshCollectionContent(){
     {key:'stickers',label:'Stickers',test:function(d){return !!d.bm||d.type==='board'||d.type==='local'||!!d.apply;}},
     {key:'stamps',label:'Stamps',test:function(d){return !d.bm&&d.type!=='board'&&d.type!=='local'&&!d.apply;}}
   ];
+  var rarities=[
+    {key:'common',label:'Common',color:'#b8b8b8'},
+    {key:'uncommon',label:'Uncommon',color:'#60c060'},
+    {key:'rare',label:'Rare',color:'#c060ff'},
+    {key:'legendary',label:'Legendary',color:'#ffd700'}
+  ];
   for(var ti=0;ti<types.length;ti++){
     var tf=types[ti].test;var items=SQ.filter(function(d){return tf(d);});if(!items.length)continue;
     var sec=document.createElement('div');sec.style.marginBottom='16px';
     var title=document.createElement('div');title.className='shop-sec-title';title.textContent=types[ti].label;sec.appendChild(title);
+    for(var ri=0;ri<rarities.length;ri++){
+    var rar=rarities[ri];
+    var rItems=items.filter(function(d){return (d.rarity||'common')===rar.key;});if(!rItems.length)continue;
+    var sub=document.createElement('div');sub.className='coll-rarity-title';sub.style.color=rar.color;sub.textContent=rar.label;sec.appendChild(sub);
     var row=document.createElement('div');row.className='shop-row';
-    for(var j=0;j<items.length;j++){(function(d){
+    for(var j=0;j<rItems.length;j++){(function(d){
       var isPlaced=false;for(var k=0;k<S.placed.length;k++)if(S.placed[k].id===d.id){isPlaced=true;break;}
       var isStamp=d.type==='stamp';
       var invCount=0;
@@ -195,8 +247,10 @@ function _refreshCollectionContent(){
         card.appendChild(ctrl);
       }
       row.appendChild(card);
-    })(items[j]);}
-    sec.appendChild(row);g.appendChild(sec);
+    })(rItems[j]);}
+    sec.appendChild(row);
+    }
+    g.appendChild(sec);
   }
   g.scrollTop=prevScroll;
 }

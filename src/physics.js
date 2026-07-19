@@ -15,7 +15,8 @@ function makePhysics(opts) {
     RAF: null, aL: 0, aR: 0, left: 0,
     fromX: [], toX: [], settleAt: 0, settleDur: 150,
     settleCallback: null,
-    movingCount: 0   // tiles in 'moving' state heading back to hand (phantom slots)
+    movingCount: 0,  // tiles in 'moving' state heading back to hand (phantom slots)
+    gapHoleIdx: null, gapHoleX: null  // open drag gap: insert index + hole centre x (null when closed)
   };
 
   ph.bounds = function() {
@@ -81,19 +82,21 @@ function makePhysics(opts) {
     }
     var n = ph.tiles.length;
     ph.bounds();
-    var dragVi = activeDrag && activeDrag.src === _dragSrc ? activeDrag.vi : -1;
-    // Multi-hand drag also creates a gap in the hand physics (same area, different activeDrag.src).
-    var isMultiDrag = activeDrag && (activeDrag.src === 'multi-hand' || activeDrag.src === 'board') && _dragSrc === 'hand';
-    var multiCount = isMultiDrag ? (activeDrag.multiCount || 1) : 0;
+    // Detached drags: the dragged elements live on document.body, so this bar's
+    // physics only sees the remaining tiles plus activeDrag.cx. Hand multi-drag and
+    // board-tile drags target the hand bar; stamp/sticker drags tag the bar they
+    // came from via activeDrag.barSrc.
+    var isDetached = activeDrag && (((activeDrag.src === 'multi-hand' || activeDrag.src === 'board') && _dragSrc === 'hand') || activeDrag.barSrc === _dragSrc);
+    var multiCount = isDetached ? (activeDrag.multiCount || 1) : 0;
     // Expand layout bounds so the drag gap doesn't get wall-clamped.
-    if (isMultiDrag && multiCount > 0) {
+    if (isDetached && multiCount > 0) {
       var _gapExtra = (multiCount + 0.5) * (ph.TILE_W + ph.GAP) / 2;
       ph.aL -= _gapExtra; ph.aR += _gapExtra;
     }
-    var dragOverArea = (dragVi >= 0 || isMultiDrag) && activeDrag && ph.inArea(activeDrag.cx || 0, activeDrag.cy || 0);
+    var dragOverArea = isDetached && ph.inArea(activeDrag.cx || 0, activeDrag.cy || 0);
     var prevX = ph.x.slice();
     var active = [];
-    for (var i = 0; i < n; i++) if (i !== dragVi) active.push(i);
+    for (var i = 0; i < n; i++) active.push(i);
     var restX = {};
     var midX = (ph.aL + ph.aR) / 2;
     if (dragOverArea && activeDrag) {
@@ -115,8 +118,8 @@ function makePhysics(opts) {
         var _ref = _movingRight ? _grR + ph.TILE_W / 2 : _grL - ph.TILE_W / 2;
         for (var j = 0; j < active.length; j++) { if (_ref > ph.x[active[j]]) insertIdx = j + 1; }
       }
-      // Gap sizes: n+0.5 for all hand drags (single tile = multiCount 1 → 1.5). Stamp drags stay at 1.
-      var gapCount = dragVi >= 0 ? 1 : multiCount + 0.5;
+      // Gap sizes: n+0.5 for all detached drags (single tile/stamp = multiCount 1 → 1.5).
+      var gapCount = multiCount + 0.5;
       var totalW = (active.length + gapCount) * ph.TILE_W + (active.length + gapCount - 1) * ph.GAP;
       var startX = midX - totalW / 2; var col = 0;
       for (var j = 0; j < active.length; j++) {
@@ -125,11 +128,16 @@ function makePhysics(opts) {
       }
       // Expose the visual centre of the anchor tile's position inside the gap.
       // Gap is gapCount wide; tiles centred inside it means anchor is at column + 0.75, not +0.5.
-      if (isMultiDrag && activeDrag) {
+      if (activeDrag.src === 'multi-hand') {
         var _anchorSlot = insertIdx + (activeDrag.dragIdx !== undefined ? activeDrag.dragIdx : 0);
         ph.gapCenterX = startX + (_anchorSlot + 0.75) * ph.TILE_W;
       }
+      // Hole geometry: seated stamp drags clamp their face x to the hole centre
+      // (drag.js attachStampDrag) and commit to gapHoleIdx on drop.
+      ph.gapHoleIdx = insertIdx;
+      ph.gapHoleX = startX + insertIdx * (ph.TILE_W + ph.GAP) + gapCount * (ph.TILE_W + ph.GAP) / 2;
     } else {
+      ph.gapHoleIdx = null; ph.gapHoleX = null;
       // Phantom slots: reserve space on the right for tiles in 'moving' state.
       // Total slot count = real tiles + moving tiles; real tiles occupy leftmost slots.
       var _nSlots = active.length + (ph.movingCount > 0 ? ph.movingCount : 0);
@@ -138,15 +146,7 @@ function makePhysics(opts) {
       for (var j = 0; j < active.length; j++) restX[active[j]] = startX + j * (ph.TILE_W + ph.GAP) + ph.TILE_W / 2;
     }
     for (var i = 0; i < n; i++) {
-      if (i === dragVi) continue;
       var f = (restX[i] - ph.x[i]) * ph.SPRING;
-      // Press-spread on hold — stamp bars only. The hand row uses real
-      // collision instead (block below); the old proximity push was the
-      // "click bounce" the physical model replaces.
-      if (ph.held >= 0 && ph.held !== i && _dragSrc !== 'hand') {
-        var hx = ph.x[ph.held], d = ph.x[i] - hx, dist = Math.abs(d);
-        if (dist < ph.TILE_W * 1.5) f += (d > 0 ? 1 : -1) * (1 - dist / (ph.TILE_W * 1.5)) * 5;
-      }
       ph.vx[i] = (ph.vx[i] + f) * ph.DAMP;
       ph.x[i] += ph.vx[i];
     }
@@ -174,11 +174,10 @@ function makePhysics(opts) {
     }
     var changed = false;
     for (var i = 0; i < n; i++) {
-      if (i === dragVi) continue;
       ph.vx[i] = ph.x[i] - prevX[i];
       if (Math.abs(ph.vx[i]) > 0.02) changed = true;
     }
-    if (changed || dragVi >= 0 || ph.held >= 0) ph.draw();
+    if (changed || isDetached || ph.held >= 0) ph.draw();
     ph.RAF = requestAnimationFrame(function() { ph.step(); });
   };
 
@@ -187,9 +186,6 @@ function makePhysics(opts) {
     var els = area.querySelectorAll('.' + _tileClass);
     for (var i = 0; i < ph.tiles.length; i++) {
       var el = els[i]; if (!el) continue;
-      var isDrag = activeDrag && activeDrag.src === _dragSrc && activeDrag.vi === i;
-      if (isDrag) { el.style.opacity = '0'; continue; }
-      el.style.opacity = '1';
       el.style.left = (ph.x[i] - ph.TILE_W / 2 - ph.left) + 'px';
     }
   };

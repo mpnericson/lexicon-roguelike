@@ -484,15 +484,15 @@ function moveKeys(moves) {
   eq('yuan two Ys', score({ tiles, stamps: yuan }).total, 11);          // 5×2.25=11.25→11
 }
 
-// ── Yuan: blanks played as Y count; red Y fires twice ────────────────────────
+// ── Yuan: blanks played as Y count; metallic Y fires twice ───────────────────
 {
   const yuan = [{ id: 'yuan' }];
   const tiles = emptyBoard();
   place(tiles, 7, 7, 'h', 'CAT');
   tiles[3 * B + 3] = { letter: 'Y', isNew: false, isBlank: true, sc: 0 };
   eq('yuan blank-as-Y counts', score({ tiles, stamps: yuan }).total, 8); // 5×1.5=7.5→8
-  tiles[3 * B + 3] = { letter: 'Y', isNew: false, variant: 'red' };
-  eq('yuan red Y fires twice', score({ tiles, stamps: yuan }).total, 11); // 5×1.5²=11.25→11
+  tiles[3 * B + 3] = { letter: 'Y', isNew: false, material: 'metallic' };
+  eq('yuan metallic Y fires twice', score({ tiles, stamps: yuan }).total, 11); // 5×1.5²=11.25→11
 }
 
 // ── The Eagle: retriggers on-board effects only ──────────────────────────────
@@ -509,8 +509,8 @@ function moveKeys(moves) {
   ytiles[3 * B + 3] = { letter: 'Y', isNew: false };
   const ye = [{ id: 'yuan' }, { id: 'the_eagle' }];
   eq('eagle doubles yuan', score({ tiles: ytiles, stamps: ye }).total, 11); // 5×1.5²=11.25→11
-  ytiles[3 * B + 3].variant = 'red'; // red doubles every triggering: (1+1 eagle)×2 = 4 firings
-  eq('eagle + red Y = 4 firings', score({ tiles: ytiles, stamps: ye }).total, 25); // 5×1.5⁴=25.3→25
+  ytiles[3 * B + 3].material = 'metallic'; // metallic doubles every triggering: (1+1 eagle)×2 = 4 firings
+  eq('eagle + metallic Y = 4 firings', score({ tiles: ytiles, stamps: ye }).total, 25); // 5×1.5⁴=25.3→25
 
   // Eagle must NOT touch sticker retriggers: echo square still fires exactly twice
   const etiles = emptyBoard();
@@ -521,25 +521,47 @@ function moveKeys(moves) {
     score({ tiles: etiles, boardStickers: eboard, stamps: [{ id: 'the_eagle' }] }).total, 8);
 }
 
-// ── Per-tile retriggers: passes re-run the mult bracket; red doubles all ─────
+// ── Per-tile retriggers: passes re-run the mult bracket; metallic doubles all ─
 {
-  // Red tile on a DW square: the red re-pass re-runs DW too — two ×2 pushes.
-  // Letters C(3)+red(3)+A(1)+T(1) = 8, ×2×2 = 32.
+  // Metallic tile on a DW square: the metallic re-pass re-runs DW too — two ×2
+  // pushes. Letters C(3)+met(3)+A(1)+T(1) = 8, ×2×2 = 32.
   const tiles = emptyBoard();
   place(tiles, 7, 7, 'h', 'CAT');
-  tiles[7 * B + 7].variant = 'red';
+  tiles[7 * B + 7].material = 'metallic';
   const board = emptyBoard();
   board[7 * B + 7] = 'dw';
-  eq('red on DW fires DW twice', score({ tiles, boardStickers: board }).total, 32);
+  eq('metallic on DW fires DW twice', score({ tiles, boardStickers: board }).total, 32);
 
-  // Red tile on a DL square compounds: ((3×2)+3)×2 = 18, +1+1 = 20.
+  // Metallic tile on a DL square compounds: ((3×2)+3)×2 = 18, +1+1 = 20.
   board[7 * B + 7] = 'dl';
-  eq('red on DL compounds', score({ tiles, boardStickers: board }).total, 20);
+  eq('metallic on DL compounds', score({ tiles, boardStickers: board }).total, 20);
 
-  // Red tile on an echo square: red doubles the base pass AND the echo pass —
-  // 4 passes of C. 3×4 + 1 + 1 = 14.
+  // Metallic tile on an echo square: metallic doubles the base pass AND the
+  // echo pass — 4 passes of C. 3×4 + 1 + 1 = 14.
   board[7 * B + 7] = 'echo';
-  eq('red doubles echo pass', score({ tiles, boardStickers: board }).total, 14);
+  eq('metallic doubles echo pass', score({ tiles, boardStickers: board }).total, 14);
+}
+
+// ── Colour variants: red +4 mult, blue +10 letters, purple ×2, jade sweep ────
+{
+  const tiles = emptyBoard();
+  place(tiles, 7, 7, 'h', 'CAT'); // 5 letters
+  tiles[7 * B + 7].variant = 'red';
+  eq('red +4 mult', score({ tiles }).total, 25); // 5 × (1+4)
+  tiles[7 * B + 7].variant = 'blue';
+  eq('blue +10 letters', score({ tiles }).total, 15); // (3+10)+1+1
+  tiles[7 * B + 7].variant = 'purple';
+  const pres = score({ tiles });
+  eq('purple ×2', pres.total, 10); // 5 × 2
+  eq('purple recorded for vanish roll', (pres.purpleScored || []).length, 1);
+  tiles[7 * B + 7].variant = null;
+  tiles[3 * B + 3] = { letter: 'E', isNew: false, variant: 'jade' }; // committed jade
+  eq('jade board sweep ×1.5', score({ tiles }).total, 8); // 5×1.5=7.5→8
+  tiles[3 * B + 3].material = 'metallic'; // metallic jade fires the sweep twice
+  eq('metallic jade sweeps twice', score({ tiles }).total, 11); // 5×2.25=11.25→11
+  tiles[3 * B + 3] = null;
+  tiles[7 * B + 7].material = 'glass'; // glass has no scoring effect
+  eq('glass scores normally', score({ tiles }).total, 5);
 }
 
 console.log(failed ? '\n' + failed + ' test(s) FAILED' : '\nAll tests passed');

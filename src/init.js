@@ -61,7 +61,7 @@ document.addEventListener('keydown',function(e){
   if(window._focusMode){if(e.key==='Escape')exitFocus();return;}
   if(e.key==='Enter'&&S.phase==='play'&&!e.target.closest('.modal-overlay')){if(window._pdFlash)_pdFlash(3);playWord();}
   if((e.key==='Delete'||e.key==='Backspace')&&S.phase==='play'&&!e.target.closest('input,textarea')){if(window._pdFlash)_pdFlash(5);discardTiles();}
-  if(e.key==='Escape'){var _bt=document.getElementById('bag-ui-tiles');if(_bt&&_bt.dataset.expandedLetter)_bagCollapseLetter(_bt);}
+  if(e.key==='Escape'){var _bt=document.getElementById('bag-ui-tiles');if(_bt&&_bt.dataset.expandedLetter)_bagCollapseLetter(_bt);var _sbt=document.getElementById('sbovr-tiles');if(_sbt&&_sbt.dataset.expandedLetter)_bagCollapseLetter(_sbt);}
 });
 // Main UI background animation — normal swell (24 frames) or volatile/constraint (18 frames)
 (function(){
@@ -115,6 +115,7 @@ document.addEventListener('click',function(e){
   await Promise.all([loadDict(),loadBountyThemes()]);
   // Word index for the solver — chunked, ~0.5s. Solver features are inert
   // until it finishes; the rank solve is kicked once it's ready.
+  tlInit();
   buildGaddag(DICT,function(){
     if(typeof S!=='undefined'&&S&&S.phase==='play')_rankObserve();
   });

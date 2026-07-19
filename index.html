@@ -48,6 +48,45 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .shop-pack-icon img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated;display:block}
 .shop-pack-icon span{font-size:clamp(16px,5vw,80px);line-height:1}
 .shop-pack-cost{position:absolute;top:calc(100% + 3px);left:50%;transform:translateX(-50%);font-size:clamp(9px,1.9vw,28px);color:#f0c060;white-space:nowrap}
+/* ── Tickets & Keys (consumables) — placeholder card art until sprites exist ── */
+.tk-pack-art{width:100%;height:100%;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+.tk-pack-art.ticket{background:linear-gradient(160deg,#7a3050,#4a1830);border:2px solid #c06080}
+.tk-pack-art.key{background:linear-gradient(160deg,#203050,#101a30);border:2px solid #6080c0}
+.tk-pack-emoji{font-size:clamp(12px,3vw,44px)}
+.tk-pack-size{font-size:clamp(7px,1.2vw,18px);color:#f0e0c0;margin-top:4%}
+#tk-overlay{position:fixed;inset:0;z-index:240;display:none;flex-direction:column;align-items:center;justify-content:center;gap:24px;background:radial-gradient(ellipse at center,rgba(42,22,64,0.96) 0%,rgba(10,6,20,0.98) 75%)}
+#tk-tiles-row{display:flex;gap:10px;align-items:flex-end;min-height:90px}
+.tk-tile-wrap{position:relative;width:64px;height:64px;transition:transform 0.15s ease}
+#tk-tiles-row.tk-targeting .tk-tile-wrap{cursor:pointer}
+#tk-tiles-row.tk-targeting .tk-tile-wrap:hover{filter:brightness(1.15)}
+.tk-tile-wrap.tk-tile-sel .tile{box-shadow:0 0 0 3px #f0e080,0 6px 14px rgba(0,0,0,0.5)}
+#tk-cards-row{display:flex;gap:18px;align-items:flex-start;min-height:230px}
+.tk-card{position:relative;width:132px;height:196px;border-radius:10px;cursor:pointer;transition:transform 0.15s ease,box-shadow 0.15s ease,opacity 0.3s ease;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:8px 7px;box-sizing:border-box;text-align:center}
+.tk-card.ticket{background:linear-gradient(160deg,#efe2bd,#d8c491);border:3px solid #8a7440;color:#3a2c10}
+.tk-card.key{background:linear-gradient(160deg,#232f52,#141c36);border:3px solid #5a78c0;color:#cfe0ff}
+.tk-card:hover{transform:translateY(-6px)}
+.tk-card.tk-sel{transform:translateY(-14px);box-shadow:0 0 0 3px #f0e080,0 12px 26px rgba(0,0,0,0.55)}
+.tk-card.tk-used{opacity:0.22;pointer-events:none;transform:translateY(-26px) scale(0.92)}
+.tk-kind{font-size:16px;letter-spacing:2px;opacity:0.65}
+.tk-icon{font-size:42px;line-height:1.2;margin:5px 0 2px}
+.tk-cname{font-size:27px;line-height:1}
+.tk-cdesc{font-size:19px;line-height:1.2;opacity:0.85;margin-top:5px}
+.tk-use-btn{position:absolute;left:50%;transform:translateX(-50%);bottom:-42px;background:#2a6a2a;border:1px solid #4aaa4a;color:#e8ffe8;border-radius:6px;padding:5px 24px;font-family:'Jersey 10',Georgia;font-size:26px;cursor:pointer;z-index:2}
+.tk-use-btn:hover{background:#358035}
+#tk-hint{font-size:27px;color:#b8a8d8;min-height:32px;font-family:'Jersey 10',Georgia}
+#tk-ov-footer{display:flex;align-items:center;gap:18px;margin-top:8px}
+#tk-ov-name{background:#12122a;border:1px solid #5a5a8a;border-radius:10px;padding:8px 26px;font-size:32px;color:#e8e0d0;text-align:center;font-family:'Jersey 10',Georgia;line-height:1.1}
+#tk-ov-picks{font-size:24px;color:#8880a8;display:block}
+.tk-mini{position:relative;width:44px;height:58px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:24px;transition:transform 0.12s ease;flex-shrink:0}
+.tk-mini.ticket{background:linear-gradient(160deg,#efe2bd,#d8c491);border:2px solid #8a7440}
+.tk-mini.key{background:linear-gradient(160deg,#232f52,#141c36);border:2px solid #5a78c0}
+.tk-mini:hover{transform:translateY(-4px)}
+.tk-mini-count{font-size:22px;color:#8880a8;align-self:center;font-family:'Jersey 10',Georgia}
+#shop-consumables .tk-mini{width:min(3.4vw,34px);height:min(4.5vw,45px);font-size:min(1.9vw,19px)}
+#shop-consumables .tk-mini-count{font-size:clamp(8px,1.3vw,18px)}
+@keyframes tkBurnOut{0%{opacity:1;filter:brightness(1)}35%{opacity:1;filter:brightness(1.9) sepia(1) saturate(3) hue-rotate(-28deg)}100%{opacity:0;filter:brightness(2.6) sepia(1) saturate(4) hue-rotate(-48deg);transform:translateY(-10px) scale(1.1)}}
+@keyframes tkNewIn{0%{transform:scale(0);opacity:0}55%{transform:scale(1.14);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes tkEmber{0%{opacity:1;transform:translate(0,0) scale(1)}100%{opacity:0;transform:translate(var(--ex),var(--ey)) scale(0.2)}}
 /* Bag: sprite is 32×32, content bbox is x6-28 y10-31 (23×22px)
    Rendered sprite height H=34vh → content: 23.375vh tall, 24.44vh wide
    Div sized to content area; sprite offset so content aligns with div */
@@ -84,7 +123,6 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .shop-bag-tile.var-red{background-color:#b83030!important;border-color:#781818!important}
 .shop-bag-tile .tl{font-size:clamp(8px,1.6vw,24px);color:#2a1f0e;line-height:1}
 .shop-bag-tile .ts{font-size:clamp(4px,0.8vw,12px);color:#5a4530;position:absolute;bottom:4%;right:4%}
-.shop-bag-tile.sbag-sel{outline:2px solid #f0e080}
 .sq-hand-item{background:#12122a;border:2px solid;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;cursor:grab;position:absolute;top:0;width:68px;height:68px}
 .sq-hand-item .sqh-name{font-size:32px;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;width:62px}
 .sq-staged-cell{box-shadow:inset 0 0 0 2px rgba(255,255,255,0.55)!important;cursor:pointer!important}
@@ -129,8 +167,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .bounty-scroll-pulse{animation:bounty-scroll-pulse 0.45s ease-in-out forwards}
 @keyframes bounty-scroll-pulse{0%{filter:none}20%{filter:drop-shadow(0 0 8px #f0c060) drop-shadow(0 0 16px rgba(240,192,0,0.7))}55%{filter:drop-shadow(0 0 8px #f0c060) drop-shadow(0 0 16px rgba(240,192,0,0.7))}100%{filter:none}}
 .hand-tile{width:68px;height:68px;box-shadow:0 4px 0 #6b5535;cursor:grab;position:absolute;top:0;transition:transform 0.12s ease,filter 0.12s ease;will-change:filter,transform}
-.hand-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(240,224,128,0.45));z-index:10;cursor:grab}
-.hand-tile.selected{transform:translateY(-5px);z-index:5;filter:brightness(1.15) drop-shadow(0 0 6px rgba(240,224,128,0.35))}
+.hand-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.07);z-index:10;cursor:grab}
+.hand-tile.selected{transform:translateY(-5px);z-index:5;filter:brightness(1.06)}
 /* Focus mode: fade all peripheral UI, keep board + tiles + eye */
 #left-panel,#stamp-bar,#hand-wrap,#bounty-row,#play-controls{transition:opacity .45s ease}
 body.focus-mode #left-panel,body.focus-mode #stamp-bar,body.focus-mode #hand-wrap,body.focus-mode #bounty-row,body.focus-mode #play-controls{opacity:0;pointer-events:none}
@@ -199,6 +237,7 @@ body.focus-exiting #focus-bg{opacity:0}
 .shop-card .scc{font-size:30px;color:#f0c060;font-weight:normal;margin-bottom:5px}
 .shop-card .scr{font-size:32px;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
 .rc{color:#a0a0a0}.ru{color:#60c060}.rr{color:#c060ff}.rl{color:#ffd700;text-shadow:0 0 8px rgba(255,180,0,0.7)}
+.coll-rarity-title{font-size:26px;text-transform:uppercase;letter-spacing:1px;margin:10px 0 6px;opacity:0.9}
 .coll-card{display:flex;flex-direction:column;align-items:center;width:140px;cursor:pointer;text-align:center;padding:8px 4px}
 .coll-icon-wrap{width:80px;height:80px;border-radius:6px;display:flex;align-items:center;justify-content:center;margin-bottom:8px;transition:transform 0.15s ease,filter 0.15s ease}
 .coll-card:hover .coll-icon-wrap{transform:scale(1.08);filter:brightness(1.18)}
@@ -260,7 +299,7 @@ body.focus-exiting #focus-bg{opacity:0}
 .achv-desc{font-size:30px;color:#8880a8;margin-top:2px}
 .achv-item:not(.achv-done) .achv-name{color:#5a5a7a}
 .ui-icon{display:inline-block;vertical-align:middle;image-rendering:pixelated}
-.tile.tile-spr.selected{background-color:transparent!important;border:none!important;box-shadow:none!important;filter:brightness(1.15) drop-shadow(0 0 4px #c8b000);}
+.tile.tile-spr.selected{background-color:transparent!important;border:none!important;box-shadow:none!important;filter:brightness(1.06);}
 .board-tile.tile-spr.is-new{cursor:grab;}
 /* transform is NOT !important so the bink animation (below) can override it — an !important transform would beat the keyframes in the cascade. */
 .board-tile.jenga-stacked{transform:translateY(-6px);box-shadow:0 9px 0 rgba(90,60,0,0.85)!important;z-index:2;}
@@ -275,9 +314,7 @@ body.focus-exiting #focus-bg{opacity:0}
 @keyframes bfloat5{0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-5px)rotate(-.7deg)}}
 @keyframes bagTunnelZoom{0%{transform:scale(0.01);opacity:0}20%{opacity:1}100%{transform:scale(1);opacity:1}}
 @keyframes bagHeaderFade{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
-.bag-float-item,.sbag-float-item{display:flex;flex-direction:column;align-items:center;user-select:none}
-.sbag-float-item{cursor:pointer}
-.sbag-float-item.sbag-sel .tile.tile-spr{filter:brightness(1.3) drop-shadow(0 0 8px #f0e080)}
+.bag-float-item{display:flex;flex-direction:column;align-items:center;user-select:none}
 .bag-float-item:hover>div{animation-play-state:paused}
 .bag-float-item .tile.tile-spr,.bag-float-item .tile:not(.tile-spr){transition:filter 0.15s ease,transform 0.15s ease}
 .bag-float-item:hover .tile.tile-spr,.bag-float-item:hover .tile:not(.tile-spr){filter:brightness(1.22) drop-shadow(0 0 10px rgba(240,224,128,0.5));transform:translateY(-7px)}
@@ -334,7 +371,13 @@ body.focus-exiting #focus-bg{opacity:0}
 /* Bottom info box (y=140-155, x=4-55): upcoming constraint */
 #stat-rounds-box{position:absolute;top:87.5%;left:6.25%;width:81.25%;height:10%;display:flex;align-items:stretch;overflow:hidden}
 .stat-box-label{font-size:clamp(5px,0.75vw,11px);color:#7a5a40;line-height:1;text-transform:uppercase;letter-spacing:0.5px}
-#bounty-row{overflow:visible;display:flex;flex-direction:column;gap:6px;align-items:center;padding:0 4px;flex-shrink:0}
+/* Max-height = open-scroll footprint (95% width square ≈ 24vw): ~3 furled scrolls
+   show before it scrolls, and an unfurled scroll still fits without clipping.
+   Keeps the row clear of the tile bag sprite at the bottom of the panel. */
+#bounty-row{overflow-y:auto;overflow-x:hidden;max-height:24vw;overscroll-behavior:contain;display:flex;flex-direction:column;gap:6px;align-items:center;padding:0 4px;flex-shrink:0}
+#bounty-row::-webkit-scrollbar{width:6px}
+#bounty-row::-webkit-scrollbar-thumb{background:#5a4020;border-radius:3px}
+#bounty-row::-webkit-scrollbar-track{background:transparent}
 #score-bar-wrap{position:absolute;right:0.5vw;top:0.78125%;bottom:0.78125%;width:1vw;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
 #score-bar{width:100%;height:0%;background:linear-gradient(to top,#4aaa4a,#3a8a3a);transition:height .6s cubic-bezier(.22,1,.36,1);flex-shrink:0}
 /* Animations */
@@ -355,6 +398,10 @@ body.focus-exiting #focus-bg{opacity:0}
 #stamp-bar{height:80px;flex-shrink:0;position:relative;overflow:visible}
 .stamp-tile{width:68px;height:68px;cursor:grab;position:absolute;top:8px;transition:transform 0.12s ease,filter 0.12s ease}
 .stamp-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(200,160,255,0.45));z-index:10}
+.stamp-tile.selected{transform:translateY(12px);filter:brightness(1.15) drop-shadow(0 0 8px rgba(240,224,128,.45));z-index:9}
+.stamp-tile.selected:hover{transform:translateY(14px) scale(1.04)}
+.stamp-sell-btn{position:absolute;left:50%;top:-38px;transform:translateX(-50%);background:#f0e080;color:#1a1a2e;border:2px solid #a89000;border-radius:8px;padding:3px 12px;font-size:24px;font-weight:bold;cursor:pointer;white-space:nowrap;z-index:30;box-shadow:0 4px 10px rgba(0,0,0,.5)}
+.stamp-sell-btn:hover{filter:brightness(1.1)}
 /* Shop stamp bar — physics-driven, no box */
 #shop-stamp-bar{position:absolute;left:6.7031%;top:2.25%;width:53%;height:15%;z-index:5;overflow:visible}
 /* New shop UI animated sprites */
@@ -405,6 +452,16 @@ body.focus-exiting #focus-bg{opacity:0}
       <div id="score-txt" style="display:none"></div>
       <!-- Constraint banner (boss blinds only) — centred on wood grain below HUD values -->
       <div id="constraint-banner" style="display:none"></div>
+      <!-- Sticker/stamp hover tooltip — centred on the wood grain below the gold/plays/disc
+           boxes (kept out of the right panel so the tile bag sprite can't cover it) -->
+      <div id="sq-hover-tooltip" style="display:none;opacity:0;transition:opacity 150ms ease-in;position:absolute;top:37.5%;left:50%;transform:translateX(-50%);width:84%;max-height:31%;overflow-y:auto;box-sizing:border-box;z-index:5;background:#1e1608;border:1px solid #7a6020;border-radius:8px;padding:8px 10px;line-height:1.35">
+        <div id="sqht-name" style="font-size:clamp(10px,1.8vw,26px);font-weight:bold;margin-bottom:4px"></div>
+        <div id="sqht-desc" style="font-size:clamp(8px,1.35vw,19px);color:#c8c8d8;line-height:1.4"></div>
+        <div id="sqht-actions" style="display:none;gap:6px;margin-top:8px">
+          <button id="sqht-sell-btn" class="btn btn-red" style="width:auto;padding:5px 12px;font-size:clamp(8px,1.2vw,18px)">Sell</button>
+          <button class="btn btn-gray" style="width:auto;padding:5px 12px;font-size:clamp(8px,1.2vw,18px)" onclick="_sqTooltipUnfreeze()">Cancel</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -444,17 +501,10 @@ body.focus-exiting #focus-bg{opacity:0}
           <img id="menu-btn-sprite" src="Assets/animations/menu button/menu_button1.png" style="width:100%;image-rendering:pixelated;display:block;pointer-events:none">
         </div>
       </div>
+      <!-- Tickets & Keys inventory (hidden while empty) -->
+      <div id="consumable-row" style="display:none;flex-wrap:wrap;gap:6px;width:93.75%;align-self:flex-end;margin-right:0.78125vw"></div>
       <!-- Bounties -->
       <div id="bounty-row"></div>
-    </div>
-    <!-- Sticker hover tooltip — shows when hovering a board sticker -->
-    <div id="sq-hover-tooltip" style="display:none;opacity:0;transition:opacity 150ms ease-in;background:#1e1608;border:1px solid #7a6020;border-radius:8px;padding:8px 10px;line-height:1.35">
-      <div id="sqht-name" style="font-size:clamp(10px,1.8vw,26px);font-weight:bold;margin-bottom:4px"></div>
-      <div id="sqht-desc" style="font-size:clamp(8px,1.35vw,19px);color:#c8c8d8;line-height:1.4"></div>
-      <div id="sqht-actions" style="display:none;gap:6px;margin-top:8px">
-        <button id="sqht-sell-btn" class="btn btn-red" style="width:auto;padding:5px 12px;font-size:clamp(8px,1.2vw,18px)">Sell</button>
-        <button class="btn btn-gray" style="width:auto;padding:5px 12px;font-size:clamp(8px,1.2vw,18px)" onclick="_sqTooltipUnfreeze()">Cancel</button>
-      </div>
     </div>
     <!-- Play controls -->
     <div id="play-controls">
@@ -521,6 +571,11 @@ body.focus-exiting #focus-bg{opacity:0}
     <div id="shop-bounty-label" style="position:absolute;left:75%;top:9%;width:22%;text-align:center;font-family:'Jersey 10',Georgia,serif;font-size:clamp(10px,2vw,30px);color:#f0e0c0;pointer-events:none;z-index:5;line-height:1">Bounties: $2</div>
     <div id="shop-bounty-list"></div>
     <div id="shop-queue-bar"></div>
+    <!-- Tickets & Keys: pack slots + owned-consumable strip on the counter.
+         z-index 2 keeps them under the slot tray art (z 3) when it opens. -->
+    <div id="shop-tkpack-0" class="shop-pack-box" style="left:5.5%;top:74%;width:8.5938%;height:13.75%;z-index:2"></div>
+    <div id="shop-tkpack-1" class="shop-pack-box" style="left:16.5%;top:74%;width:8.5938%;height:13.75%;z-index:2"></div>
+    <div id="shop-consumables" style="position:absolute;left:29%;top:74.5%;width:36%;height:16%;display:none;gap:1.5%;align-items:center;z-index:2"></div>
     <div id="shop-bag-ui">
       <div style="font-size:clamp(7px,1.2vw,18px);color:#f0e080">Tile Bag — enchant, destroy, or duplicate ($2 each, once per shop)</div>
       <div id="shop-bag-tiles" style="display:flex;gap:2%;flex-wrap:wrap;align-items:flex-start"></div>
@@ -630,15 +685,21 @@ body.focus-exiting #focus-bg{opacity:0}
   <div id="bag-ui-tiles" style="display:grid;grid-template-columns:repeat(9,73px);gap:22px;"></div>
 </div>
 <div id="shop-bag-overlay" style="display:none">
-  <div style="display:flex;align-items:center;justify-content:space-between;width:100%;max-width:700px;padding:16px 20px;flex-shrink:0">
-    <span id="sbovr-count" style="color:#7ac07a;font-family:'Jersey 10',Georgia;font-size:26px"></span>
-    <button class="btn btn-gray" style="width:auto;padding:5px 14px" onclick="closeShopBagUI()">Close</button>
-  </div>
-  <div id="sbovr-tiles" style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center;align-content:flex-start;padding:16px;width:100%;max-width:700px;flex-shrink:0"></div>
-  <div id="sbovr-actions" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;align-items:center;padding:0 16px 16px;width:100%;max-width:700px"></div>
+  <span id="sbovr-count" style="position:absolute;top:16px;left:20px;color:#7ac07a;font-family:'Jersey 10',Georgia;font-size:38px"></span>
+  <button class="btn btn-gray" style="position:absolute;top:12px;right:16px;width:auto;padding:6px 18px" onclick="closeShopBagUI()">Close</button>
+  <div id="sbovr-tiles" style="display:grid;grid-template-columns:repeat(9,73px);gap:22px;"></div>
 </div>
 <div id="blank-modal" class="modal-overlay" style="display:none">
   <div class="modal"><h2>Choose a letter</h2><p style="color:#a0a0c0;font-size:32px;margin-bottom:14px">Your blank tile will act as this letter.</p><div class="blank-grid" id="blank-grid"></div></div>
+</div>
+<div id="tk-overlay" style="display:none">
+  <div id="tk-tiles-row"></div>
+  <div id="tk-hint"></div>
+  <div id="tk-cards-row"></div>
+  <div id="tk-ov-footer">
+    <div id="tk-ov-name-wrap" style="text-align:center"><div id="tk-ov-name"></div><span id="tk-ov-picks"></span></div>
+    <button id="tk-skip-btn" class="btn btn-gray" style="width:auto;padding:8px 24px;margin:0" onclick="_tkSkipOverlay()">Skip</button>
+  </div>
 </div>
 <div id="anim-layer"></div>
 <div id="round-modal" class="modal-overlay" style="display:none">
@@ -665,6 +726,7 @@ body.focus-exiting #focus-bg{opacity:0}
   </div>
 </div>
 <script src="src/data.js"></script>
+<script src="src/tile_layers.js"></script>
 <script src="src/gaddag.js"></script>
 <script src="src/score_engine.js"></script>
 <script src="src/stickers/board/squares.js"></script>
@@ -681,6 +743,7 @@ body.focus-exiting #focus-bg{opacity:0}
 <script src="src/scoring.js"></script>
 <script src="src/play.js"></script>
 <script src="src/dict.js"></script>
+<script src="src/consumables.js"></script>
 <script src="src/shop.js"></script>
 <script src="src/ui.js"></script>
 <script src="src/anim.js"></script>

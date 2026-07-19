@@ -624,10 +624,12 @@ function _tutBuildScript(){
        // Round-3 draws (after the promoted blue Y): O,N + spares. The standard
        // set's two Y tiles land in the filler — buried below the authored
        // draws, so the only way a Y arrives in round 3 is the blue-anchor
-       // promotion the player performs.
+       // promotion the player performs. The shop bag is view-only, so the
+       // tutorial pre-varnishes the Y the promotion lesson targets.
        _tutAuthorBag('ONTEA'+'RSD');
        var ys=S.bag.filter(function(t){return t.letter==='Y';});
        TUT._blueId=ys.length?ys[0].id:null;
+       if(ys.length)ys[0].material='varnished';
        renderShop();
      },
      text:'The last round of the board is next, and it has a constraint. Set up for it here.'},
@@ -648,40 +650,17 @@ function _tutBuildScript(){
      text:'Each Y in a word now gives <b>+12 letter score and +4 mult</b>. You just need a Y.'},
 
     {title:'The Tile Bag',passthrough:true,
-     onEnter:function(){
-       var yt=null;for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===TUT._blueId){yt=S.bag[i];break;}}
-       // Sample from the top of the bag (the upcoming authored draws).
-       var rest=S.bag.filter(function(t){return t.letter!=='Y'&&!t.isBlank;}).slice(-7);
-       shopPool.bagDisplay=yt?[yt].concat(rest):rest;
-     },
      holes:function(){return[_tutRect('#shop-bag-btn',6)];},
-     advanceWhen:function(){var o=document.getElementById('shop-bag-overlay');return!!(o&&o.style.display==='flex');},
-     text:'In the shop you can modify tiles in the bag. Click the bag.'},
+     advanceWhen:function(){var o=document.getElementById('shop-bag-overlay');return!!(o&&o.style.display==='flex'&&o.style.visibility!=='hidden');},
+     text:'You can check on your tiles from the shop too. Click the bag.'},
 
     {title:'The Bag',pos:'bottom',next:true,nextLabel:'Continue →',
-     text:'A sample of the tiles left in your bag.'},
+     text:'Every tile you haven\'t drawn yet, grouped by letter. A <b>varnished Y</b> is buried in here — it\'ll matter next round.'},
 
-    {title:'Select the Y',passthrough:true,
-     holes:function(){return[_tutRect('#sbovr-tiles .sbag-float-item:first-child',6)];},
-     advanceWhen:function(){return!!document.querySelector('#sbovr-tiles .sbag-float-item.sbag-sel');},
-     text:'There\'s a Y in the bag. Click it.'},
-
-    {title:'Bag Options',next:true,
-     holes:function(){return[_tutRect('#sbovr-actions',6)];},
-     text:'A selected tile can be <b>enchanted</b>, <b>destroyed</b>, or <b>duplicated</b> — $2 each, once per shop visit.'},
-
-    {title:'Enchant It',passthrough:true,
-     holes:function(){var h=_tutBtnHole('#sbovr-actions','Enchant');return h?[h]:[];},
-     advanceWhen:function(){return!!_tutBtnHole('#sbovr-actions','Blue');},
-     text:'Press <b>Enchant</b>.'},
-
-    {title:'Make It Blue',passthrough:true,
-     holes:function(){var h=_tutBtnHole('#sbovr-actions','Blue');return h?[h]:[];},
-     advanceWhen:function(){
-       for(var i=0;i<S.bag.length;i++){if(S.bag[i].id===TUT._blueId)return S.bag[i].variant==='blue';}
-       return false;
-     },
-     text:'Blue tiles can be picked out of the bag to be drawn next. Press <b>Blue</b> ($2).'},
+    {title:'Close the Bag',passthrough:true,
+     holes:function(){return[_tutRect('#shop-bag-overlay button',6)];},
+     advanceWhen:function(){var o=document.getElementById('shop-bag-overlay');return!!(o&&o.style.display==='none');},
+     text:'Press <b>Close</b>.'},
 
     {title:'Leave the Shop',passthrough:true,
      holes:function(){return[_tutRect('.shop-top-btn.green',6)];},
@@ -696,7 +675,7 @@ function _tutBuildScript(){
     {title:'Open the Bag',passthrough:true,
      holes:function(){return[_tutRect('#bag-btn',6)];},
      advanceWhen:function(){var o=document.getElementById('bag-ui-overlay');return!!(o&&o.style.display==='flex'&&o.style.visibility!=='hidden');},
-     text:'Your blue Y is still deep in the bag. Click the bag.'},
+     text:'That varnished Y is still deep in the bag. Click the bag.'},
 
     {title:'The Bag',pos:'bottom',next:true,nextLabel:'Continue →',
      text:'Everything you haven\'t drawn yet.'},
@@ -706,23 +685,23 @@ function _tutBuildScript(){
      advanceWhen:function(){var c=document.getElementById('bag-ui-tiles');return!!(c&&c.dataset.expandedLetter==='Y');},
      text:'Click the <b>Y</b> to expand it.'},
 
-    {title:'Pick the Blue Y',passthrough:true,
+    {title:'Pick the Varnished Y',passthrough:true,
      holes:function(){
-       var b=_tutRect('#_bag-expand-stack .var-blue',6);
+       var b=_tutRect('#_bag-expand-stack .mat-varnished',6);
        if(b)return[b];
        return[_tutRect('#bag-ui-tiles .bag-float-item[data-letter="Y"]',6)].filter(Boolean);
      },
      advanceWhen:function(){return!!(S.bagBlueAnchors&&S.bagBlueAnchors['Y']===TUT._blueId);},
-     text:'Click the <b>blue Y</b> to set it as your next draw.'},
+     text:'Click the <b>varnished Y</b> to set it as your next draw.'},
 
     {title:'Close the Bag',passthrough:true,revealOnHoles:true,revealDelay:1800,
      holes:function(){return[_tutRect('#bag-ui-overlay button',6)];},
      advanceWhen:function(){var o=document.getElementById('bag-ui-overlay');return!!(o&&o.style.display==='none');},
-     text:'The blue Y is queued up. Press <b>Close</b>.'},
+     text:'The varnished Y is queued up. Press <b>Close</b>.'},
 
     {title:'Dig It Out',passthrough:true,sqLock:{},discardSet:['I','E','U','G','D','S'],advanceOn:'discard',popHole:0,
      holes:function(){return[_tutRect('#hand-area',8),_tutRect('#pd-disc-hit',4)];},
-     text:'Keep the <b>L</b> and discard the other six. The blue Y is drawn first.'},
+     text:'Keep the <b>L</b> and discard the other six. The varnished Y is drawn first.'},
 
     {title:'The Payoff',passthrough:true,sqLock:_TUT_PYLON,advanceOn:'round-complete',
      holes:function(){return _tutWordHoles(_TUT_PYLON);},

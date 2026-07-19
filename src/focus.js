@@ -432,6 +432,7 @@ function _focusSpawnBody(t, x, y, vx, vy) {
   el.className = 'tile tile-spr focus-tile' + (t.isBlank ? ' blank-t' : '') + (t.variant ? ' var-' + t.variant : '');
   el.style.cssText = 'position:absolute;left:0;top:0;width:68px;height:68px;pointer-events:auto;' + spr;
   el.dataset.spr = spr; // reused by _flyTileSpiral when arcing home on exit
+  applyTileLayers(el, t, 68, spr);
   var b = {
     t: t, el: el, x: x, y: y, vx: vx || 0, vy: vy || 0,
     rot: (Math.random() - 0.5) * 18,

@@ -1,10 +1,16 @@
 // =====================================================================
 // DRAG — tile, sticker and stamp drag-and-drop engine
 // =====================================================================
-function makeDragClone(innerHTML,css,extraClass){
-  var el=document.createElement('div');el.className='tile'+(extraClass?' '+extraClass:'');
-  el.style.cssText='position:fixed;z-index:9999;pointer-events:none;'+css;
-  el.innerHTML=innerHTML;document.body.appendChild(el);return el;
+// Detach an element mid-drag: reparent the real face to document.body as a
+// fixed-position element that follows the cursor. No clones — the same DOM node
+// travels for the whole gesture (see the tile state invariant in CLAUDE.md).
+function detachFace(face,sr){
+  if(face.parentNode)face.parentNode.removeChild(face);
+  face.style.position='fixed';face.style.zIndex='9999';face.style.pointerEvents='none';
+  face.style.left=sr.left+'px';face.style.top=sr.top+'px';
+  face.style.transition='transform 0.1s ease,box-shadow 0.1s ease';
+  face.style.transform='scale(1.08)';face.style.boxShadow='0 12px 28px rgba(0,0,0,.7)';
+  document.body.appendChild(face);
 }
 
 function clearHL(){if(_hl>=0){var e=document.querySelector('[data-sq-idx="'+_hl+'"]');if(e)e.classList.remove('drop-target');}_hl=-1;}
@@ -142,42 +148,47 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
 
 function attachSqDrag(face,vi,item){
   face.addEventListener('pointerdown',function(ev){
+    if(ev.button!==0)return;
     ev.preventDefault();ev.stopPropagation();
     if(activeDrag)return;
-    var sx=ev.clientX,sy=ev.clientY;var moved=false,clone=null;HP.held=vi;
-    var d=sqd(item.id);
+    var sx=ev.clientX,sy=ev.clientY;var sr=face.getBoundingClientRect();var moved=false;
+    HP.held=vi;
     function move(me){
       var dx=me.clientX-sx,dy=me.clientY-sy;
-      if(!moved&&(Math.abs(dx)>4||Math.abs(dy)>4)){
-        moved=true;
-        var _cloneInner=d.iconPng
-          ?'<img src="'+d.iconPng+'" style="width:68px;height:68px;image-rendering:pixelated;display:block;pointer-events:none"><span style="position:absolute;bottom:0;left:0;right:0;font-size:30px;text-align:center;background:rgba(0,0,0,0.6);padding:2px 0;color:#fff;pointer-events:none">'+d.name+'</span>'
-          :sqIconHTML(d,28)+'<span style="font-size:30px;display:block;text-align:center">'+d.name+'</span>';
-        var _cloneCss=d.iconPng
-          ?'width:68px;height:68px;position:relative;overflow:hidden;image-rendering:pixelated;cursor:grabbing;'
-          :'width:68px;height:68px;background:#12122a;border:2px solid '+d.fg+';border-radius:8px;color:'+d.fg+';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;';
-        clone=makeDragClone(_cloneInner,_cloneCss);
-        face.style.opacity='0';
-        activeDrag={src:'hand',vi:vi,cx:me.clientX,cy:me.clientY};
+      if(!moved&&Math.sqrt(dx*dx+dy*dy)>8){
+        moved=true;HP.held=-1;_playTileClick('pick');
+        item._dragging=true;
+        detachFace(face,sr);
+        activeDrag={src:'hand',barSrc:'hand',vi:-1,multiCount:1,cx:me.clientX,cy:me.clientY,gapLeft:me.clientX,gapRight:me.clientX};
+        renderSqHand();
       }
       if(!moved)return;
+      face.style.left=(me.clientX-34)+'px';face.style.top=(me.clientY-39)+'px';
       var si=sqAt(me.clientX,me.clientY);
       if(si>=0&&!S.board[si]&&!isSqStaged(si)){setHL(si);}else{clearHL();}
-      clone.style.left=(me.clientX-34)+'px';clone.style.top=(me.clientY-39)+'px';
-      activeDrag.cx=me.clientX;activeDrag.cy=me.clientY;
+      var ob=si>=0||inBoardBounds(me.clientX,me.clientY);
+      face.style.transform='scale('+(ob?'0.75':'1.08')+')';
+      face.style.boxShadow=ob?'0 4px 12px rgba(0,0,0,.5)':'0 12px 28px rgba(0,0,0,.7)';
+      activeDrag.cx=me.clientX;activeDrag.cy=me.clientY;activeDrag.gapLeft=me.clientX;activeDrag.gapRight=me.clientX;
     }
     function up(me){
       document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
-      HP.held=-1;if(clone){clone.remove();clone=null;}face.style.opacity='1';clearHL();
-      if(moved){
-        var si=sqAt(me.clientX,me.clientY);
-        if(si>=0&&!S.board[si]&&!isSqStaged(si)&&(!window.TUT||!TUT.active||_tutStickerOK(si))){
-          var globalIdx=S.sqHand.indexOf(item);
-          S.sqStaged[si]=globalIdx;item.placed=true;
-          renderSqHand();renderBoard();
-        }
+      HP.held=-1;clearHL();
+      if(!moved)return;
+      _dragEndTime=Date.now();
+      item._dragging=false;
+      var si=sqAt(me.clientX,me.clientY);
+      if(si>=0&&!S.board[si]&&!isSqStaged(si)&&(!window.TUT||!TUT.active||_tutStickerOK(si))){
+        if(face.parentNode)face.parentNode.removeChild(face);
+        var globalIdx=S.sqHand.indexOf(item);
+        S.sqStaged[si]=globalIdx;item.placed=true;
+        activeDrag=null;
+        renderSqHand();renderBoard();
+      } else {
+        face.style.transition='left .14s,top .14s,transform .14s';
+        face.style.left=sr.left+'px';face.style.top=sr.top+'px';face.style.transform='scale(1)';
+        setTimeout(function(){if(face.parentNode)face.parentNode.removeChild(face);activeDrag=null;renderSqHand();},140);
       }
-      activeDrag=null;
     }
     document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);
   });
@@ -188,61 +199,106 @@ function computeStampInsert(mouseX,dragVi,ph){
   for(var i=0;i<n;i++){if(i===dragVi)continue;if(mouseX<ph.x[i])return i;}return n;
 }
 
-function reorderStamps(fromVi,insertAt,ph){
-  var stamps=S.stamps;
-  var rem=stamps.splice(fromVi,1)[0];
-  var adj=insertAt>fromVi?insertAt-1:insertAt;adj=Math.max(0,Math.min(stamps.length,adj));
-  stamps.splice(adj,0,rem);
-  ph.x=[];SP.x=[];SSP.x=[];// reset both bars so they spring to rest
-}
-
 // ph = physics instance (SP for game bar, SSP for shop bar), dragSrc = 'stamp'|'shop-stamp'
+// Clamp model — no phases, nothing latches. Every move event recomputes
+// "seated" from the cursor alone (cursor below the top of the bar). While
+// seated the face is cursor-driven but clamped:
+//   floor — it can rise off its seat but never sink below it;
+//   neighbours — its x rides the physics hole (ph.gapHoleX), which steps aside
+//   when the drag's leading edge crosses halfway through the adjacent stamp
+//   (the same gap-follow rule the hand uses, physics.js).
+// Once the cursor clears the top of the bar the face tracks it freely; dipping
+// back below re-seats it wherever the hole is. Drop commits wherever the tile
+// visibly is: seated or over the bar → insert at the hole; anywhere else →
+// fly home, no reorder. Tap = exclusive select — selecting one stamp deselects
+// any other; the selected stamp shows a floating Sell button.
 function attachStampDrag(face,vi,ts,ph,dragSrc){
   face.addEventListener('pointerdown',function(ev){
+    if(ev.button!==0)return;
     ev.preventDefault();ev.stopPropagation();
     if(activeDrag)return;
+    if(document.getElementById('live-score-row').classList.contains('scoring'))return;
     var sx=ev.clientX,sy=ev.clientY;var sr=face.getBoundingClientRect();
-    var moved=false,clone=null;ph.held=vi;
+    var moved=false;var tw=ph.TILE_W;
+    var origX=sr.left+tw/2;var wasSeated=true;
+    var barEl=document.getElementById(dragSrc==='shop-stamp'?'shop-stamp-bar':'stamp-bar');
+    ph.held=vi;
     if(ph.settleDur>=9999){ph.settleAt=0;ph.settleCallback=null;ph.settleDur=150;}
     function move(me){
       var dx=me.clientX-sx,dy=me.clientY-sy;
       if(!moved&&Math.sqrt(dx*dx+dy*dy)>8){
-        moved=true;ph.held=-1;
-        var d=sqd(ts.id);
-        var tw=ph.TILE_W;
-        var cloneInner=d&&d.iconPng
-          ?'<img src="'+d.iconPng+'" style="width:'+tw+'px;height:'+tw+'px;image-rendering:pixelated;display:block;pointer-events:none">'
-          :(d?sqIconHTML(d,Math.round(tw*28/68)):'');
-        var cloneCss=d&&d.iconPng
-          ?'width:'+tw+'px;height:'+tw+'px;overflow:hidden;border-radius:8px;'
-          :'width:'+tw+'px;height:'+tw+'px;background:#12122a;border:2px solid '+(d?d.fg:'#5a5a9a')+';border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;';
-        clone=makeDragClone(cloneInner,cloneCss+'box-shadow:0 12px 28px rgba(0,0,0,.7);transform:scale(1.12);transition:transform 0.1s ease,box-shadow 0.1s ease;');
-        activeDrag={src:dragSrc,vi:vi,clone:clone,sx:sx,sy:sy,sr:sr,cx:sr.left+tw/2};
+        moved=true;ph.held=-1;_playTileClick('pick');
+        ts._dragging=true;
+        face.classList.remove('selected');
+        detachFace(face,sr);
+        // Seed the hole at the stamp's own slot so the first seated frame has a
+        // valid target before the next physics step recomputes it.
+        ph.gapHoleIdx=vi;ph.gapHoleX=origX;
+        activeDrag={src:dragSrc,barSrc:dragSrc,vi:-1,multiCount:0.5,cx:origX,cy:sr.top+tw/2,gapLeft:origX,gapRight:origX};
         renderStampBar();
       }
-      if(moved&&clone){
-        var dx2=me.clientX-sx,dy2=me.clientY-sy;
-        clone.style.left=(sr.left+dx2)+'px';clone.style.top=(sr.top+dy2)+'px';
-        activeDrag.cx=sr.left+ph.TILE_W/2+dx2;activeDrag.cy=sr.top+ph.TILE_W/2+dy2;
+      if(!moved)return;
+      var seated=me.clientY>=sr.top-20;
+      if(seated){
+        // Clamps, not phases: x = hole centre (neighbours), y floored at the
+        // seat. The eased left is what makes hole steps read as slides.
+        face.style.transition='left .12s ease,transform 0.1s ease,box-shadow 0.1s ease';
+        face.style.left=((ph.gapHoleX!=null?ph.gapHoleX:origX)-tw/2)+'px';
+        face.style.top=Math.min(me.clientY-tw/2,sr.top)+'px';
+        // Feed the physics the seated tile, not the raw cursor: cx clamped into
+        // the bar keeps the hole alive (and pushable to the end slots) even when
+        // the cursor drifts past the bar's edge or below it.
+        var br=barEl?barEl.getBoundingClientRect():sr;
+        var fx=Math.max(br.left,Math.min(br.right,me.clientX));
+        activeDrag.cx=fx;activeDrag.cy=sr.top+tw/2;activeDrag.gapLeft=fx;activeDrag.gapRight=fx;
+      } else {
+        // Free tracking above the bar. On the seated→free frame the left ease is
+        // still on, so the face catches up to the cursor smoothly, then unhooks.
+        if(wasSeated)setTimeout(function(){if(ts._dragging)face.style.transition='transform 0.1s ease,box-shadow 0.1s ease';},130);
+        face.style.left=(me.clientX-tw/2)+'px';face.style.top=(me.clientY-tw/2)+'px';
+        activeDrag.cx=me.clientX;activeDrag.cy=me.clientY;activeDrag.gapLeft=me.clientX;activeDrag.gapRight=me.clientX;
       }
+      wasSeated=seated;
+      var inBar=ph.inArea(me.clientX,me.clientY);
+      face.style.transform='scale('+(inBar?'1':'1.08')+')';
+      face.style.boxShadow=inBar?'0 4px 12px rgba(0,0,0,.5)':'0 12px 28px rgba(0,0,0,.7)';
     }
     function up(me){
       document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
       ph.held=-1;
       if(!moved){
-        if(vi>0)ph.vx[vi-1]-=3;
-        if(vi<ph.tiles.length-1)ph.vx[vi+1]+=3;
-        _openStampModal(vi,ts.id);
+        if(Date.now()-_dragEndTime<300)return;
+        var was=!!ts.sel;
+        for(var i=0;i<S.stamps.length;i++)S.stamps[i].sel=false;
+        ts.sel=!was;
+        _playTileClick('select');
+        renderStampBar();
         return;
       }
       _dragEndTime=Date.now();
-      if(!clone)return;
-      if(ph.inArea(me.clientX,me.clientY)){
-        var ins=computeStampInsert(me.clientX,vi,ph);
-        setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);reorderStamps(vi,ins,ph);activeDrag=null;renderStampBar();},120);
+      ts._dragging=false;
+      // Commit wherever the tile visibly is: seated (or over the bar) → the
+      // hole the face is riding; anywhere else → the cancel branch below.
+      if(me.clientY>=sr.top-20||ph.inArea(me.clientX,me.clientY)){
+        var ins=ph.gapHoleIdx!=null?ph.gapHoleIdx:computeStampInsert(me.clientX,-1,ph);
+        var gi=S.stamps.indexOf(ts);
+        if(gi>=0){S.stamps.splice(gi,1);ins=Math.max(0,Math.min(ins,S.stamps.length));S.stamps.splice(ins,0,ts);}
+        ph.bounds();
+        var destX=ph.rest(S.stamps.length)[ins];
+        var bar=document.getElementById(dragSrc==='shop-stamp'?'shop-stamp-bar':'stamp-bar');
+        var br=bar?bar.getBoundingClientRect():null;
+        var destTop=br?br.top+(dragSrc==='shop-stamp'?2:8):sr.top;
+        face.style.transition='left .14s,top .14s,transform .14s,box-shadow .14s';
+        face.style.left=(destX-tw/2)+'px';face.style.top=destTop+'px';face.style.transform='scale(1)';
+        setTimeout(function(){
+          if(face.parentNode)face.parentNode.removeChild(face);
+          activeDrag=null;renderStampBar();
+          _rankObserve(true); // stamp bar order is a scoring mechanic
+        },140);
       } else {
-        clone.style.transition='left .14s,top .14s,transform .14s';clone.style.left=sr.left+'px';clone.style.top=sr.top+'px';clone.style.transform='scale(1)';
-        setTimeout(function(){if(clone.parentNode)clone.parentNode.removeChild(clone);activeDrag=null;renderStampBar();},140);
+        face.style.transition='left .14s,top .14s,transform .14s';
+        face.style.left=sr.left+'px';face.style.top=sr.top+'px';face.style.transform='scale(1)';
+        setTimeout(function(){if(face.parentNode)face.parentNode.removeChild(face);activeDrag=null;renderStampBar();},140);
       }
     }
     document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);
@@ -251,16 +307,15 @@ function attachStampDrag(face,vi,ts,ph,dragSrc){
 
 // Multi-tile drag: all selected tiles physically leave the hand together.
 //
-// Phase 1 (position-based):
-//   All tiles rise together at cursor speed (y = cursor y). Anchor x tracks cursor; other
-//   tiles hold their original hand x positions. Hand opens a gap of (group+2) tile-widths
-//   at the anchor's old position and holds it frozen.
+// Phase 1 (vertical exit):
+//   All tiles rise with the cursor's y, each locked to its grabbed x. The hand
+//   is frozen (settle hold), so the holes stay where the tiles were and no
+//   other tile moves until the group clears the row.
 //
 // Phase 2 (triggers when tile bottoms clear hand-area top, same threshold as ph.inArea):
-//   Hand gap closes to rest positions. Dragging tiles sweep laterally to form a cluster
-//   around the anchor. Both animate simultaneously.
-//
-// After _animUntil (~300ms post-Phase-2): all tiles follow cursor instantly as one group.
+//   Hand gap closes to rest positions. Dragging tiles slide laterally to form a
+//   cluster around the anchor (_clOff offsets ease to the tight formation over
+//   ~300ms via _clStep — JS-driven so it works while the pointer is idle too).
 //
 // Shift or right-click: pivot h↔v around the anchor at any time.
 // Space: disperse all tiles back into the hand via arcing animations.
@@ -270,19 +325,11 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
   var dir='h';
   var _mHL=[];
   var _overBoard=false;
-  var _animUntil=0;
   var _phase2Fired=false;
   var _lastCx=sx,_lastCy=sy,_lastSq=-1;
   var _committedSlotX=null; // locked slot centre when cursor crosses funnel threshold
   var dragIdx=0;
-  // Surface follower (replaces lat mode): single-tile Phase 1 drags chase the
-  // cursor with focus-mode pathfinding. The row is rigid — to reach a cursor
-  // on the far side of neighbouring tiles the tile routes OVER the row
-  // (rise → traverse → descend), one cardinal leg at a time, accelerating
-  // from 0 per leg, while the gap opens at the cursor's slot to receive it.
-  var _fwActive=false,_fwX=0,_fwY=0,_fwSpd=0,_fwHx=0,_fwHy=0,_fwRAF=null,_fwGapIns=-1,_fwOpenIns=-1;
-  var _fwOff=[],_fwOffT=1; // per-tile x-offsets easing from grab rects → tight formation
-  var FW_MAX=30,FW_ACCEL=1.4; // px/frame top speed, px/frame^2 accel
+  var _clOff=[],_clT=1,_clRAF=null; // Phase-2 cluster formation: x-offsets from anchor easing → tight row
   // Surface-mode dwell: gap only opens after cursor stays in a slot zone for 800ms.
   // Exception: arriving from above (free mode) opens gap immediately.
   var _surfaceDwellTimer=null,_surfaceDwellSlotIdx=-1,_surfaceGapOpen=false;
@@ -329,36 +376,50 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     var step=overBoard?Math.ceil(68*0.75)+2:72;
     var sh=overBoard?'0 4px 12px rgba(0,0,0,.5)':'0 12px 28px rgba(0,0,0,.7)';
     var tr=posTr?('left '+posTr+',transform 0.1s ease,box-shadow 0.1s ease'):'transform 0.1s ease,box-shadow 0.1s ease';
+    var _e=1-Math.pow(1-_clT,3); // cluster formation ease: 0 = grab spread, 1 = tight row
     for(var i=0;i<dragEls.length;i++){
       if(!dragEls[i])continue;
-      var off=i-dragIdx;
+      var off=(i-dragIdx)*step;
+      if(dir==='h'&&_clT<1&&_clOff[i]!==undefined)off=_clOff[i]+(off-_clOff[i])*_e;
       dragEls[i].style.transition=tr;
-      dragEls[i].style.left=(dir==='h'?cx-34+off*step:cx-34)+'px';
-      dragEls[i].style.top=(dir==='h'?cy-39:cy-39+off*step)+'px';
+      dragEls[i].style.left=(dir==='h'?cx-34+off:cx-34)+'px';
+      dragEls[i].style.top=(dir==='h'?cy-39:cy-39+off)+'px';
       dragEls[i].style.transform='scale('+sc+')';
       dragEls[i].style.boxShadow=sh;
     }
   }
 
+  // Advances the cluster formation ease (~300ms at 60fps) even when the pointer is idle.
+  function _clStep(){
+    _clT=Math.min(1,_clT+1/18);
+    if(_phase2Fired)_updateAll(_lastCx,_lastCy,_overBoard);
+    _clRAF=_clT<1?requestAnimationFrame(_clStep):null;
+  }
+
   // Phase 2: hand closes gap + dragging tiles sweep to cluster. Guarded by _phase2Fired.
   function _firePhase2(){
     if(_phase2Fired)return;
-    _fwStop();
-    // Restore standard free-drag gap params (the follower uses the locked-slot variant).
     if(activeDrag){activeDrag.multiCount=selTiles.length;activeDrag.funnelInsertIdx=undefined;activeDrag._prevGapRef=undefined;}
     _phase2Fired=true;
-    _animUntil=0;
     hpBounds();
     HP.fromX=HP.x.slice();HP.toX=hpRest(HP.tiles.length);
     HP.settleDur=220;HP.settleAt=performance.now();HP.settleCallback=null;
-    _updateAll(_lastCx,_lastCy,_overBoard,'0.18s ease');
+    // Capture each tile's current x-offset from the anchor so the group SLIDES
+    // into formation from wherever it was lifted, instead of snapping.
+    var _aEl=dragEls[dragIdx];
+    var _ax=_aEl?parseFloat(_aEl.style.left):_lastCx-34;
+    _clOff=[];
+    for(var i=0;i<dragEls.length;i++)_clOff.push(dragEls[i]?parseFloat(dragEls[i].style.left)-_ax:0);
+    _clT=selTiles.length>1?0:1;
+    if(!_clRAF&&_clT<1)_clRAF=requestAnimationFrame(_clStep);
+    _updateAll(_lastCx,_lastCy,_overBoard);
   }
 
   // Toggle h↔v direction; fires Phase 2 if it hasn't started yet.
   function _toggleDir(){
     dir=dir==='h'?'v':'h';
     _firePhase2();
-    _animUntil=0;
+    _clT=1; // pivoting rebuilds the formation outright — skip the slide-in ease
     if(dragEls.length)_updateAll(_lastCx,_lastCy,_overBoard,'0.12s ease');
     if(_lastSq>=0)_updateHL(_lastSq);
   }
@@ -371,7 +432,8 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     document.removeEventListener('contextmenu',_preventCM);
     document.removeEventListener('keydown',_onMultiDragKey);
     HP.held=-1;_clearMHL();activeDrag=null;_dragEndTime=Date.now();
-    _fwStop();
+    if(HP.settleDur>=9999){HP.settleAt=0;HP.settleCallback=null;HP.settleDur=150;} // release the phase-1 freeze
+    if(_clRAF){cancelAnimationFrame(_clRAF);_clRAF=null;}_clT=1;
     var nSel=selTiles.length;
     HP.movingCount+=nSel;
     for(var i=0;i<selTiles.length;i++)setTileState(selTiles[i].t,'moving',{movingFrom:'hand',movingTo:'hand'});
@@ -399,91 +461,6 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     if(nSel===0)renderHand();
   }
 
-  // ---- Surface follower ----
-  // RAF loop: owns the drag elements' full position during Phase 1 (single
-  // tiles AND groups — the anchor is driven, others hold formation). The row
-  // is rigid, so the route to a cursor beyond neighbouring tiles is over the
-  // top: rise → traverse → descend. Gap gating: the row always holds exactly
-  // one hole (full n-slot width — never compresses). The hole sits at the
-  // last seated slot while the group rises/traverses, then relocates to the
-  // cursor's slot the moment the group is overhead, so descending always
-  // brings it closer to the cursor.
-  function _fwStep(){
-    if(!_fwActive){_fwRAF=null;return;}
-    var haEl=document.getElementById('hand-area');
-    var haR=haEl?haEl.getBoundingClientRect():null;
-    if(haR){
-      var g=selTiles.length;
-      var rowY=haR.top+39;   // seated: element top flush with the row
-      var clearY=haR.top-33; // risen: tile bottom clears the row tops
-      hpBounds();
-      var n=HP.x.length;
-      var lw=HP.aL+HP.TILE_W/2,rw=HP.aR-HP.TILE_W/2;
-      var tx=Math.max(lw,Math.min(rw,_lastCx));
-      // Anchor slot from the cursor (stable no-gap rest positions) →
-      // leftmost insert index for the group.
-      var rp=hpRest(n),aIns=0;
-      for(var q=0;q<n;q++){if(tx>rp[q])aIns=q+1;}
-      var ins=Math.max(0,Math.min(n,aIns-dragIdx));
-      var gs=hpRest(n+g);
-      var gapX=gs[Math.min(ins+dragIdx,gs.length-1)]; // anchor's seat
-      var seated=_fwY>clearY+1;
-      var arrived=Math.abs(_fwX-gapX)<=6;
-      // The hole never closes — it relocates. While the tile rises/traverses
-      // the hole stays at its last slot (row keeps its full n-slot width, no
-      // compress/expand pumping); on arrival the hole shifts to the new slot
-      // in one clean move, ready for the descent.
-      if(arrived)_fwOpenIns=ins;
-      if(activeDrag){
-        if(_fwOpenIns>=0){
-          var ogx=gs[Math.min(_fwOpenIns+dragIdx,gs.length-1)];
-          activeDrag.cx=ogx;activeDrag.cy=haR.top;
-          activeDrag.funnelInsertIdx=_fwOpenIns;activeDrag._prevGapRef=undefined;
-          activeDrag.gapLeft=ogx-dragIdx*HP.TILE_W;
-          activeDrag.gapRight=ogx+(g-1-dragIdx)*HP.TILE_W;
-        }else{
-          activeDrag.cy=haR.top-100; // outside ph.inArea → row closed
-          activeDrag.funnelInsertIdx=undefined;activeDrag._prevGapRef=undefined;
-        }
-        activeDrag.multiCount=g-0.5; // gapCount = g slots in the HP spring
-      }
-      _fwGapIns=ins; // drop target on release
-      // Waypoint — always cardinal from the anchor:
-      var wx=_fwX,wy=_fwY;
-      if(arrived){wx=gapX;wy=rowY;}   // descend into the opening gap
-      else if(seated){wy=clearY;}     // rise out of the row first
-      else{wx=gapX;}                  // traverse to above the cursor's slot
-      // One cardinal leg at a time, accelerating from 0 on each new leg.
-      var dxw=wx-_fwX,dyw=wy-_fwY,dd=Math.max(Math.abs(dxw),Math.abs(dyw));
-      if(dd>0.5){
-        var ux=Math.abs(dxw)>=Math.abs(dyw)?(dxw>0?1:-1):0;
-        var uy=ux!==0?0:(dyw>0?1:-1);
-        if(_fwHx!==ux||_fwHy!==uy){_fwSpd=0;_fwHx=ux;_fwHy=uy;}
-        _fwSpd=Math.min(FW_MAX,_fwSpd+FW_ACCEL);
-        var st=Math.min(_fwSpd,dd);
-        _fwX+=ux*st;_fwY+=uy*st;
-      }else{_fwSpd=0;}
-      // Hand walls always rigid — clamp the whole group's extent.
-      _fwX=Math.max(lw+dragIdx*HP.TILE_W,Math.min(rw-(g-1-dragIdx)*HP.TILE_W,_fwX));
-      // Draw: anchor + formation. Offsets ease from the grab rects into a
-      // tight row over the first ~15 frames (groups grab non-contiguously).
-      if(_fwOffT<1)_fwOffT=Math.min(1,_fwOffT+0.07);
-      var _oe=1-Math.pow(1-_fwOffT,3);
-      for(var di=0;di<dragEls.length;di++){
-        if(!dragEls[di])continue;
-        var tgtOff=(di-dragIdx)*HP.TILE_W;
-        var off=_fwOff[di]!==undefined?_fwOff[di]+(tgtOff-_fwOff[di])*_oe:tgtOff;
-        dragEls[di].style.left=(_fwX+off-34)+'px';
-        dragEls[di].style.top=(_fwY-39)+'px';
-      }
-    }
-    _fwRAF=requestAnimationFrame(_fwStep);
-  }
-  function _fwStop(){
-    _fwActive=false;_fwGapIns=-1;_fwOpenIns=-1;_fwSpd=0;_fwHx=0;_fwHy=0;
-    if(_fwRAF){cancelAnimationFrame(_fwRAF);_fwRAF=null;}
-  }
-
   function _onRightPD(e){if(e.button!==2)return;e.preventDefault();_toggleDir();}
   function _preventCM(e){e.preventDefault();}
   function _onMultiDragKey(e){
@@ -494,7 +471,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
       document.removeEventListener('pointerdown',_onRightPD);document.removeEventListener('contextmenu',_preventCM);
       document.removeEventListener('keydown',_onMultiDragKey);
       HP.held=-1;_clearMHL();
-      _fwStop();
+      if(_clRAF){cancelAnimationFrame(_clRAF);_clRAF=null;}_clT=1;
       if(_surfaceDwellTimer){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
       _surfaceDwellSlotIdx=-1;_surfaceGapOpen=false;_wasAtSurface=false;
       if(_springSlowed){HP.SPRING=0.14;HP.DAMP=0.55;_springSlowed=false;}
@@ -691,35 +668,20 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
         activeDrag.gapRight=_gapCx;
       }
       if(!_phase2Fired){
-        // Phase 1 — hard-body follower with focus-mode routing, for single
-        // tiles and groups alike. The RAF loop (_fwStep) owns positions and
-        // gap gating; move() only records the cursor and fires Phase 2.
-        if(!_fwActive){
-          _fwActive=true;
-          var _ar=initRects[dragIdx];
-          _fwX=_ar?_ar.left+34:me.clientX;
-          _fwY=_ar?_ar.top+39:me.clientY;
-          _fwSpd=0;_fwHx=0;_fwHy=0;
-          // Hole starts at the grab position so the row never compresses.
-          _fwOpenIns=Math.max(0,Math.min(HP.tiles.length,dragVi-dragIdx));
-          // Formation offsets: groups grab non-contiguously, so each tile
-          // starts at its grab rect and eases into the tight row in _fwStep.
-          _fwOff=[];_fwOffT=selTiles.length>1?0:1;
-          for(var _oi=0;_oi<dragEls.length;_oi++){
-            _fwOff.push(initRects[_oi]?initRects[_oi].left+34-_fwX:(_oi-dragIdx)*HP.TILE_W);
-          }
-          HP.settleAt=0;HP.settleDur=150;HP.settleCallback=null; // unfreeze hand
-          _fwRAF=requestAnimationFrame(_fwStep);
+        // Phase 1 — vertical exit: every dragged tile rises with the cursor's y,
+        // locked to its grabbed x. The hand stays frozen (settle hold from drag
+        // start), so the holes stay where the tiles were and nothing else moves
+        // until the group clears the row.
+        for(var i=0;i<dragEls.length;i++){
+          if(!dragEls[i])continue;
+          if(initRects[i])dragEls[i].style.left=initRects[i].left+'px';
+          // Clamp to the seat: the tile can only rise out of its slot, never sink below it.
+          var _p1Top=me.clientY-39;
+          if(initRects[i]&&_p1Top>initRects[i].top)_p1Top=initRects[i].top;
+          dragEls[i].style.top=_p1Top+'px';
         }
         // Phase 2 fires when the cursor clears the hand vertically.
         if(_haRF&&me.clientY<_haRF.top-34){_firePhase2();}
-      } else if(Date.now()<_animUntil){
-        // Phase 2: y follows cursor for all tiles; non-anchor x eases to cluster (CSS transition
-        // for left is undisturbed since we only set top here). Y clamped same as Phase 1.
-        var _p2cy=_haRF?Math.min(me.clientY,_haRF.top+39):me.clientY;
-        var _ty=(_p2cy-39)+'px';
-        for(var i=0;i<dragEls.length;i++){if(dragEls[i])dragEls[i].style.top=_ty;}
-        if(dragEls[dragIdx])dragEls[dragIdx].style.left=(me.clientX-34)+'px';
       } else {
         _updateAll(_ecx,_ecy,_overBoard);
       }
@@ -738,12 +700,9 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     HP.held=-1;_clearMHL();
     if(_surfaceDwellTimer){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
     var _dropLockedSlot=(_cameFromAbove&&_surfaceDwellSlotIdx>=0)?_surfaceDwellSlotIdx:-1;
-    // Surface-follower drop: use the gap slot the follower was heading for.
-    var _fwDropIns=_fwActive?_fwGapIns:-1;
-    _fwStop();
-    // Phase-1 multi-tile: cursor never cleared the hand so _cameFromAbove is never set.
-    // Use the group's original insert index so lateral cursor movement doesn't affect the drop.
-    var _p1MultiIns=(!_phase2Fired&&selTiles.length>1)?Math.max(0,dragVi-dragIdx):-1;
+    // Phase-1 drop: the tiles never left their slots' x, so the group returns to
+    // its original position regardless of where the cursor wandered.
+    var _p1Ins=!_phase2Fired?Math.max(0,dragVi-dragIdx):-1;
     _surfaceDwellSlotIdx=-1;_surfaceGapOpen=false;_cameFromAbove=false;
     if(!moved){
       activeDrag=null;
@@ -755,6 +714,8 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
       return;
     }
     _dragEndTime=Date.now();
+    if(HP.settleDur>=9999){HP.settleAt=0;HP.settleCallback=null;HP.settleDur=150;} // release the phase-1 freeze
+    if(_clRAF){cancelAnimationFrame(_clRAF);_clRAF=null;}_clT=1;
     for(var i=0;i<dragEls.length;i++){if(dragEls[i]&&dragEls[i].parentNode)dragEls[i].parentNode.removeChild(dragEls[i]);}
     activeDrag=null;
     var sq=sqAt(me.clientX,me.clientY);
@@ -773,7 +734,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     } else if(inHand(me.clientX,me.clientY)){
       // Dropped in hand — reorder tiles at cursor position.
       // Compute insert position in HP.tiles (dragging tiles already excluded).
-      var _ins=Math.max(0,Math.min(_dropLockedSlot>=0?_dropLockedSlot:_fwDropIns>=0?_fwDropIns:_p1MultiIns>=0?_p1MultiIns:computeInsert(me.clientX,-1),S.hand.length));
+      var _ins=Math.max(0,Math.min(_dropLockedSlot>=0?_dropLockedSlot:_p1Ins>=0?_p1Ins:computeInsert(me.clientX,-1),S.hand.length));
       // Restore tile states so renderHand includes them in vis.
       for(var i=0;i<selTiles.length;i++) setTileState(selTiles[i].t,'hand');
       // Build new S.hand order: existing (non-dragged) tiles with dragged group inserted at _ins.
@@ -1162,6 +1123,7 @@ function _burstNewTilesFromBag(nKept,nTotal,bagEl,onDone){
       var flyEl=document.createElement('div');
       flyEl.className='tile hand-tile tile-spr';
       flyEl.style.cssText='position:fixed;z-index:9999;pointer-events:none;width:68px;height:68px;left:'+(bx-34)+'px;top:'+(by-34)+'px;'+spr;
+      applyTileLayers(flyEl,tData,68,spr);
       document.body.appendChild(flyEl);
       allFlyEls.push(flyEl);
       setTimeout(function(){

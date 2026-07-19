@@ -87,7 +87,7 @@ SQ.push({id:'slot_machine',name:'Slot Machine',
       var wt=ctx.curWordTiles||[tile];
       for(var i=0;i<wt.length;i++){
         var v=Math.random();
-        ctx.slotTransforms.push({idx:wt[i].idx,variant:v<1/3?'red':v<2/3?'blue':'gold'});
+        ctx.slotTransforms.push({idx:wt[i].idx,variant:v<0.2?'red':v<0.4?'blue':v<0.6?'gold':v<0.8?'jade':'purple'});
       }
       ev({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Slot: Jackpot!'});
     }
