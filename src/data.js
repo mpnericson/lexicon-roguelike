@@ -61,10 +61,10 @@ function applyBountyReward(ctx){
 
 // 8 boards × 3 rounds. Hand-tuned targets.
 var BOARDS=[
-  [['','',50],['','',75],['Constraint','',125,true]],
-  [['','',200],['','',300],['Constraint','',450,true]],
-  [['','',800],['','',1300],['Constraint','',2000,true]],
-  [['','',3200],['','',5600],['Constraint','',9600,true]],
+  [['','',100],['','',200],['Constraint','',300,true]],
+  [['','',500],['','',800],['Constraint','',1200,true]],
+  [['','',1600],['','',2000],['Constraint','',2800,true]],
+  [['','',4000],['','',6000],['Constraint','',10000,true]],
   [['','',12000],['','',16000],['Constraint','',20000,true]],
   [['','',30000],['','',40000],['Constraint','',60000,true]],
   [['','',80000],['','',100000],['Constraint','',150000,true]],
