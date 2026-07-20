@@ -84,9 +84,9 @@ var ALL_PACK_TYPES=[
   {type:'sticker',label:'Prize Pack',desc:'3 random stickers or stamps — choose one to keep.',cost:3},
   {type:'tile',label:'Tile Pack',desc:'5 tiles — mix of basic and enchanted.',cost:3},
   {type:'sq',sqId:'dl',label:'6× Double Letter',desc:'6 DL squares — letter scores ×2.',cost:3},
-  {type:'sq',sqId:'tl',label:'4× Triple Letter',desc:'4 TL squares — letter scores ×3.',cost:3},
+  {type:'sq',sqId:'tl',label:'4× Quadruple Letter',desc:'4 QL squares — letter scores ×4.',cost:3},
   {type:'sq',sqId:'dw',label:'2× Double Word',desc:'2 DW squares — word scores ×2.',cost:3},
-  {type:'sq',sqId:'tw',label:'1× Triple Word',desc:'1 TW square — word scores ×3.',cost:3},
+  {type:'sq',sqId:'tw',label:'1× Quadruple Word',desc:'1 QW square — word scores ×4.',cost:3},
 ];
 
 function refreshShop(){

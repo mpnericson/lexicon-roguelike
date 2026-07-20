@@ -58,6 +58,7 @@ window.addEventListener('resize',function(){hpBounds();renderBoard();});
 
 document.addEventListener('keydown',function(e){
   if(window.TUT&&TUT.active)return; // tutorial: shortcuts stay locked out
+  if(window._glassRet){_glassRetCancel();return;} // glass retrieve is modal — any key cancels
   if(window._focusMode){if(e.key==='Escape')exitFocus();return;}
   if(e.key==='Enter'&&S.phase==='play'&&!e.target.closest('.modal-overlay')){if(window._pdFlash)_pdFlash(3);playWord();}
   if((e.key==='Delete'||e.key==='Backspace')&&S.phase==='play'&&!e.target.closest('input,textarea')){if(window._pdFlash)_pdFlash(5);discardTiles();}

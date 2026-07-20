@@ -52,6 +52,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .tk-pack-art{width:100%;height:100%;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
 .tk-pack-art.ticket{background:linear-gradient(160deg,#7a3050,#4a1830);border:2px solid #c06080}
 .tk-pack-art.key{background:linear-gradient(160deg,#203050,#101a30);border:2px solid #6080c0}
+.tk-pack-art.tile{background:linear-gradient(160deg,#1f5a38,#0e2c1c);border:2px solid #4fae6e}
 .tk-pack-emoji{font-size:clamp(12px,3vw,44px)}
 .tk-pack-size{font-size:clamp(7px,1.2vw,18px);color:#f0e0c0;margin-top:4%}
 #tk-overlay{position:fixed;inset:0;z-index:240;display:none;flex-direction:column;align-items:center;justify-content:center;gap:24px;background:radial-gradient(ellipse at center,rgba(42,22,64,0.96) 0%,rgba(10,6,20,0.98) 75%)}
@@ -67,6 +68,11 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .tk-card:hover{transform:translateY(-6px)}
 .tk-card.tk-sel{transform:translateY(-14px);box-shadow:0 0 0 3px #f0e080,0 12px 26px rgba(0,0,0,0.55)}
 .tk-card.tk-used{opacity:0.22;pointer-events:none;transform:translateY(-26px) scale(0.92)}
+#tk-cards-row.tk-tile-mode{flex-wrap:wrap;justify-content:center;align-items:center;max-width:840px;min-height:150px}
+.tk-tilepack-card{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;padding:6px;border-radius:10px;transition:transform 0.15s ease,box-shadow 0.15s ease}
+.tk-tilepack-card:hover{transform:translateY(-6px)}
+.tk-tilepack-card.tk-sel{transform:translateY(-10px);box-shadow:0 0 0 3px #f0e080,0 12px 26px rgba(0,0,0,0.55)}
+.tk-tilepack-label{font-size:16px;color:#e0d0f0;font-family:'Jersey 10',Georgia;min-height:18px;line-height:1;text-align:center}
 .tk-kind{font-size:16px;letter-spacing:2px;opacity:0.65}
 .tk-icon{font-size:42px;line-height:1.2;margin:5px 0 2px}
 .tk-cname{font-size:27px;line-height:1}
@@ -81,8 +87,11 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .tk-mini.ticket{background:linear-gradient(160deg,#efe2bd,#d8c491);border:2px solid #8a7440}
 .tk-mini.key{background:linear-gradient(160deg,#232f52,#141c36);border:2px solid #5a78c0}
 .tk-mini:hover{transform:translateY(-4px)}
+.tk-mini.tk-sel{transform:translateY(-4px);box-shadow:0 0 0 2px #f0e080,0 6px 12px rgba(0,0,0,0.45)}
+.tk-use-btn.mini{bottom:-24px;font-size:17px;padding:1px 10px;border-radius:5px}
 .tk-mini-count{font-size:22px;color:#8880a8;align-self:center;font-family:'Jersey 10',Georgia}
 #shop-consumables .tk-mini{width:min(3.4vw,34px);height:min(4.5vw,45px);font-size:min(1.9vw,19px)}
+#shop-consumables .tk-use-btn.mini{font-size:min(1.6vw,16px);bottom:-20px}
 #shop-consumables .tk-mini-count{font-size:clamp(8px,1.3vw,18px)}
 @keyframes tkBurnOut{0%{opacity:1;filter:brightness(1)}35%{opacity:1;filter:brightness(1.9) sepia(1) saturate(3) hue-rotate(-28deg)}100%{opacity:0;filter:brightness(2.6) sepia(1) saturate(4) hue-rotate(-48deg);transform:translateY(-10px) scale(1.1)}}
 @keyframes tkNewIn{0%{transform:scale(0);opacity:0}55%{transform:scale(1.14);opacity:1}100%{transform:scale(1);opacity:1}}
@@ -169,6 +178,11 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .hand-tile{width:68px;height:68px;box-shadow:0 4px 0 #6b5535;cursor:grab;position:absolute;top:0;transition:transform 0.12s ease,filter 0.12s ease;will-change:filter,transform}
 .hand-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.07);z-index:10;cursor:grab}
 .hand-tile.selected{transform:translateY(-5px);z-index:5;filter:brightness(1.06)}
+/* Glass retrieve: hand shakes while a glass tile hovers, awaiting a sacrifice */
+#hand-area.glass-sac .hand-tile{cursor:pointer;animation:glassShake .3s linear infinite}
+#hand-area.glass-sac .hand-tile:nth-child(2n){animation-delay:-.11s}
+#hand-area.glass-sac .hand-tile:nth-child(3n){animation-delay:-.21s}
+@keyframes glassShake{0%,100%{transform:translate(0,0) rotate(0)}25%{transform:translate(1.5px,-1px) rotate(1.6deg)}50%{transform:translate(-1.2px,1px) rotate(-1.5deg)}75%{transform:translate(1px,1.4px) rotate(1.1deg)}}
 /* Focus mode: fade all peripheral UI, keep board + tiles + eye */
 #left-panel,#stamp-bar,#hand-wrap,#bounty-row,#play-controls{transition:opacity .45s ease}
 body.focus-mode #left-panel,body.focus-mode #stamp-bar,body.focus-mode #hand-wrap,body.focus-mode #bounty-row,body.focus-mode #play-controls{opacity:0;pointer-events:none}

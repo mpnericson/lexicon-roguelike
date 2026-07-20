@@ -31,7 +31,7 @@ var _solverHighlightMove = null;
 // mid-solve. Everything in sv is read-only to the solver.
 function _solverLivePosition() {
   return { bt: S.bt, btTop: S.btTop || null, board: S.board, placed: S.placed,
-           stamps: S.stamps, cooldowns: S.localCooldowns, bounties: S.bounties };
+           stamps: S.stamps, bounties: S.bounties };
 }
 function _svHasStamp(sv, id) {
   var st = sv.stamps || [];
@@ -320,7 +320,7 @@ function _solverScoreMove(sv, mv, hm) {
     jengaCrossIdxs: jengaTops ? _engJengaCrossIdxs(overlay, jengaTops, mv.isH ? 'h' : 'v', function (w) { return DICT.has(w); }) : null,
     mirrorWords: _svHasStamp(sv, 'mirror') ? _engMirrorWords(overlay, newIdxs, mv.isH ? 'h' : 'v', jengaTops, function (w) { return DICT.has(w); }) : null,
     boardStickers: sv.board, placed: sv.placed, stamps: sv.stamps,
-    cooldowns: sv.cooldowns || new Set(), bounties: sv.bounties || [],
+    bounties: sv.bounties || [],
     preview: true,
     state: buildEngineState(_bingoHit ? 0 : Math.max(1, (hm.handTileCount || 7) - newCount))
   });
@@ -366,7 +366,7 @@ function _solverInflateBounty(res, bounties) {
 // live S views otherwise) — never from live globals mid-solve, so user input
 // between chunks always sees untouched game state.
 // Chunked via setTimeout to keep the UI live.
-//   position        {bt, btTop, board, placed, stamps, cooldowns, bounties}
+//   position        {bt, btTop, board, placed, stamps, bounties}
 //                   — defaults to _solverLivePosition()
 //   handTiles       tile array for the rack (nulls ignored)
 //   topK            number of results to keep, ranked by score
@@ -476,7 +476,6 @@ function _rankCapturePosition() {
   return {
     hand: hand, bt: bt, btTop: btTop,
     board: S.board.slice(), placed: S.placed.slice(), stamps: S.stamps.slice(),
-    cooldowns: S.localCooldowns ? new Set(S.localCooldowns) : new Set(),
     bounties: (S.bounties || []).slice(),
     palUnlocked: !!S.palUnlocked, lastWordLen: S.lastWordLen || 0
   };
@@ -653,7 +652,7 @@ function findBestMoveBackground(snap, onDone) {
   // tiles). Nothing is installed into S, so a new game started mid-solve
   // can't be corrupted.
   var pos = { hand: snap.hand, bt: snap.bt, btTop: null, board: snap.board,
-              placed: S.placed, stamps: S.stamps, cooldowns: S.localCooldowns, bounties: S.bounties };
+              placed: S.placed, stamps: S.stamps, bounties: S.bounties };
   _solverCore({
     position: pos,
     handTiles: snap.hand,

@@ -1,47 +1,47 @@
 // ── THE COMMONS ───────────────────────────────────────────────────────────────
 // type: stamp · rarity: common · cost: $3
-// Bracket 3 (onPerTile): each instance fires per tile and adds +3 letter score
-// when the tile is a 1-point tile. Stacks additively — two Commons = +6 per
-// 1-pt tile (each instance fires independently).
+// Bracket 3 (onPerTile): each instance fires per tile and adds +4 letter score
+// when the tile is a 2-point tile (the lowest tier). Stacks additively — two
+// Commons = +8 per 2-pt tile (each instance fires independently).
 SQ.push({id:'the_commons',name:'The Commons',
-  desc:'Each 1-point tile in the word scores +3 bonus letter score.',
+  desc:'Each 2-point tile in the word scores +4 bonus letter score.',
   rarity:'common',cost:3,bg:'#181818',fg:'#c0c0c0',icon:'TC',type:'stamp',priority:1,
   onPerTile:function(tile,ctx,ts){
-    if(!tile.isBlank&&(LS[tile.letter]||0)===1){
-      ts+=3;
-      ctx.events.push({type:'letter',sqIdx:tile.idx,lettersAfter:ts,isTileLocal:true,label:'Commons +3',floatStampId:'the_commons'});
+    if(!tile.isBlank&&(LS[tile.letter]||0)===2){
+      ts+=4;
+      ctx.events.push({type:'letter',sqIdx:tile.idx,lettersAfter:ts,isTileLocal:true,label:'Commons +4',floatStampId:'the_commons'});
     }
     return ts;
   }});
 
 // ── SCHOLAR ───────────────────────────────────────────────────────────────────
 // type: stamp · rarity: common · cost: $3
-// onPostWord: fires if every scored tile was a 1-point tile — the stamp
-// computes its own condition from ctx.scoredTiles.
-SQ.push({id:'scholar',name:'Scholar',desc:'Words made only of 1-point tiles gain +6 multiplier.',
+// onPostWord: fires if every scored tile was a 2-point tile (the lowest
+// tier) — the stamp computes its own condition from ctx.scoredTiles.
+SQ.push({id:'scholar',name:'Scholar',desc:'Words made only of 2-point tiles gain +16 multiplier.',
   rarity:'common',cost:3,bg:'#0a1a2a',fg:'#80c0ff',icon:'SH',type:'stamp',
   onPostWord:function(w,wt,ctx){
     var st=ctx.scoredTiles;
     if(!st.length)return;
     for(var i=0;i<st.length;i++){
       var sc=st[i].isBlank?(st[i].sc||0):(LS[st[i].letter]||0);
-      if(sc>1)return;
+      if(sc>2)return;
     }
-    ctx.plusMults.push(6);ctx.events.push({type:'plus-mult',delta:6,label:'Scholar +6 mult'});
+    ctx.plusMults.push(16);ctx.events.push({type:'plus-mult',delta:16,label:'Scholar +16 mult'});
   }});
 
 // ── ARISTOCRAT ────────────────────────────────────────────────────────────────
 // type: stamp · rarity: common · cost: $3
 // onPostWord: fires if any scored tile was worth 8+ points — the stamp
 // computes its own condition from ctx.scoredTiles.
-SQ.push({id:'aristocrat',name:'Aristocrat',desc:'Words with an 8+ point tile gain +5 multiplier.',
+SQ.push({id:'aristocrat',name:'Aristocrat',desc:'Words with an 8+ point tile gain +8 multiplier.',
   rarity:'common',cost:3,bg:'#2a0a1a',fg:'#f080c0',icon:'AC',type:'stamp',
   onPostWord:function(w,wt,ctx){
     var st=ctx.scoredTiles;
     for(var i=0;i<st.length;i++){
       var sc=st[i].isBlank?(st[i].sc||0):(LS[st[i].letter]||0);
       if(sc>=8){
-        ctx.plusMults.push(5);ctx.events.push({type:'plus-mult',delta:5,label:'Aristocrat +5 mult'});
+        ctx.plusMults.push(8);ctx.events.push({type:'plus-mult',delta:8,label:'Aristocrat +8 mult'});
         return;
       }
     }
@@ -50,23 +50,23 @@ SQ.push({id:'aristocrat',name:'Aristocrat',desc:'Words with an 8+ point tile gai
 // ── THE MARSHALL ──────────────────────────────────────────────────────────────
 // type: stamp · rarity: common · cost: $3
 // onPostWord: fires if the word completed a bounty
-// (ctx.state.pendingBountyReward). Adds +5 letter score per tile in the word.
-SQ.push({id:'the_marshall',name:'The Marshall',desc:'Each tile in a bounty word scores +5 letter score.',
+// (ctx.state.pendingBountyReward). Adds +4 letter score per tile in the word.
+SQ.push({id:'the_marshall',name:'The Marshall',desc:'Each tile in a bounty word scores +4 letter score.',
   rarity:'common',cost:3,bg:'#1a1200',fg:'#f0c840',icon:'MR',type:'stamp',
   onPostWord:function(w,wt,ctx){
     if(!ctx.state.pendingBountyReward)return;
-    var bonus=wt.length*5;ctx.letters+=bonus;
+    var bonus=wt.length*4;ctx.letters+=bonus;
     ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Marshall +'+bonus});
   }});
 
 // ── THE HANGMAN ───────────────────────────────────────────────────────────────
 // type: stamp · rarity: common · cost: $3
-// onPostWord: fires if the word completed a bounty. Adds +15 flat mult.
-SQ.push({id:'the_hangman',name:'The Hangman',desc:'+15 mult for a bounty word.',
+// onPostWord: fires if the word completed a bounty. Adds +16 flat mult.
+SQ.push({id:'the_hangman',name:'The Hangman',desc:'+16 mult for a bounty word.',
   rarity:'common',cost:3,bg:'#1a0a00',fg:'#f08040',icon:'HG',type:'stamp',
   onPostWord:function(w,wt,ctx){
     if(!ctx.state.pendingBountyReward)return;
-    ctx.plusMults.push(15);ctx.events.push({type:'plus-mult',delta:15,label:'Hangman +15 mult'});
+    ctx.plusMults.push(16);ctx.events.push({type:'plus-mult',delta:16,label:'Hangman +16 mult'});
   }});
 
 // ── MAGIC NUMBER ──────────────────────────────────────────────────────────────
@@ -75,12 +75,12 @@ SQ.push({id:'the_hangman',name:'The Hangman',desc:'+15 mult for a bounty word.',
 // applies +n flat mult. Any non-3-letter word resets the streak
 // (onWordPlayed, fired outside the engine, owns the persistent counter).
 SQ.push({id:'magic_number',name:'Magic Number',
-  desc:'Each consecutive 3-letter word adds +1 mult to this stamp. Resets to zero on any other word length.',
+  desc:'Each consecutive 3-letter word adds +2 mult to this stamp. Resets to zero on any other word length.',
   rarity:'common',cost:3,bg:'#001a20',fg:'#40d0b0',icon:'MN',type:'stamp',
-  liveDesc:function(p){var n=S.magicStreak||0;return 'Consecutive 3-letter streak: <span style="color:#f0e040">+'+n+' mult</span>. Play a non-3-letter word to reset.';},
+  liveDesc:function(p){var n=(S.magicStreak||0)*2;return 'Consecutive 3-letter streak: <span style="color:#f0e040">+'+n+' mult</span>. Play a non-3-letter word to reset.';},
   onPostWord:function(w,wt,ctx){
     if(w.length===3){
-      var n=(ctx.state.magicStreak||0)+1;
+      var n=((ctx.state.magicStreak||0)+1)*2;
       ctx.plusMults.push(n);
       ctx.events.push({type:'plus-mult',delta:n,label:'Magic Number +'+n+' mult',scaleBounce:'magic_number'});
     }
@@ -141,18 +141,18 @@ SQ.push({id:'crossroads',name:'Crossroads',desc:'Every crossword you form perman
 // the shared gate both machines spin through — so every paid spin counts,
 // stamp reels and symbol reels alike.
 SQ.push({id:'skilled_gambler',name:'Skilled Gambler',
-  desc:'Every slot machine spin permanently adds +1 mult to this stamp.',
+  desc:'Every slot machine spin permanently adds +2 mult to this stamp.',
   rarity:'uncommon',cost:5,bg:'#1a0014',fg:'#f060c0',icon:'SG',type:'stamp',
-  liveDesc:function(p){var n=S.gamblerSpins||0;return 'Each slot machine spin adds +1 permanent mult. Currently: <span style="color:#f0e040">+'+n+' mult</span> ('+n+' spin'+(n!==1?'s':'')+').';},
+  liveDesc:function(p){var n=(S.gamblerSpins||0)*2;return 'Each slot machine spin adds +2 permanent mult. Currently: <span style="color:#f0e040">+'+n+' mult</span> ('+(S.gamblerSpins||0)+' spin'+((S.gamblerSpins||0)!==1?'s':'')+').';},
   onPostWord:function(w,wt,ctx){
-    var n=ctx.state.gamblerSpins||0;
+    var n=(ctx.state.gamblerSpins||0)*2;
     if(n>0){ctx.plusMults.push(n);ctx.events.push({type:'plus-mult',delta:n,label:'Skilled Gambler +'+n+' mult',floatStampId:'skilled_gambler'});}
   }});
 
 // ── OUROBOROS ─────────────────────────────────────────────────────────────────
 // type: stamp · rarity: rare · cost: $8
 // A snowball: it stores a permanent letter-score bonus (S.ouroborosBonus) that
-// grows +5 for every O that scores — committed board O's and newly-played O's
+// grows +4 for every O that scores — committed board O's and newly-played O's
 // alike, once per word the O scores in; blanks assigned O count too (the engine
 // tile carries the display letter). The growth commits LIVE as each O scores
 // (its tile event's scaleField → scoring.js applies it on the O's bink), so the
@@ -160,10 +160,10 @@ SQ.push({id:'skilled_gambler',name:'Skilled Gambler',
 // score once per play — the engine reads the pre-play value, so the O you score
 // this turn feeds the next play, not this one.
 SQ.push({id:'ouroboros',name:'Ouroboros',
-  desc:'Each O you score permanently adds +5 letter score to Ouroboros, applied to every word. Board O\'s count too.',
+  desc:'Each O you score permanently adds +4 letter score to Ouroboros, applied to every word. Board O\'s count too.',
   rarity:'rare',cost:8,bg:'#0a1a0a',fg:'#80e080',icon:'OU',type:'stamp',
   onAcquire:function(){if(!S.ouroborosBonus)S.ouroborosBonus=0;},
-  liveDesc:function(p){var n=S.ouroborosBonus||0;return 'Each O scored: permanent +5 letter score. Currently at <span style="color:#f0e040">+'+n+' letter score</span> per word.';},
+  liveDesc:function(p){var n=S.ouroborosBonus||0;return 'Each O scored: permanent +4 letter score. Currently at <span style="color:#f0e040">+'+n+' letter score</span> per word.';},
   onPostWord:function(w,wt,ctx){
     var bonus=ctx.state.ouroborosBonus||0;
     if(bonus>0){ctx.letters+=bonus;ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Ouroboros +'+bonus,floatStampId:'ouroboros'});}
@@ -175,7 +175,7 @@ SQ.push({id:'ouroboros',name:'Ouroboros',
   // O stays in sync. No dedup ("any time an O scores"); the engine stays pure and
   // onPostWord still applied the pre-play value this turn.
   onPerTile:function(tile,ctx,ts){
-    if(tile.letter==='O')ctx.events.push({type:'letter',sqIdx:tile.idx,lettersAfter:ts,isTileLocal:true,floatStampId:'ouroboros',scaleField:'ouroborosBonus',scaleDelta:5});
+    if(tile.letter==='O')ctx.events.push({type:'letter',sqIdx:tile.idx,lettersAfter:ts,isTileLocal:true,floatStampId:'ouroboros',scaleField:'ouroborosBonus',scaleDelta:4});
     return ts;
   }});
 
@@ -193,16 +193,32 @@ SQ.push({id:'mirror',name:'Mirror',
 
 // ── SESQUIPEDALIAN ────────────────────────────────────────────────────────────
 // type: stamp · rarity: common · cost: $3
-// onPostWord: words 5+ letters long earn +1 mult for every letter they contain
-// (a 5-letter word = +5, a 7-letter word = +7). Shorter words get nothing.
+// onPostWord: words 5+ letters long earn +2 mult for every letter they contain
+// (a 5-letter word = +10, a 7-letter word = +14). Shorter words get nothing.
 SQ.push({id:'sesquipedalian',name:'Sesquipedalian',
-  desc:'Words 5 letters or longer gain +1 mult for each of their letters.',
+  desc:'Words 5 letters or longer gain +2 mult for each of their letters.',
   rarity:'common',cost:3,bg:'#12081a',fg:'#c090f0',icon:'SQ',type:'stamp',
   onPostWord:function(w,wt,ctx){
     if(w.length>=5){
-      ctx.plusMults.push(w.length);
-      ctx.events.push({type:'plus-mult',delta:w.length,label:'Sesquipedalian +'+w.length+' mult',floatStampId:'sesquipedalian'});
+      var m=w.length*2;
+      ctx.plusMults.push(m);
+      ctx.events.push({type:'plus-mult',delta:m,label:'Sesquipedalian +'+m+' mult',floatStampId:'sesquipedalian'});
     }
+  }});
+
+// ── WEE ───────────────────────────────────────────────────────────────────────
+// type: stamp · rarity: common · cost: $3
+// onPostWord: +20 mult when every word formed this play — the main word AND
+// every crossword (ctx.crossWords) — is 3 letters or fewer.
+SQ.push({id:'wee',name:'Wee',
+  desc:'+20 mult when every word formed is 3 letters or fewer (crosswords too).',
+  rarity:'common',cost:3,bg:'#0a2a14',fg:'#70e090',icon:'we',type:'stamp',
+  onPostWord:function(w,wt,ctx){
+    if(w.length>3)return;
+    var cw=ctx.crossWords||[];
+    for(var i=0;i<cw.length;i++)if(cw[i].length>3)return;
+    ctx.plusMults.push(20);
+    ctx.events.push({type:'plus-mult',delta:20,label:'Wee +20 mult',floatStampId:'wee'});
   }});
 
 // ── PANTRY SOUP ───────────────────────────────────────────────────────────────
@@ -300,10 +316,10 @@ SQ.push({id:'cartographer',name:'Cartographer',
 // ── THE KING ──────────────────────────────────────────────────────────────────
 // type: stamp · rarity: rare · cost: $8 · qty: 1
 // onBuildCtx: sets ctx.chessKingActive = true. The chess aura hooks
-// (indirect.js _chessRegister) check this flag and add ×3 word mult for
+// (indirect.js _chessRegister) check this flag and add ×4 word mult for
 // every new tile that falls in a chess piece's aura (stacks per piece).
 SQ.push({id:'chess_king',name:'The King',
-  desc:'Every square in any chess piece aura becomes a Triple Word square.',
+  desc:'Every square in any chess piece aura becomes a Quadruple Word square.',
   rarity:'legendary',cost:8,qty:1,bg:'#1a1500',fg:'#ffd700',icon:'♚',type:'stamp',
   onBuildCtx:function(ctx){ctx.chessKingActive=true;}});
 
@@ -323,17 +339,17 @@ SQ.push({id:'khoomiich',name:'Khoomiich',
 
 // ── NATO PHONETIC ALPHABET ────────────────────────────────────────────────────
 // 12 stamps, one per letter. Each fires its onPerTile hook independently
-// for every matching letter scored. Stacks: 2× Alpha = +8 pts and +2 mult per A.
+// for every matching letter scored. Stacks: 2× Alpha = +8 pts and +4 mult per A.
 // The IIFE captures d (letter data), ls (bonus pts), lm (bonus mult) per stamp.
 (function(){
   var _defs=[
-    {l:'A',n:'Alpha',v:1},{l:'R',n:'Romeo',v:1},
-    {l:'T',n:'Tango',v:1},{l:'U',n:'Uniform',v:1},
-    {l:'G',n:'Golf',v:3},
-    {l:'H',n:'Hotel',v:4},{l:'V',n:'Victor',v:4},
-    {l:'W',n:'Whiskey',v:4},{l:'Y',n:'Yankee',v:4},
-    {l:'K',n:'Kilo',v:5},
-    {l:'J',n:'Juliett',v:8},{l:'X',n:'Xray',v:8}
+    {l:'A',n:'Alpha',v:2},{l:'R',n:'Romeo',v:2},
+    {l:'T',n:'Tango',v:2},{l:'U',n:'Uniform',v:2},
+    {l:'G',n:'Golf',v:4},
+    {l:'H',n:'Hotel',v:4},{l:'V',n:'Victor',v:16},
+    {l:'W',n:'Whiskey',v:8},{l:'Y',n:'Yankee',v:8},
+    {l:'K',n:'Kilo',v:8},
+    {l:'J',n:'Juliett',v:16},{l:'X',n:'Xray',v:8}
   ];
   function _col(v){
     if(v<=1)return{bg:'#1a1a2a',fg:'#9090d0'};

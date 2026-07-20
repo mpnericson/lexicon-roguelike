@@ -11,15 +11,16 @@ SQ.push({id:'dl',name:'Double Letter',desc:'Letter scores ×2.',
     return ts;
   }});
 
-// ── TRIPLE LETTER ─────────────────────────────────────────────────────────────
+// ── QUADRUPLE LETTER ──────────────────────────────────────────────────────────
 // type: board · rarity: common · cost: $3
-// Per-tile mult bracket (onTileMult): letter score ×3.
-SQ.push({id:'tl',name:'Triple Letter',desc:'Letter scores ×3.',
+// Per-tile mult bracket (onTileMult): letter score ×4.
+// id/bm stay 'tl' for save compat + Assets/stickers/tl sprite dir.
+SQ.push({id:'tl',name:'Quadruple Letter',desc:'Letter scores ×4.',
   rarity:'common',cost:3,qty:4,bg:'#0d2050',fg:'#4488ff',icon:'TL',type:'board',bm:'tl',perishable:true,
   onTileMult:function(tile,ctx,ts,sqIdx){
-    var f=3;
+    var f=4;
     ts*=f;
-    ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Triple Letter ×'+f,floatSqIdx:sqIdx});
+    ctx.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'Quadruple Letter ×'+f,floatSqIdx:sqIdx});
     return ts;
   }});
 
@@ -35,15 +36,16 @@ SQ.push({id:'dw',name:'Double Word',desc:'Word ×2 when new tile lands here.',
     return ts;
   }});
 
-// ── TRIPLE WORD ───────────────────────────────────────────────────────────────
+// ── QUADRUPLE WORD ────────────────────────────────────────────────────────────
 // type: board · rarity: rare · cost: $8
-// Per-tile mult bracket (onTileMult): pushes ×3 word mult.
-SQ.push({id:'tw',name:'Triple Word',desc:'Word ×3 when new tile lands here.',
+// Per-tile mult bracket (onTileMult): pushes ×4 word mult.
+// id/bm stay 'tw' for save compat + Assets/stickers/tw sprite dir.
+SQ.push({id:'tw',name:'Quadruple Word',desc:'Word ×4 when new tile lands here.',
   rarity:'rare',cost:8,qty:1,bg:'#500808',fg:'#ff6060',icon:'TW',type:'board',bm:'tw',perishable:true,
   onTileMult:function(tile,ctx,ts,sqIdx){
-    var f=3;
+    var f=4;
     ctx.xmults.push(f);
-    ctx.events.push({type:'x-mult',factor:f,sqIdx:sqIdx,label:'Triple Word ×'+f,floatSqIdx:sqIdx});
+    ctx.events.push({type:'x-mult',factor:f,sqIdx:sqIdx,label:'Quadruple Word ×'+f,floatSqIdx:sqIdx});
     return ts;
   }});
 

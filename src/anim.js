@@ -478,6 +478,57 @@ function animSpringTrap(fromRect, tileData, onDone) {
   requestAnimationFrame(tick);
 }
 
+// Worm Hole teleport: the tile spins and shrinks into its square (sucked in),
+// then spins back out of the destination square, growing from nothing.
+// Called from playWord after scoring, between removing the tile from the
+// wormhole square and committing it at its destination.
+function animWormhole(fromRect, toRect, tileData, onDone) {
+  var layer = document.getElementById('anim-layer') || document.body;
+  var sz = Math.round(fromRect.width) || 48;
+  var spr = (tileData.isBlank && tileData.blankAs)
+    ? blankTileSpr(tileData.blankAs, tileData.variant || null, sz)
+    : tileSpr(tileData.isBlank ? null : tileData.letter, tileData.isBlank, tileData.variant || null, sz);
+  var el = document.createElement('div');
+  el.className = 'tile tile-spr';
+  el.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;'
+    + 'width:' + sz + 'px;height:' + sz + 'px;left:' + fromRect.left + 'px;top:' + fromRect.top + 'px;'
+    + 'transform-origin:center center;' + spr;
+  applyTileLayers(el, tileData, sz, spr);
+  layer.appendChild(el);
+
+  var IN_DUR = 380, GAP_DUR = 140, OUT_DUR = 380;
+  var t0 = performance.now(), phase = 0;
+  function tick(now) {
+    var elapsed = now - t0;
+    if (phase === 0) {
+      // Suck in: accelerating spin + shrink into the wormhole
+      var k = Math.min(1, elapsed / IN_DUR);
+      var e = k * k;
+      el.style.transform = 'rotate(' + (e * 540).toFixed(1) + 'deg) scale(' + (1 - e).toFixed(3) + ')';
+      if (k >= 1) { phase = 1; t0 = now; el.style.transform = 'scale(0)'; }
+    } else if (phase === 1) {
+      // Beat of nothing while the tile is "in transit"
+      if (elapsed >= GAP_DUR) {
+        phase = 2; t0 = now;
+        el.style.left = toRect.left + 'px';
+        el.style.top = toRect.top + 'px';
+      }
+    } else {
+      // Pop out: decelerating un-spin + grow at the destination
+      var k2 = Math.min(1, elapsed / OUT_DUR);
+      var e2 = 1 - Math.pow(1 - k2, 3);
+      el.style.transform = 'rotate(' + (-540 + e2 * 540).toFixed(1) + 'deg) scale(' + e2.toFixed(3) + ')';
+      if (k2 >= 1) {
+        el.remove();
+        if (onDone) onDone();
+        return;
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
 function _burstHandTiles() {
   var layer = document.getElementById('anim-layer');
   layer.innerHTML = '';

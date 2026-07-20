@@ -24,16 +24,29 @@ function sqIconHTML(d,sz){sz=sz||24;if(d&&d.iconPng)return '<img src="'+d.iconPn
 // tiles.png: rows 0-1 = plain letter faces (blank face at col 10 row 1);
 // rows 2-7 = blank colour×material bases sliced by tile_layers.js. Colour and
 // material looks are composited by applyTileLayers — the variant param is kept
-// for signature compatibility but no longer selects sprite rows. Blanks never
-// show a glyph: always the empty face, even when assigned a letter.
-function blankTileSpr(letter,variant,sz){return tileSpr(null,true,variant,sz);}
+// for signature compatibility but no longer selects sprite rows. Assigned
+// blanks show the chosen letter with no score digit: the letter-only glyph
+// sheet (TL.letterURL, extracted at startup) layered over the empty face.
+// Falls back to the bare empty face until the sheet is ready (or under
+// file:// canvas taint).
+function blankTileSpr(letter,variant,sz){
+  var li=letter?letter.charCodeAt(0)-65:-1;
+  if(li>=0&&li<26&&typeof TL!=='undefined'&&TL.letterURL){
+    var col=li<16?li:li-16,row=li>=16?1:0;
+    return 'background-image:url('+TL.letterURL+'),url(Assets/sprites/tiles.png);'
+      +'background-size:'+(16*sz)+'px '+(2*sz)+'px,'+(16*sz)+'px '+(8*sz)+'px;'
+      +'background-position:-'+(col*sz)+'px -'+(row*sz)+'px,-'+(10*sz)+'px -'+(1*sz)+'px;'
+      +'background-repeat:no-repeat;image-rendering:pixelated;';
+  }
+  return tileSpr(null,true,variant,sz);
+}
 function tileSpr(letter,isBlank,variant,sz){var col,row;if(isBlank||!letter){col=10;row=1;}else{var li=letter.charCodeAt(0)-65;if(li<0||li>25){col=10;row=1;}else{col=li<16?li:li-16;row=li>=16?1:0;}}return 'background-image:url(Assets/sprites/tiles.png);background-size:'+(16*sz)+'px '+(8*sz)+'px;background-position:-'+(col*sz)+'px -'+(row*sz)+'px;background-repeat:no-repeat;image-rendering:pixelated;';}
 function wordAsTilesHTML(word,sz,variant){sz=sz||24;var h='<span style="display:flex;gap:2px;flex-wrap:nowrap;flex-shrink:1;min-width:0;align-items:center">';for(var i=0;i<word.length;i++){var spr=tileSpr(word[i],false,variant||null,sz);h+='<span style="display:inline-block;width:'+sz+'px;height:'+sz+'px;flex-shrink:0;'+spr+'"></span>';}return h+'</span>';}
 function rcl(i){return String.fromCharCode(65+i%B)+(Math.floor(i/B)+1);}
 
 var B=15;
-var LS={A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1,S:1,T:1,U:1,V:4,W:4,X:8,Y:4,Z:10};
-var DIST={A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1};
+var LS={A:2,B:8,C:4,D:4,E:2,F:8,G:4,H:4,I:2,J:16,K:8,L:2,M:4,N:2,O:2,P:4,Q:16,R:2,S:2,T:2,U:4,V:16,W:8,X:8,Y:8,Z:8};
+var DIST={A:5,B:1,C:2,D:2,E:6,F:1,G:2,H:2,I:4,J:1,K:1,L:3,M:2,N:3,O:4,P:2,Q:1,R:4,S:3,T:4,U:2,V:1,W:1,X:1,Y:1,Z:1};
 // Bounty reward config — change type/value here to rebalance
 // type: 'x-mult' | 'plus-mult' | 'letters' | 'gold'
 var BOUNTY_REWARD={type:'x-mult',value:2};
@@ -77,7 +90,7 @@ function currentConstraint(){
 
 // Stamps The Thing cannot copy (utility / non-scoring mechanics).
 // Add copyable:false to a stamp definition to block it without editing this list.
-var _THING_BLOCKED={the_thing:true,easy_mode:true,jenga:true,midas:true,insatiable:true,emergency_rations:true,safety_net:true,sheriffs_office:true};
+var _THING_BLOCKED={the_thing:true,easy_mode:true,jenga:true,midas:true,insatiable:true,emergency_rations:true,safety_net:true,sheriffs_office:true,the_hammer:true};
 
 // Sticker/stamp definitions are split across src/stickers/:
 //   board/squares.js   — dl, tl, dw, tw, echo, gilded, void, paint_bucket, super_glue

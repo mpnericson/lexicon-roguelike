@@ -5,14 +5,13 @@
 // (runScoreEngine) and is a pure function of its input. This file:
 //   1. Extracts play data from live game state (newTiles, wordDir,
 //      extractAt, getAllWords).
-//   2. Builds the engine input from S (scorePlay, buildEngineState) and
-//      commits results back (cooldowns).
+//   2. Builds the engine input from S (scorePlay, buildEngineState).
 //   3. Plays back the engine's event log (runScoreAnim + sticker floats).
 //
-// Cooldowns: local effects are gated by S.localCooldowns (a Set of sqIdx).
-// Within one play no flags are set — a square can fire multiple times.
-// After scorePlay() commits, every activated square is added to
-// S.localCooldowns, which persists until clearBoardLetters() (between boards).
+// Per-square sticker effects fire only for the tile PLAYED on the square
+// this turn (isNew gate in _engTilePasses) — there is no cooldown state.
+// Committed tiles crossing a sticker square never re-fire it; a square
+// that frees up again simply catches the next tile played on it.
 // =====================================================================
 
 function newTiles(){
@@ -111,7 +110,9 @@ function buildEngineState(freeHandCount){
     gamblerSpins:S.gamblerSpins||0,
     discardsLeft:S.disc||0,
     discPressure:S.discPressure||0,
-    bagColouredCount:S.bag?S.bag.filter(function(t){return t.variant;}).length:0
+    bagColouredCount:S.bag?S.bag.filter(function(t){return t.variant;}).length:0,
+    // Vowels still in hand — played tiles already left S.hand at placement (Rhythm)
+    handVowelCount:S.hand?S.hand.filter(function(t){return t&&!t.isBlank&&'AEIOU'.indexOf(t.letter)>=0;}).length:0
   };
 }
 
@@ -137,11 +138,10 @@ function _mirrorWords(lv,nt,dir){
 }
 
 // ---- Main scoring entry point ----
-// preview=true → no cooldown commits, sticker/stamp hooks skip side effects.
+// preview=true → sticker/stamp hooks skip their commit side effects.
 // Returns the runScoreEngine result (see score_engine.js) or null.
 
 function scorePlay(nt,dir,preview){
-  if(!S.localCooldowns)S.localCooldowns=new Set();
   var lv=_liveTiles();
   var res=runScoreEngine({
     tiles:lv.tiles,jengaTops:lv.jengaTops,jengaUnder:lv.jengaUnder,
@@ -150,14 +150,11 @@ function scorePlay(nt,dir,preview){
     newIdxs:nt.map(function(t){return t.idx;}),
     dir:dir,
     boardStickers:S.board,placed:S.placed,stamps:S.stamps,
-    cooldowns:S.localCooldowns,bounties:S.bounties||[],
+    bounties:S.bounties||[],
     preview:!!preview,
     state:buildEngineState(S.hand.filter(function(t){return t!==null;}).length)
   });
-  if(!res)return null;
-  // Commit cooldowns (non-preview only)
-  if(!preview)res.activatedSqs.forEach(function(sq){S.localCooldowns.add(sq);});
-  return res;
+  return res||null;
 }
 
 // ---- Sticker float animation ----
@@ -871,6 +868,10 @@ async function runScoreAnim(events,total){
             if(ev.scaleField){S[ev.scaleField]=(S[ev.scaleField]||0)+(ev.scaleDelta||0);_tooltipRefreshIfOpen();}
             _binkEl(tileEl);
             _applyCoApply(ev); // merged +mult / bonus land on this same bounce
+            // Photocopier: the copy prints out on this beat — a fresh tile
+            // arcs from the sticker's square into the hand space reserved
+            // before the animation started (see playWord).
+            if(ev.photocopy)_spawnPhotocopy(ev.photocopy);
             // Gold this tile earned (gold/Gilded +$1) ticks on the same bounce.
             if(ev._goldCo){
               var _tileBounce=function(){_binkEl(tileEl);};

@@ -494,9 +494,9 @@ function _tutBuildScript(){
      holes:function(){return _tutWordHoles(_TUT_CRANE);},
      text:'Spell <b>CRANE</b> left to right through the centre star: <b>drag</b> each tile from your hand onto its square, one at a time. Then press <b>Play</b>.'},
 
-    {title:'21 Points',next:true,
+    {title:'36 Points',next:true,
      holes:function(){return[_tutRect('#live-score-row',6)];},
-     text:'CRANE scored 7 letter points × 3 mult (1 base, +2 for playing five tiles). The target is 40.'},
+     text:'CRANE scored 12 letter points × 3 mult (1 base, +2 for playing five tiles). The target is 50.'},
 
     {title:'Connect Words',passthrough:true,sqLock:_TUT_PLANET,advanceOn:'round-complete',method:'click-place',
      holes:function(){return _tutWordHoles(_TUT_PLANET);},
@@ -529,7 +529,7 @@ function _tutBuildScript(){
     {title:'Buy a Sticker',passthrough:true,
      holes:function(){return[_tutRect('#shop-pack-0',6)];},
      advanceWhen:function(){return shopPool.sq&&shopPool.sq[0]&&shopPool.sq[0].sold;},
-     text:'Stickers modify board squares. Buy the <b>Triple Letter</b> for $3 — it triples any letter played on it.'},
+     text:'Stickers modify board squares. Buy the <b>Quadruple Letter</b> for $3 — it quadruples any letter played on it.'},
 
     {title:'The Slot Machine',passthrough:true,
      onEnter:function(){
@@ -564,12 +564,12 @@ function _tutBuildScript(){
        return hs;
      },
      advanceWhen:function(){return S.phase==='play'&&S.board[_TUT_TL_SQ]==='tl';},
-     text:'Drag the <b>Triple Letter</b> onto the marked square, then press <b>Confirm</b>.'},
+     text:'Drag the <b>Quadruple Letter</b> onto the marked square, then press <b>Confirm</b>.'},
 
     // ═══ ROUND 2 — bounty hunting with discards ═══
     {title:'Round 2',next:true,
      holes:function(){return[_tutRect('#live-score-row',6)];},
-     text:'The target is 80. The board and your sticker carry over between rounds.'},
+     text:'The target is 75. The board and your sticker carry over between rounds.'},
 
     {title:'Group Drag',passthrough:true,sqLock:_TUT_TONES,advanceOn:'word-played',method:'drag-group',
      holes:function(){return _tutWordHoles(_TUT_TONES);},
@@ -577,7 +577,7 @@ function _tutBuildScript(){
 
     {title:'Not Enough',next:true,
      holes:function(){return[_tutRect('#live-score-row',6)];},
-     text:'10 points. At this rate the target is out of reach — check the bounty list.'},
+     text:'20 points. At this rate the target is out of reach — check the bounty list.'},
 
     {title:'The Rivers Scroll',passthrough:true,
      holes:function(){var sc=firstScroll();return sc?[_tutRectEl(sc,6)]:[];},
@@ -670,7 +670,7 @@ function _tutBuildScript(){
     // ═══ ROUND 3 — constraint + the PYLON payoff ═══
     {title:'The Constraint',next:true,
      holes:function(){return[_tutRect('#stat-rounds-box',6)];},
-     text:'This round, only words of <b>5 or more letters</b> score. The target is 130.'},
+     text:'This round, only words of <b>5 or more letters</b> score. The target is 125.'},
 
     {title:'Open the Bag',passthrough:true,
      holes:function(){return[_tutRect('#bag-btn',6)];},
@@ -705,7 +705,7 @@ function _tutBuildScript(){
 
     {title:'The Payoff',passthrough:true,sqLock:_TUT_PYLON,advanceOn:'round-complete',
      holes:function(){return _tutWordHoles(_TUT_PYLON);},
-     text:'Spell <b>PYLON</b> from PLANET\'s P, placing tiles any way you like — the Y lands on your Triple Letter, and the Yankee stamp triggers. Press <b>Play</b>.'},
+     text:'Spell <b>PYLON</b> from PLANET\'s P, placing tiles any way you like — the Y lands on your Quadruple Letter, and the Yankee stamp triggers. Press <b>Play</b>.'},
 
     {title:'Board Cleared',
      holes:function(){return[_tutRect('#round-modal .modal',8)];},

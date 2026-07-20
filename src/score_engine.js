@@ -26,14 +26,14 @@
 //   boardStickers  B*B array of board-sticker ids (S.board equivalent)
 //   placed         board-sticker instances [{id, sqIdx, …}]
 //   stamps         stamp instances, bar order (left → right)
-//   cooldowns      Set of square indices already used this board
 //   bounties       active bounty list (available to sticker/stamp hooks)
 //   preview        true → sticker/stamp hooks skip their commit side effects
 //   state          plain values that influence scoring:
 //     freeHandCount, constraint, usedLetters, stickersSold,
 //     pendingBountyReward, drunkValid, magicStreak, drunkStreak, palMult,
 //     playerMult, cartographerMult, bhMult, crossroadsCount, ouroborosBonus,
-//     gamblerSpins, discardsLeft, discPressure, bagColouredCount
+//     gamblerSpins, discardsLeft, discPressure, bagColouredCount,
+//     handVowelCount
 // }
 //
 // Bracket order:
@@ -72,8 +72,9 @@
 //   letters, plusMults[], xmults[], tgold, events[], scoredTiles[],
 //   tiles (the full board, for boardSweep scans),
 //   curWordTiles (the tiles of the word currently scoring, per-tile bracket),
-//   newTileCount, crossWordCount, mainWord, state, stamps, placed,
-//   boardStickers, cooldowns, bounties, preview, stickerLocked,
+//   newTileCount, crossWordCount, crossWords (the cross words as strings),
+//   mainWord, state, stamps, placed,
+//   boardStickers, bounties, preview, stickerLocked,
 //   auras[], finalTransforms[] ({factor, label, tsId}), plus any fields
 //   hooks set on ctx themselves (slotTransforms, springTraps, …).
 //
@@ -239,7 +240,13 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat, retrigInst) {
   var sqIdx = tile.idx;
   var sid = ctx.boardStickers[sqIdx];
   var def = sid ? sqd(sid) : null;
-  var sqActive = !ctx.cooldowns.has(sqIdx);
+  // Per-square sticker effects fire only for the tile PLAYED on this square
+  // this turn (isNew) — a committed tile crossing the square never re-fires
+  // them. This replaces the old per-board cooldown set: a square that frees
+  // up again (glass retrieve, Worm Hole, Spring Trap) simply catches the
+  // next tile played on it, and a Jenga top stacked onto a sticker square
+  // re-fires it (it IS a tile played on the square).
+  var sqActive = !!tile.isNew;
   // Jenga buried tile: scores its letter value + variant + stamp per-tile
   // hooks, but the square's own sticker/auras already fired for the top tile,
   // so they are skipped here (no double-dip on DL/TL/chess/etc).
@@ -267,12 +274,9 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat, retrigInst) {
     ctx.events.push({type:'plus-mult',delta:4,sqIdx:sqIdx,label:'Red +4 mult'});
   }
 
-  // 2. Additive — board sticker on this square (cooldown-gated)
+  // 2. Additive — board sticker on this square (new-tile-gated)
   if (sqActive && def && def.onTileAdd && !ctx.stickerLocked && !ju) {
-    ctx._stickerActed = false;
-    var _prevEvLen = ctx.events.length;
     ts = def.onTileAdd(tile, ctx, ts, baseSc, sqIdx);
-    if (!ctx.preview && (ctx.events.length > _prevEvLen || ctx._stickerActed)) ctx.activatedSqs.add(sqIdx);
   }
   // 2. Additive — aura hooks (board stickers acting at range)
   if (!ju) for (var aai = 0; aai < ctx.auras.length; aai++) {
@@ -303,7 +307,6 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat, retrigInst) {
   // DW/TW rarity and cost, not the engine.
   if (sqActive && def && def.onTileMult && !ctx.stickerLocked && !ju) {
     ts = def.onTileMult(tile, ctx, ts, sqIdx);
-    if (!ctx.preview) ctx.activatedSqs.add(sqIdx);
   }
   // 3. Multiplicative — aura hooks (board stickers acting at range)
   if (!ju) for (var ami = 0; ami < ctx.auras.length; ami++) {
@@ -333,7 +336,6 @@ function _engTilePasses(tile, ctx, ts, skipRetrigger, retrigFloat, retrigInst) {
     };
     _redouble(); // metallic doubles the base pass
     if (sqActive && def && def.retrigger && !ctx.stickerLocked && !ju) {
-      if (!ctx.preview) ctx.activatedSqs.add(sqIdx);
       ctx.events.push({type:'retrigger',sqIdx:sqIdx,label:def.name,floatSqIdx:sqIdx});
       ts = _engTilePasses(tile, ctx, ts, true);
       _redouble();
@@ -422,7 +424,7 @@ function _engScoreTile(tile, ctx) {
 // ---- Main entry point ----
 // Returns {total, tgold, events, mainWord, bingo, letters, plusMults,
 // xmults, mult, allWords, crossWordCount, springTraps, slotTransforms,
-// activatedSqs}
+// wormholes, photocopies}
 // or null if no legal word can be derived from the new tiles.
 
 function runScoreEngine(input) {
@@ -466,12 +468,13 @@ function runScoreEngine(input) {
   var state = input.state || {};
   var ctx = {
     letters: 0, plusMults: [], xmults: [], tgold: 0, events: [],
-    activatedSqs: new Set(), scoredTiles: [], tiles: tiles,
+    scoredTiles: [], tiles: tiles,
     purpleScored: new Set(),
     mainWord: main.word, newTileCount: nt.length, crossWordCount: crossWords.length,
+    crossWords: crossWords.map(function (c) { return c.word; }),
     state: state,
     stamps: input.stamps || [], placed: input.placed || [],
-    boardStickers: input.boardStickers || [], cooldowns: input.cooldowns || new Set(),
+    boardStickers: input.boardStickers || [],
     bounties: input.bounties || [],
     preview: !!input.preview,
     auras: [], finalTransforms: [],
@@ -505,14 +508,8 @@ function runScoreEngine(input) {
       if (!pSid) continue;
       var pDef = sqd(pSid);
       if (!pDef || !pDef.onPreScore) continue;
-      // No cooldown gate here: PRE hooks fire only on tiles placed THIS turn
-      // (nt), which were never scored before, so a stale per-square cooldown
-      // (e.g. left over after the old tile/sticker at this index was ejected)
-      // must not suppress them. Gilded is a perishable one-shot anyway.
-      ctx._stickerActed = false;
-      var _preEv = ctx.events.length;
+      // PRE hooks fire only on tiles placed THIS turn (nt) by construction.
       pDef.onPreScore(nt[pri], ctx, pIdx);
-      if (!ctx.preview && (ctx.events.length > _preEv || ctx._stickerActed)) ctx.activatedSqs.add(pIdx);
     }
   }
 
@@ -635,7 +632,8 @@ function runScoreEngine(input) {
     allWords: allWords, crossWordCount: crossWords.length,
     springTraps: ctx.springTraps || [],
     slotTransforms: ctx.slotTransforms || [],
-    purpleScored: Array.from(ctx.purpleScored),
-    activatedSqs: ctx.activatedSqs
+    wormholes: ctx.wormholes || [],
+    photocopies: ctx.photocopies || [],
+    purpleScored: Array.from(ctx.purpleScored)
   };
 }

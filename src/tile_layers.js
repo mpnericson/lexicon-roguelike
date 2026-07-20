@@ -8,9 +8,10 @@
 //            back to the normal sprite-sheet face.
 //   sheen  — cursor-as-light gloss driven every frame by _tlLightLoop;
 //            material tiles only.
-//   glyph  — letter + score re-stamped on top so text stays crisp. Blanks
-//            never get a glyph: they show the empty face, even when assigned.
-// The glyph sheet is extracted at startup by diffing each letter cell of
+//   glyph  — letter + score re-stamped on top so text stays crisp. Assigned
+//            blanks get the letter-only sheet (score digit stripped);
+//            unassigned blanks show the empty face.
+// The glyph sheets are extracted at startup by diffing each letter cell of
 // tiles.png against its blank cell (col 10, row 1) — no separate letter art
 // needed. All layers are children of the face, so
 // physics, drag and scoring animations move them as one element.
@@ -18,7 +19,7 @@
 // legacy path untouched.
 // =====================================================================
 
-var TL={glyphURL:null};
+var TL={glyphURL:null,letterURL:null};
 
 // Per-material light response. grad = the highlight band (its width/edges are
 // the "gloss": tight+hard = polished coat, wide+soft = brushed metal).
@@ -134,7 +135,7 @@ function _tlBase(key){
 }
 
 function tlInit(){
-  _tlLoadGlyphs(TL_SHEET,function(url){TL.glyphURL=url;_tlMaybeRender();});
+  _tlLoadGlyphs(TL_SHEET,function(r){TL.glyphURL=r.glyphs;TL.letterURL=r.letters;_tlMaybeRender();});
   _tlLoadBases();
   // Fixed light source: overhead-centre, slightly above the viewport.
   var _tlPlaceLight=function(){TL.lx=window.innerWidth/2;TL.ly=-120;};
@@ -238,8 +239,11 @@ function _tlLoadGlyphs(src,cb){
 }
 
 // Diff the plain rows (0-1) against the blank face cell (col 10, row 1):
-// pixels that differ are the letter + score digits. Returns a 16x2-cell
-// transparent sheet as a data URL.
+// pixels that differ are the letter + score digits. Returns two 16x2-cell
+// transparent sheets as data URLs: {glyphs} = letter + score, {letters} =
+// letter only (for assigned blanks). The score digit lives right of a fixed
+// column — 24/32 of the cell, 21/32 for the wider "10" of Q/Z — and no
+// letter shape crosses that line, so a per-cell column cut separates them.
 function _tlExtractGlyphs(img){
   var cell=Math.floor(img.naturalWidth/16);
   var w=16*cell,h=2*cell;
@@ -248,9 +252,13 @@ function _tlExtractGlyphs(img){
   g.drawImage(img,0,0,w,h,0,0,w,h);
   var id=g.getImageData(0,0,w,h);
   var out=g.createImageData(w,h);
+  var outL=g.createImageData(w,h);
   var bx=10*cell,by=1*cell;
   var d=id.data;
   for(var row=0;row<2;row++)for(var col=0;col<16;col++){
+    var li=row*16+col;
+    var digitX=cell; // non-letter cells: nothing to strip
+    if(li<26){var sc=LS[String.fromCharCode(65+li)]||0;digitX=Math.floor(cell*(sc>=10?21:24)/32);}
     for(var y=0;y<cell;y++)for(var x=0;x<cell;x++){
       var pi=((row*cell+y)*w+(col*cell+x))*4;
       var bi=((by+y)*w+(bx+x))*4;
@@ -261,12 +269,17 @@ function _tlExtractGlyphs(img){
       var diff=Math.abs(d[pi]*pa-d[bi]*ba)+Math.abs(d[pi+1]*pa-d[bi+1]*ba)+Math.abs(d[pi+2]*pa-d[bi+2]*ba)+Math.abs(d[pi+3]-d[bi+3]);
       if(diff>48){
         out.data[pi]=d[pi];out.data[pi+1]=d[pi+1];out.data[pi+2]=d[pi+2];out.data[pi+3]=d[pi+3];
+        if(x<digitX){
+          outL.data[pi]=d[pi];outL.data[pi+1]=d[pi+1];outL.data[pi+2]=d[pi+2];outL.data[pi+3]=d[pi+3];
+        }
       }
     }
   }
   var oc=document.createElement('canvas');oc.width=w;oc.height=h;
   oc.getContext('2d').putImageData(out,0,0);
-  return oc.toDataURL();
+  var lc=document.createElement('canvas');lc.width=w;lc.height=h;
+  lc.getContext('2d').putImageData(outL,0,0);
+  return {glyphs:oc.toDataURL(),letters:lc.toDataURL()};
 }
 
 // Recolour a glyph sheet to a flat tint (alpha preserved). Generated lazily
@@ -341,15 +354,16 @@ function applyTileLayers(face,t,sz,sprCss){
     face.appendChild(sh);
   }
   if(base){
-    // Blanks never get a glyph — they show the empty base face even when
-    // assigned a letter.
-    var glyphURL=t.isBlank?null:TL.glyphURL;
+    // Assigned blanks get the letter-only sheet (no score digit); unassigned
+    // blanks keep the empty base face.
+    var glyphLetter=t.isBlank?(t.blankAs||null):t.letter;
+    var glyphURL=t.isBlank?(t.blankAs?TL.letterURL:null):TL.glyphURL;
     var tint=TL_GLYPH_COLORS[key];
-    if(glyphURL&&tint)glyphURL=_tlTintedGlyphs(glyphURL,tint,'t|'+tint)||glyphURL;
+    if(glyphURL&&tint)glyphURL=_tlTintedGlyphs(glyphURL,tint,(t.isBlank?'l|':'t|')+tint)||glyphURL;
     if(glyphURL){
       var gl=document.createElement('div');
       gl.className='tile-glyph';
-      gl.style.cssText=box+_tlGlyphCss(t.letter,sz,glyphURL);
+      gl.style.cssText=box+_tlGlyphCss(glyphLetter,sz,glyphURL);
       face.appendChild(gl);
     }
   }

@@ -49,19 +49,19 @@ function _chessHoverOff() {
 
 // Shared onBuildCtx body: each piece registers its own multiplicative aura
 // over its attack squares. Overlapping pieces STACK — a tile covered by two
-// pieces scores ×3 twice (×9). The King (stamp) upgrades every aura
-// square to Triple Word via ctx.chessKingActive.
+// pieces scores ×4 twice (×16). The King (stamp) upgrades every aura
+// square to Quadruple Word via ctx.chessKingActive.
 function _chessRegister(ctx, p) {
   var pieceSq = p.sqIdx;
   ctx.auras.push({
     id: p.id,
     squares: chessGetAura(pieceSq, p.id),
     onTileMult: function (tile, ctx2, ts, sqIdx) {
-      ts *= 3;
-      ctx2.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'♟ ×3',floatSqIdx:pieceSq});
+      ts *= 4;
+      ctx2.events.push({type:'letter',sqIdx:sqIdx,lettersAfter:ts,isTileLocal:true,label:'♟ ×4',floatSqIdx:pieceSq});
       if (ctx2.chessKingActive && tile.isNew) {
-        ctx2.xmults.push(3);
-        ctx2.events.push({type:'x-mult',factor:3,sqIdx:sqIdx,label:'♚ King ×3',floatStampId:'chess_king'});
+        ctx2.xmults.push(4);
+        ctx2.events.push({type:'x-mult',factor:4,sqIdx:sqIdx,label:'♚ King ×4',floatStampId:'chess_king'});
       }
       return ts;
     }
@@ -70,10 +70,10 @@ function _chessRegister(ctx, p) {
 
 // ── KNIGHT ────────────────────────────────────────────────────────────────────
 // type: board · rarity: rare · cost: $8
-// onBuildCtx (_chessRegister): registers a ×3 mult aura over this piece's
+// onBuildCtx (_chessRegister): registers a ×4 mult aura over this piece's
 // L-shape squares.
 SQ.push({id:'chess_knight',name:'Knight',
-  desc:'×3 letter score to any word tile on an L-shape square from here. Comes as a pair.',
+  desc:'×4 letter score to any word tile on an L-shape square from here. Comes as a pair.',
   rarity:'rare',cost:8,qty:2,bg:'#1a1a2a',fg:'#d0d0f0',icon:'♞',type:'board',perishable:true,
   onBuildCtx:_chessRegister});
 
@@ -81,7 +81,7 @@ SQ.push({id:'chess_knight',name:'Knight',
 // type: board · rarity: rare · cost: $8
 // onBuildCtx: registers diagonal aura (blocked by occupied squares).
 SQ.push({id:'chess_bishop',name:'Bishop',
-  desc:'×3 letter score to any word tile on a diagonal from here. Blocked by occupied squares. Comes as a pair.',
+  desc:'×4 letter score to any word tile on a diagonal from here. Blocked by occupied squares. Comes as a pair.',
   rarity:'rare',cost:8,qty:2,bg:'#2a1a08',fg:'#f0d080',icon:'♝',type:'board',perishable:true,
   onBuildCtx:_chessRegister});
 
@@ -89,7 +89,7 @@ SQ.push({id:'chess_bishop',name:'Bishop',
 // type: board · rarity: rare · cost: $8
 // onBuildCtx: registers row/column aura (blocked by occupied squares).
 SQ.push({id:'chess_rook',name:'Rook',
-  desc:'×3 letter score to any word tile on the same row or column. Blocked by occupied squares. Comes as a pair.',
+  desc:'×4 letter score to any word tile on the same row or column. Blocked by occupied squares. Comes as a pair.',
   rarity:'rare',cost:8,qty:2,bg:'#0a2a0a',fg:'#80f080',icon:'♜',type:'board',perishable:true,
   onBuildCtx:_chessRegister});
 
@@ -97,7 +97,7 @@ SQ.push({id:'chess_rook',name:'Rook',
 // type: board · rarity: rare · cost: $8
 // onBuildCtx: registers all-8-direction aura (not blocked by tiles).
 SQ.push({id:'chess_queen',name:'Queen',
-  desc:'×3 letter score to any word tile in all 8 directions. Not blocked by tiles.',
+  desc:'×4 letter score to any word tile in all 8 directions. Not blocked by tiles.',
   rarity:'rare',cost:8,qty:1,bg:'#2a0a2a',fg:'#f080f0',icon:'♛',type:'board',perishable:true,
   onBuildCtx:_chessRegister});
 

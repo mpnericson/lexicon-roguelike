@@ -132,8 +132,8 @@ function makePhysics(opts) {
         var _anchorSlot = insertIdx + (activeDrag.dragIdx !== undefined ? activeDrag.dragIdx : 0);
         ph.gapCenterX = startX + (_anchorSlot + 0.75) * ph.TILE_W;
       }
-      // Hole geometry: seated stamp drags clamp their face x to the hole centre
-      // (drag.js attachStampDrag) and commit to gapHoleIdx on drop.
+      // Hole geometry: stamp drags commit to gapHoleIdx on drop
+      // (drag.js attachStampDrag) so the insert always matches the open gap.
       ph.gapHoleIdx = insertIdx;
       ph.gapHoleX = startX + insertIdx * (ph.TILE_W + ph.GAP) + gapCount * (ph.TILE_W + ph.GAP) / 2;
     } else {

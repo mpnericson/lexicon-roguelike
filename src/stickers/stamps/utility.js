@@ -17,10 +17,11 @@ SQ.push({id:'jenga',name:'Jenga',
 
 // ── MIDAS TOUCH ───────────────────────────────────────────────────────────────
 // type: stamp · rarity: uncommon · cost: $5
-// No scoring hook. Effect fires in play.js after committing a 5+ letter word:
-// every tile in the word is gilded (variant set to 'gold') in both S.bt and S.bag.
+// No scoring hook. Effect fires in play.js after committing a word made by
+// playing exactly one tile from the hand: that tile is gilded (variant set to
+// 'gold').
 SQ.push({id:'midas',name:'Midas',
-  desc:'5+ letter words: gild all tiles in the word after scoring.',
+  desc:'Play exactly 1 tile from your hand: gild that tile after scoring.',
   rarity:'uncommon',cost:5,bg:'#3a2a00',fg:'#f0d040',icon:'MD',type:'stamp'});
 
 // ── EASY MODE ─────────────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ SQ.push({id:'two_face',name:'Two Face',
 // onBuildCtx: delegates to the right stamp's onBuildCtx (if any).
 // onPostWord: delegates to the right stamp's onPostWord (if any).
 // onEndBoard: delegates to the right stamp's onEndBoard (if any).
+// onEndRound: delegates to the right stamp's onEndRound (if any).
 // _THING_BLOCKED (data.js) lists stamp IDs that cannot be copied. Stamp
 // definitions can also set copyable:false to opt out.
 SQ.push({id:'the_thing',name:'The Thing',
@@ -93,4 +95,11 @@ SQ.push({id:'the_thing',name:'The Thing',
     var rTs=S.stamps[myIdx+1];var rDef=sqd(rTs.id);
     if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return;
     if(rDef.onEndBoard)rDef.onEndBoard(rTs);
+  },
+  onEndRound:function(ts){
+    var myIdx=-1;for(var _i=0;_i<S.stamps.length;_i++){if(S.stamps[_i]===ts){myIdx=_i;break;}}
+    if(myIdx<0||myIdx>=S.stamps.length-1)return;
+    var rTs=S.stamps[myIdx+1];var rDef=sqd(rTs.id);
+    if(!rDef||_THING_BLOCKED[rTs.id]||(rDef.copyable===false))return;
+    if(rDef.onEndRound)rDef.onEndRound(rTs);
   }});

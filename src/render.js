@@ -218,6 +218,7 @@ function renderBoard(){
       face.dataset.spr=spr;face.dataset.tsz=sz;
       applyTileLayers(face,bt,sz,spr);
       if(bt.isNew){if(_fm)attachFocusBoardDrag(face,i,false);else attachBoardTileDrag(face,i,sz);}
+      else if(!_fm&&S.phase==='play'&&bt.material==='glass'&&!bt._buried&&!bt._stackLevel)attachGlassRetrieve(face,i);
       // Jenga: click on committed tile to stack a selected hand tile
       if(!bt.isNew&&!bt._stackLevel&&!(S.btTop&&S.btTop[i])&&S.phase==='play'&&typeof hasJenga==='function'&&hasJenga()){
         (function(sqI){sq.addEventListener('click',function(ev){
@@ -551,7 +552,7 @@ function _renderStampBarInto(bar,ph,src){
     if(ts.sel){
       var sb=document.createElement('div');
       sb.className='stamp-sell-btn';
-      sb.textContent='Sell $'+Math.floor(d.cost/2);
+      sb.textContent='Sell $'+(Math.floor(d.cost/2)+(ts.sellBonus||0));
       sb.addEventListener('pointerdown',function(e){e.stopPropagation();e.preventDefault();});
       sb.addEventListener('click',function(tsRef){return function(e){e.stopPropagation();sellStamp(S.stamps.indexOf(tsRef));};}(ts));
       face.appendChild(sb);
@@ -624,7 +625,7 @@ function _renderPreviewStampBar(container){
 function sellStamp(idx){
   var ts=S.stamps[idx];if(!ts)return;
   var d=sqd(ts.id);if(!d)return;
-  var sv=Math.floor(d.cost/2);
+  var sv=Math.floor(d.cost/2)+(ts.sellBonus||0); // Egg grows sellBonus each round
   S.stamps.splice(idx,1);
   S.gold+=sv;
   if(currentConstraint()==='c_stickers')S.stickersSoldThisBoard=(S.stickersSoldThisBoard||0)+1;

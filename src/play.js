@@ -102,15 +102,27 @@ async function playWord(){
     var res=scorePlay(nt,dir,false);
     _fireAllHooks('onWordPlayed',[main.word,main.tiles]);
     if(_hasDT)delete S._drunkValid;
+    // Photocopier: reserve hand space NOW, before the animation starts — the
+    // hand slides over to leave room for every copy this play will print
+    // (phantom slots on the right). Each copy's score-anim beat launches the
+    // actual tile (_spawnPhotocopy); landing releases its slot.
+    if(res.photocopies&&res.photocopies.length){HP.movingCount+=res.photocopies.length;hpBounds();}
     await runScoreAnim(res.events,res.total);
+    // Don't rebuild the hand layout while a copy is still mid-flight.
+    if(res.photocopies&&res.photocopies.length){
+      await _photocopiesSettled();
+      var _pcN=res.photocopies.length;
+      toast('Photocopier: '+(_pcN>1?_pcN+' copies':'a copy')+' added to your hand!');
+    }
     S.score+=res.total;S.gold+=res.tgold;
     // Record every formed word (main + crosswords) with this play's score.
     for(var _wbi=0;_wbi<_words.length;_wbi++)wordbookRecord(_words[_wbi].word,res.total);
     var _hasMT=hasStamp('midas');
-    // Gild the tile actually played on each square. Runs before the Jenga
-    // commit below, so a fresh stacked tile is still in S.btTop (the visible
-    // played tile); S.bt holds the buried committed tile — gild the top.
-    if(_hasMT&&main.word.length>=5){for(var _mj=0;_mj<main.tiles.length;_mj++){var _mIdx=main.tiles[_mj].idx;var _mGt=(S.btTop&&S.btTop[_mIdx]&&S.btTop[_mIdx].isNew)?S.btTop[_mIdx]:S.bt[_mIdx];if(_mGt)transformTile(_mGt.id,{variant:'gold'});}}
+    // Gild the single tile played this turn. Only fires when exactly one tile
+    // was played from the hand (nt.length===1). Runs before the Jenga commit
+    // below, so a fresh stacked tile is still in S.btTop (the visible played
+    // tile); S.bt holds the buried committed tile — gild the top.
+    if(_hasMT&&nt.length===1){var _mIdx=nt[0].idx;var _mGt=(S.btTop&&S.btTop[_mIdx]&&S.btTop[_mIdx].isNew)?S.btTop[_mIdx]:S.bt[_mIdx];if(_mGt)transformTile(_mGt.id,{variant:'gold'});}
     S.crossroadsCount=(S.crossroadsCount||0)+(res.crossWordCount||0);
     S._crossroadsLiveCount=null; // animation's display-only counter is now caught up — defer to the real one
     // Ouroboros & Cartographer grow LIVE during the score animation (their
@@ -162,13 +174,11 @@ async function playWord(){
       var _stRect=_stCell?_stCell.getBoundingClientRect():null;
       S.bt[_stIdx]=null;
       // Adjacent super glue keeps the trap on the board (the tile still ejects,
-      // so a glued trap can fire again on the next tile placed here). The
-      // square's cooldown is lifted too — the square is empty again, and the
-      // surviving trap must catch the next tile.
+      // so a glued trap simply catches the next tile placed here).
       if(!_gluedSq(_stIdx)){
         S.board[_stIdx]=null;
         for(var _spi=S.placed.length-1;_spi>=0;_spi--){if(S.placed[_spi].id==='spring_trap'&&S.placed[_spi].sqIdx===_stIdx){S.placed.splice(_spi,1);break;}}
-      }else if(S.localCooldowns)S.localCooldowns.delete(_stIdx);
+      }
 
       var _stVLabel=_stVariant?(' as '+_stVariant):'';
       toast('Spring Trap! '+(_stBagTile.isBlank?'?':_stBagTile.letter)+' returned to bag'+_stVLabel+'.');
@@ -245,7 +255,6 @@ async function playWord(){
   S.lastWordLen=main.word.length;
   // Purple tiles: the ×2 already scored; every scored purple now rolls its
   // 1-in-4 vanish (rolled here at commit with _rng, never in preview/solver).
-  var _purpleGone={};
   if(res&&res.purpleScored&&res.purpleScored.length){
     var _ppN=0;
     for(var _ppi=0;_ppi<res.purpleScored.length;_ppi++){
@@ -253,28 +262,44 @@ async function playWord(){
       var _ppT=(S.btTop&&S.btTop[_ppIdx])?S.btTop[_ppIdx]:S.bt[_ppIdx];
       if(!_ppT||_ppT.variant!=='purple')continue;
       if(_rng()<0.25){
-        _purpleGone[_ppIdx]=1;_ppN++;
+        _ppN++;
         transformTile(_ppT.id,{destroy:true});
       }
     }
     if(_ppN){renderBoard();toast(_ppN>1?(_ppN+' purple tiles vanished!'):'A purple tile vanished!');}
   }
-  // Glass tiles: after scoring, played glass returns to the hand and its
-  // square empties. Runs before the commit loops below, so a stacked glass
-  // top simply vacates and the buried tile stays put.
-  var _glassBack=0;
-  for(var _gbi=0;_gbi<nt.length;_gbi++){
-    var _gbIdx=nt[_gbi].idx;
-    if(_purpleGone[_gbIdx])continue;
-    var _gbTop=S.btTop&&S.btTop[_gbIdx]&&S.btTop[_gbIdx].isNew;
-    var _gbT=_gbTop?S.btTop[_gbIdx]:S.bt[_gbIdx];
-    if(!_gbT||_gbT.material!=='glass'||!_gbT.isNew)continue;
-    if(_gbTop)S.btTop[_gbIdx]=null;else S.bt[_gbIdx]=null;
-    setTileState(_gbT,'hand');
-    if(S.hand.indexOf(_gbT)<0)S.hand.push(_gbT);
-    _glassBack++;
+  // Worm Hole: teleport the tile played on the wormhole square to a random
+  // empty, sticker-free square (rolled here at commit with _rng, never in the
+  // engine/preview). Runs after the purple vanish so a vanished tile can't
+  // teleport, and before the commit loop so the tile commits at its new home.
+  // The sticker stays on the board; the freed square simply catches the next
+  // tile played on it (per-square hooks are new-tile-gated).
+  if(res&&res.wormholes&&res.wormholes.length){
+    for(var _whi=0;_whi<res.wormholes.length;_whi++){
+      var _whIdx=res.wormholes[_whi];
+      if(S.board[_whIdx]!=='wormhole')continue;
+      var _whTop=!!(S.btTop&&S.btTop[_whIdx]&&S.btTop[_whIdx].isNew);
+      var _whT=_whTop?S.btTop[_whIdx]:S.bt[_whIdx];
+      if(!_whT||!_whT.isNew)continue;
+      var _whC=[];
+      for(var _wc=0;_wc<B*B;_wc++){
+        if(_wc===_whIdx||S.bt[_wc]||(S.btTop&&S.btTop[_wc])||S.board[_wc])continue;
+        _whC.push(_wc);
+      }
+      if(!_whC.length)continue;
+      var _whDest=_whC[Math.floor(_rng()*_whC.length)];
+      var _whCell=document.querySelector('[data-sq-idx="'+_whIdx+'"]');
+      var _whFrom=_whCell?_whCell.getBoundingClientRect():null;
+      var _whDestCell=document.querySelector('[data-sq-idx="'+_whDest+'"]');
+      var _whTo=_whDestCell?_whDestCell.getBoundingClientRect():null;
+      if(_whTop)S.btTop[_whIdx]=null;else S.bt[_whIdx]=null;
+      renderBoard();
+      if(_whFrom&&_whTo)await new Promise(function(r){animWormhole(_whFrom,_whTo,_whT,r);});
+      S.bt[_whDest]=_whT; // still isNew — the commit loop below finalises it here
+      renderBoard();
+      toast('Worm hole! '+tileDisplayLetter(_whT)+' teleported to '+rcl(_whDest)+'.');
+    }
   }
-  if(_glassBack){renderBoard();renderHand();toast(_glassBack>1?(_glassBack+' glass tiles returned to hand!'):'Glass tile returned to hand!');}
   for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){setTileState(S.bt[i],'board',{boardSq:i,isNew:false});}}
   // Commit Jenga stacked tiles: btTop replaces bt at that square, but the buried
   // tile's scoring/render info is preserved on _buried so it keeps scoring in
@@ -395,9 +420,21 @@ function discardTiles(){
     var keptOldPos={};var _vi=0;
     for(var _ki=0;_ki<S.hand.length;_ki++){var _t=S.hand[_ki];if(_t){if(!_t.sel&&HP.x[_vi]!==undefined)keptOldPos[_t.id]=HP.x[_vi];_vi++;}}
     // Capture discard IDs before setTileState clears t.sel, then filter by ID.
-    var _discardIds={};
-    for(var _di=0;_di<S.hand.length;_di++){if(S.hand[_di]&&S.hand[_di].sel){_discardIds[S.hand[_di].id]=true;setTileState(S.hand[_di],'stored',{storedIn:'discard'});}}
+    var _discardIds={},_discTiles=[];
+    for(var _di=0;_di<S.hand.length;_di++){if(S.hand[_di]&&S.hand[_di].sel){_discardIds[S.hand[_di].id]=true;_discTiles.push(S.hand[_di]);setTileState(S.hand[_di],'stored',{storedIn:'discard'});}}
     S.hand=S.hand.filter(function(t){return!t||!_discardIds[t.id];});HP.x=[];HP.vx=[];window._easyHint=null;S.disc--;
+    var _firstDisc=!(S.discardsThisRound||0);S.discardsThisRound=(S.discardsThisRound||0)+1;
+    // The Hammer: first discard of the round, exactly one tile → destroy it
+    // (purged from S.pool — gone for the run) and pay $3 per copy. A
+    // replacement is still drawn below like any discard.
+    var _hamN=countStamp('the_hammer');
+    if(_firstDisc&&_discTiles.length===1&&_hamN){
+      var _hamT=_discTiles[0];
+      transformTile(_hamT.id,{destroy:true});
+      S.gold+=3*_hamN;
+      stampScaleBounce('the_hammer');renderHUD();
+      toast('The Hammer: '+(_hamT.isBlank?'blank':_hamT.letter)+' destroyed, +$'+(3*_hamN)+'!');
+    }
     if(hasStamp('pressure_cooker')){S.discPressure=(S.discPressure||0)+1;stampScaleBounce('pressure_cooker');}
     saveGame();
     if(window.TUT&&TUT.active)tutEvent('discard');

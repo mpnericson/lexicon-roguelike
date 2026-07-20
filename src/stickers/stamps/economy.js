@@ -36,7 +36,7 @@ SQ.push({id:'pressure_cooker',name:'Pressure Cooker',
 // type: stamp · rarity: uncommon · cost: $5
 // onPostWord: reads ctx.state.bagColouredCount and applies ×(1 + n×0.1) mult.
 SQ.push({id:'the_miser',name:'The Miser',desc:'+×0.1 mult for each coloured tile in your bag.',
-  rarity:'uncommon',cost:5,bg:'#1a1a0a',fg:'#d4af37',icon:'MS',
+  rarity:'uncommon',cost:5,bg:'#1a1a0a',fg:'#d4af37',icon:'MS',type:'stamp',
   liveDesc:function(p){var n=S.bag.filter(function(t){return t.variant;}).length;var f=parseFloat((1+n*0.1).toFixed(2));return n+' coloured tile'+(n!==1?'s':'')+' in bag → <span style="color:#f0e040">×'+f.toFixed(2)+' mult</span>';},
   onPostWord:function(w,wt,ctx){var n=ctx.state.bagColouredCount||0;if(n>0){var f=parseFloat((1+n*0.1).toFixed(2));ctx.xmults.push(f);ctx.events.push({type:'x-mult',factor:f,label:'The Miser ×'+f.toFixed(2)});}}});
 
@@ -135,7 +135,7 @@ SQ.push({id:'pinata',name:'Piñata',
   rarity:'uncommon',cost:5,bg:'#2a0a28',fg:'#f8c060',icon:'🎊',type:'stamp',
   onSell:function(){
     var _pnPool=[];
-    for(var _pni=0;_pni<SQ.length;_pni++){if(SQ[_pni].type!=='tile')_pnPool.push(SQ[_pni].id);}
+    for(var _pni=0;_pni<SQ.length;_pni++){if(SQ[_pni].type==='board'||SQ[_pni].type==='local')_pnPool.push(SQ[_pni].id);}
     var _pnFree=[];
     for(var _pnf=0;_pnf<B*B;_pnf++){if(!S.board[_pnf]&&!S.bt[_pnf])_pnFree.push(_pnf);}
     if(!_pnFree.length){toast('Pi\xf1ata: no free squares!');return;}
@@ -158,3 +158,74 @@ SQ.push({id:'pinata',name:'Piñata',
 SQ.push({id:'safety_net',name:'Safety Net',
   desc:'If you fail a round but scored at least 25% of the target, advance to the shop anyway. Destroyed on use.',
   rarity:'uncommon',cost:5,qty:1,bg:'#001a2a',fg:'#60c8ff',icon:'SN',type:'stamp'});
+
+// ── THE HAMMER ────────────────────────────────────────────────────────────────
+// type: stamp · rarity: uncommon · cost: $5
+// No scoring hook. Effect fires in play.js discardTiles: if the FIRST discard
+// of the round is exactly one tile, that tile is destroyed (removed from the
+// pool for the rest of the run) and each copy pays $3. S.discardsThisRound
+// (reset each round) tracks whether the hammer is still armed.
+SQ.push({id:'the_hammer',name:'The Hammer',
+  desc:'If your first discard of the round is a single tile, gain $3 and destroy that tile.',
+  rarity:'uncommon',cost:5,bg:'#2a1408',fg:'#e0a060',icon:'🔨',type:'stamp',
+  liveDesc:function(p){return (S.discardsThisRound||0)>0?'Already discarded this round — <span style="color:#ff6060">re-arms next round</span>.':'<span style="color:#f0e040">Armed</span> — discarding a single tile destroys it for $3.';}});
+
+// ── DELAYED GRATIFICATION ─────────────────────────────────────────────────────
+// type: stamp · rarity: common · cost: $3
+// onEndRound (fired from roundComplete, before the discard counter resets in
+// _doBoardAnimation): +$2 per unused discard.
+SQ.push({id:'delayed_gratification',name:'Delayed Gratification',
+  desc:'At the end of the round, gain $2 for each unused discard.',
+  rarity:'common',cost:3,bg:'#0a1a20',fg:'#60b0e0',icon:'DG',type:'stamp',
+  liveDesc:function(p){var n=S.disc||0;return n+' discard'+(n!==1?'s':'')+' left → <span style="color:#f0e040">$'+(n*2)+'</span> at end of round.';},
+  onEndRound:function(){
+    var g=(S.disc||0)*2;
+    if(g>0){S.gold+=g;renderHUD();toast('Delayed Gratification: +$'+g+'!');}
+  }});
+
+// ── EGG ───────────────────────────────────────────────────────────────────────
+// type: stamp · rarity: common · cost: $3
+// onEndRound: grows the instance's sell value by $4 (inst.sellBonus —
+// persisted by save.js, honored by sellStamp / the sell button / Appraiser).
+// copyable:false — The Thing delegating onEndRound would grow the Egg itself
+// a second time, so the pair is blocked.
+SQ.push({id:'egg',name:'Egg',
+  desc:'Gains $4 of sell value at the end of each round.',
+  rarity:'common',cost:3,bg:'#201c10',fg:'#f0e0b0',icon:'🥚',type:'stamp',copyable:false,
+  liveDesc:function(p){var sv=Math.floor(sqd('egg').cost/2)+((p&&p.sellBonus)||0);return 'Current sell value: <span style="color:#f0e040">$'+sv+'</span>.';},
+  onEndRound:function(inst){
+    inst.sellBonus=(inst.sellBonus||0)+4;
+    toast('Egg: +$4 sell value!');
+  }});
+
+// ── RHYTHM ────────────────────────────────────────────────────────────────────
+// type: stamp · rarity: common · cost: $3
+// onPostWord: every vowel still in hand when the word scores
+// (ctx.state.handVowelCount) has a 1-in-2 chance (Two Face doubles it) to pay
+// $1. Rolls only on the live commit — never in preview, like Slot Machine —
+// so the solver can't see the payouts and the seeded RNG stays stable.
+SQ.push({id:'rhythm',name:'Rhythm',
+  desc:'Every vowel left in your hand when a word is played has a 1 in 2 chance to pay $1.',
+  rarity:'common',cost:3,bg:'#1a0a20',fg:'#c080f0',icon:'♪',type:'stamp',
+  onPostWord:function(w,wt,ctx){
+    if(ctx.preview)return;
+    var n=ctx.state.handVowelCount||0;
+    if(!n)return;
+    var lo=typeof _luckOdds==='function'?_luckOdds:function(p){return p;};
+    var g=0;
+    for(var i=0;i<n;i++)if(Math.random()<lo(0.5))g++;
+    if(g>0){ctx.tgold+=g;ctx.events.push({type:'gold',delta:g,label:'Rhythm +$'+g});}
+  }});
+
+// ── INSURANCE ─────────────────────────────────────────────────────────────────
+// type: stamp · rarity: common · cost: $3
+// onEndBoard: pays $1 for every L tile the player owns — the whole pool
+// (bag + hand + board + discards alike), blanks excluded.
+SQ.push({id:'insurance',name:'Insurance',
+  desc:'At the end of each board, gain $1 for every L in your tile collection.',
+  rarity:'common',cost:3,bg:'#101a2a',fg:'#80a8e0',icon:'☂',type:'stamp',
+  liveDesc:function(p){var n=(S.pool||[]).filter(function(t){return t&&!t.isBlank&&t.letter==='L';}).length;return n+' L tile'+(n!==1?'s':'')+' owned → <span style="color:#f0e040">$'+n+'</span> at end of board.';},
+  onEndBoard:function(){
+    var n=(S.pool||[]).filter(function(t){return t&&!t.isBlank&&t.letter==='L';}).length;
+    if(n>0){S.gold+=n;renderHUD();toast('Insurance: +$'+n+' for '+n+' L'+(n!==1?'\'s':'')+'!');}
+  }});

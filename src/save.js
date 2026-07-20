@@ -14,6 +14,7 @@ function saveGame() {
       seed: S.seed,
       ai: S.ai, bi: S.bi,
       score: S.score, gold: S.gold, plays: S.plays, disc: S.disc,
+      discardsThisRound: S.discardsThisRound||0,
       wtr: S.wtr, permTs: S.ts,
       bag: S.bag,
       hand: (S.hand || []).map(function(t) {
@@ -40,7 +41,6 @@ function saveGame() {
       endless: !!S.endless,
       endlessRound: S.endlessRound || 0,
       roundsCompleted: S.roundsCompleted || 0,
-      localCooldowns: Array.from(S.localCooldowns||[]),
       drunkStreak: S.drunkStreak || 0,
       constraintOrder: S.constraintOrder||[],
       usedLetters: Array.from(S.usedLetters||[]),
@@ -48,7 +48,7 @@ function saveGame() {
       crossroadsCount: S.crossroadsCount||0,
       ouroborosBonus: S.ouroborosBonus||0,
       gamblerSpins: S.gamblerSpins||0,
-      stamps: (S.stamps||[]).map(function(ts){return{id:ts.id};}),
+      stamps: (S.stamps||[]).map(function(ts){return{id:ts.id,sellBonus:ts.sellBonus||0};}),
       stickerInventory: (S.stickerInventory||[]).map(function(p){return{id:p.id};}),
       consumables: (S.consumables||[]).map(function(c){return{id:c.id};}),
       lastTicket: S.lastTicket||null,
@@ -81,6 +81,7 @@ function loadGame() {
       ai: d.ai || 0, bi: d.bi || 0,
       score: d.score || 0, gold: d.gold || 0,
       plays: d.plays || 4,  disc: d.disc || 3,
+      discardsThisRound: d.discardsThisRound || 0,
       wtr: d.wtr || 0, ts: d.permTs || 0,
       placed: (d.placed || []).map(function(p) {
         var def = sqd(p.id);
@@ -109,7 +110,6 @@ function loadGame() {
       endless: !!d.endless,
       endlessRound: d.endlessRound || 0,
       roundsCompleted: d.roundsCompleted || 0,
-      localCooldowns: new Set(d.localCooldowns||[]),
       drunkStreak: d.drunkStreak || 0,
       constraintOrder: d.constraintOrder||[],
       usedLetters: new Set(d.usedLetters||[]),
@@ -117,7 +117,7 @@ function loadGame() {
       crossroadsCount: d.crossroadsCount||0,
       ouroborosBonus: d.ouroborosBonus||0,
       gamblerSpins: d.gamblerSpins||0,
-      stamps: ((d.stamps||d.tileStickers)||[]).map(function(ts){return(ts&&ts.id&&sqd(ts.id))?{id:ts.id}:null;}).filter(Boolean), // d.tileStickers: pre-rename saves; sqd check drops stamps removed from the game (the_purist)
+      stamps: ((d.stamps||d.tileStickers)||[]).map(function(ts){return(ts&&ts.id&&sqd(ts.id))?{id:ts.id,sellBonus:ts.sellBonus||0}:null;}).filter(Boolean), // d.tileStickers: pre-rename saves; sqd check drops stamps removed from the game (the_purist)
       consumables: (d.consumables||[]).map(function(c){return(c&&c.id&&tkd(c.id))?{id:c.id}:null;}).filter(Boolean),
       lastTicket: (d.lastTicket&&tkd(d.lastTicket))?d.lastTicket:null,
       devMode: false,
@@ -129,6 +129,26 @@ function loadGame() {
         return Object.keys(pm).map(function(k){return pm[k];});
       })()
     };
+    // Heal saves from when a stamp def lacked type:'stamp' and leaked into the
+    // sticker pools (The Miser): move stamp-typed entries out of the sticker
+    // locations into the stamp bar (refund cost if the bar is full).
+    (function(){
+      var moved = [];
+      S.placed = S.placed.filter(function(p) {
+        if (p.type !== 'stamp') return true;
+        if (S.board[p.sqIdx] === p.id) S.board[p.sqIdx] = null;
+        moved.push(p.id); return false;
+      });
+      S.stickerInventory = S.stickerInventory.filter(function(p) {
+        var def = sqd(p.id);
+        if (!def || def.type !== 'stamp') return true;
+        moved.push(p.id); return false;
+      });
+      moved.forEach(function(id) {
+        if (S.stamps.length < 5) S.stamps.push({id:id});
+        else S.gold += (sqd(id) || {}).cost || 0;
+      });
+    })();
     return true;
   } catch(e) { clearSave(); return false; }
 }

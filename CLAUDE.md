@@ -102,7 +102,9 @@ Tile dimensions must be consistent across CSS, physics, render, and drag:
 
 ## Scoring pipeline
 
-`playWord` → `scorePlay(nt, dir, preview)` (scoring.js adapter: builds engine input from `S`, commits cooldowns) → `runScoreEngine(input)` (score_engine.js, pure) → `runScoreAnim(res.events, res.total)` → `S.score += res.total`.
+`playWord` → `scorePlay(nt, dir, preview)` (scoring.js adapter: builds engine input from `S`) → `runScoreEngine(input)` (score_engine.js, pure) → `runScoreAnim(res.events, res.total)` → `S.score += res.total`.
+
+Per-square sticker hooks (`onTileAdd`, `onTileMult`, `retrigger:true`) fire only for the tile PLAYED on that square this turn (`tile.isNew` gate in `_engTilePasses`) — there is no cooldown state. Committed tiles crossing a sticker square never re-fire it; a square that frees up again (glass retrieve, Worm Hole, Spring Trap) catches the next tile played on it, and a Jenga top stacked onto a sticker square re-fires it.
 
 The engine only controls the ORDER effects fire in; all effect logic lives in the sticker definitions. Bracket order:
 
@@ -110,10 +112,10 @@ The engine only controls the ORDER effects fire in; all effect logic lives in th
 - **PER TILE** (cross words first, then main word): base letter score → additive (colour bonuses: blue +10 letters, red +4 plusMult; then board `onTileAdd` on the square, additive aura hooks, stamp `onPerTile` hooks **left→right**) → multiplicative (board `onTileMult`: DL/TL/DW/TW, then multiplicative aura hooks: chess pieces; purple ×2 xmult + `ctx.purpleScored` record) → retrigger (`retrigger:true` squares, stamp `onRetrigger` hooks). Retrigger passes re-run all three brackets (mult squares compound — DW/TW rarity is the balance lever; colour bonuses re-fire too). Metallic tile rule: every pass, base or retrigger, is followed by one metallic re-pass — `(1 + retrigger passes) × 2` total on a metallic tile.
 - **POST** — bingo +50 → gold-tile board sweep (every gold tile on the board pays $1) → jade-tile board sweep (every jade tile on the board gives ×1.5) → board `onPostWordAdd` → board `onPostWordMult` → stamp `onPostWord` **left→right** (stamp bar order is a gameplay mechanic) → bounty reward.
 - **On-board sweeps** — `boardSweep(ctx, match, fire)` (score_engine.js) runs `fire(tile, sqIdx)` for every matching tile on the board (committed + just played) in reading order. `ctx.boardRetriggers` (The Eagle's `onBuildCtx`, +1 per copy) adds extra triggerings per tile; every triggering routes through `_sweepTrigger`, where the metallic-tile rule lives ("if this tile triggers for any reason, it triggers again") — so a metallic tile fires `(1 + eagles) × 2` times. Used by the engine gold + jade payouts and by stamps like Yuan inside `onPostWord` (keeps stamp-bar order). Push one event per firing so each tile bounces individually.
-- **Tile variants** — colours (`tile.variant`): red +4 mult, blue +10 letters, gold $1 board sweep, jade ×1.5 board sweep, purple ×2 with a 1-in-4 vanish rolled at commit in play.js (`res.purpleScored`; never in preview). Materials (`tile.material`): metallic = retrigger rule, glass = returns to hand after scoring leaving its square empty (play.js, pre-commit), varnished = bag draw priority ("anchor", `S.bagBlueAnchors` — name kept for save compat). Both axes are independent and are granted by Ticket/Key consumables (`src/consumables.js`); the shop bag button is a read-only view identical to the play-phase bag modal.
+- **Tile variants** — colours (`tile.variant`): red +4 mult, blue +10 letters, gold $1 board sweep, jade ×1.5 board sweep, purple ×2 with a 1-in-4 vanish rolled at commit in play.js (`res.purpleScored`; never in preview). Materials (`tile.material`): metallic = retrigger rule, glass = commits normally but is retrievable — clicking a committed glass tile floats it up while the hand shakes; clicking a shaking hand tile discards it (no discard charge) and the glass tile arcs to hand, clicking anywhere else cancels (`attachGlassRetrieve`/`_glassRet*` in drag.js, modal via document-capture listeners), varnished = bag draw priority ("anchor", `S.bagBlueAnchors` — name kept for save compat). Both axes are independent and are granted by Ticket/Key consumables (`src/consumables.js`); the shop bag button is a read-only view identical to the play-phase bag modal.
 - **FINAL** — `total = round(letters × (1 + Σ plusMults) × Π xmults)`, then `ctx.finalTransforms` (Palindrome Engine).
 
-The solver scores hypothetical moves through the same engine (board overlay + `preview:true`). `preview:true` skips cooldown commits and sticker side effects. Engine inputs/ctx surface are documented at the top of `score_engine.js`.
+The solver scores hypothetical moves through the same engine (board overlay + `preview:true`). `preview:true` skips sticker side effects. Engine inputs/ctx surface are documented at the top of `score_engine.js`.
 
 ## Async solver (GADDAG)
 
@@ -123,7 +125,7 @@ Three-phase pipeline shared by all entry points:
 2. **Score** — `_solverScoreMove(sv, mv, hm)` runs each candidate through `runScoreEngine` (preview mode) on a board overlay, chunked via `setTimeout`.
 3. **Rank** — top-K insertion while scoring.
 
-All three phases (plus constraint filtering and bounty-score inflation via `_solverInflateBounty`) live in **`_solverCore(opts)`** — the single function every entry point calls, so scoring rules can't drift between them. Options: `position` (the `sv` view: {bt, btTop, board, placed, stamps, cooldowns, bounties}; defaults to live S references via `_solverLivePosition()`), `handTiles`, `topK`, `constraintState` ({palUnlocked, lastWordLen} — the position moves are judged from), `chunk`, `shouldAbort()`, `onProgress(frac, best, total)`, `onDone(best|null)`.
+All three phases (plus constraint filtering and bounty-score inflation via `_solverInflateBounty`) live in **`_solverCore(opts)`** — the single function every entry point calls, so scoring rules can't drift between them. Options: `position` (the `sv` view: {bt, btTop, board, placed, stamps, bounties}; defaults to live S references via `_solverLivePosition()`), `handTiles`, `topK`, `constraintState` ({palUnlocked, lastWordLen} — the position moves are judged from), `chunk`, `shouldAbort()`, `onProgress(frac, best, total)`, `onDone(best|null)`.
 
 **The pipeline never reads live `S.hand/bt/board` mid-solve and NEVER installs a snapshot into `S`** — background solves pass a frozen `position`, so user input between chunks always sees real game state. (The old swap-`S.hand`-during-solve design let drags/renders mid-solve observe snapshot clones, duplicating tiles.)
 
@@ -200,5 +202,5 @@ Scoring hooks (all receive `ctx`; read game state via `ctx.state`, never `S`, so
 - `onPostWord(w, wt, ctx, inst)` — stamp, post-word, left→right (Scholar, Crossroads, Drunk Text, …).
 - `onCrossword(ctx, inst)` — stamp, fired before each cross word scores (Crossroads tooltip tick).
 - `retrigger:true` — board flag; engine re-runs the per-tile passes (Red Sticker).
-- Non-engine hooks fired from play/game code: `onWordPlayed`, `onEndBoard`, `onSell`, `onAcquire`.
+- Non-engine hooks fired from play/game code: `onWordPlayed`, `onEndRound` (every round, in `roundComplete`, before the discard counter resets), `onEndBoard` (round 3 only, in `advanceRound`), `onSell`, `onAcquire`.
 - Chess pieces (`chess_*`) — hover to preview attack pattern; click to inspect.

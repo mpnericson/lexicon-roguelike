@@ -3,8 +3,10 @@
 // Bought as shop packs (small: 3 choose 1 · regular: 5 choose 1 · large:
 // 5 choose 2). Opening a pack shows 7 random bag tiles fanned on top and
 // the rolled tickets/keys as cards beneath — tile-targeted effects apply
-// to the shown tiles. Created tickets go to S.consumables (max TK_MAX),
-// usable from the inventory strip any time via the same overlay.
+// to the shown tiles. Created tickets go to S.consumables (max TK_MAX).
+// Using one from the inventory during play acts on the hand directly (no
+// overlay): click-selected tiles are the targets. In the shop the same
+// overlay is reused since the hand isn't visible there.
 // Placeholder art: CSS cards + emoji icons; real sprites auto-detected at
 // Assets/consumables/{id}/{id}.png (same pattern as stickers/stamps).
 // =====================================================================
@@ -85,7 +87,7 @@ var TK=[
     canUse:function(){if(!(S.stamps||[]).length)return 'You own no stamps!';},
     use:function(){
       var g=0;
-      (S.stamps||[]).forEach(function(ts){var d=sqd(ts.id);g+=Math.floor(((d&&d.cost)||4)/2);});
+      (S.stamps||[]).forEach(function(ts){var d=sqd(ts.id);g+=Math.floor(((d&&d.cost)||4)/2)+(ts.sellBonus||0);});
       S.gold+=g;renderHUD();toast('Stamps appraised: +$'+g+'!');return 500;
     }},
   {id:'tk_encore',kind:'ticket',name:'Encore',icon:'🎭',fg:'#f0a0d0',
@@ -216,22 +218,37 @@ var TK_PACK_SIZES={
   regular:{label:'Regular',show:5,pick:1,cost:5},
   large:  {label:'Large',  show:5,pick:2,cost:7}
 };
-// Weighted rotation for the two shop pack slots (keys rarer than tickets).
-var TK_PACK_TYPES=[
-  {kind:'ticket',size:'small',w:3},{kind:'ticket',size:'regular',w:2},{kind:'ticket',size:'large',w:1},
-  {kind:'key',size:'small',w:1.5},{kind:'key',size:'regular',w:1},{kind:'key',size:'large',w:0.5}
-];
+// Tile packs reveal more tiles per size but keep the same $3/$5/$7 costs.
+var TK_TILE_PACK_SIZES={
+  small:  {label:'Small',  show:5,pick:1,cost:3},
+  regular:{label:'Regular',show:8,pick:1,cost:5},
+  large:  {label:'Large',  show:8,pick:2,cost:7}
+};
+// Each shop slot rolls independently: kind first (ticket 70% / tile 27% /
+// key 3%), then size (50% small / 30% regular / 20% large).
+var TK_KEY_CHANCE=0.03;
+var TK_TILE_CHANCE=0.27;
+var TK_SIZE_ODDS=[{size:'small',p:0.5},{size:'regular',p:0.3},{size:'large',p:0.2}];
+// A pack tile rolls a uniform letter, then independently 15% a random colour
+// and 1% a random material (the two axes stack).
+var TK_TILE_COLORS=['red','blue','gold','jade','purple'];
+var TK_TILE_MATERIALS=['metallic','glass','varnished'];
+var TK_TILE_COLOR_CHANCE=0.15;
+var TK_TILE_MATERIAL_CHANCE=0.01;
 
 function _tkRollShopPacks(n){
-  var pool=TK_PACK_TYPES.slice(),out=[];
-  for(var k=0;k<n&&pool.length;k++){
-    var tot=0;for(var i=0;i<pool.length;i++)tot+=pool[i].w;
-    var r=_rng()*tot,acc=0,pi=pool.length-1;
-    for(var i=0;i<pool.length;i++){acc+=pool[i].w;if(r<acc){pi=i;break;}}
-    var pt=pool.splice(pi,1)[0];
-    var sz=TK_PACK_SIZES[pt.size];
-    out.push({kind:pt.kind,size:pt.size,
-      label:sz.label+' '+(pt.kind==='key'?'Key':'Ticket')+' Pack',
+  var out=[];
+  for(var k=0;k<n;k++){
+    var kr=_rng(),kind;
+    if(kr<TK_KEY_CHANCE)kind='key';
+    else if(kr<TK_KEY_CHANCE+TK_TILE_CHANCE)kind='tile';
+    else kind='ticket';
+    var r=_rng(),acc=0,size=TK_SIZE_ODDS[TK_SIZE_ODDS.length-1].size;
+    for(var i=0;i<TK_SIZE_ODDS.length;i++){acc+=TK_SIZE_ODDS[i].p;if(r<acc){size=TK_SIZE_ODDS[i].size;break;}}
+    var sz=(kind==='tile'?TK_TILE_PACK_SIZES:TK_PACK_SIZES)[size];
+    var kindLabel=kind==='key'?'Key':kind==='tile'?'Tile':'Ticket';
+    out.push({kind:kind,size:size,
+      label:sz.label+' '+kindLabel+' Pack',
       cost:sz.cost,show:sz.show,pick:sz.pick,sold:false});
   }
   return out;
@@ -243,6 +260,7 @@ function buyTkPack(i){
   if(!spendGold(p.cost))return;
   p.sold=true;
   renderShop();renderHUD();
+  if(p.kind==='tile'){_tkOpenTileOverlay(p);return;}
   var pool=TK.filter(function(d){return d.kind===p.kind;}).map(function(d){return d.id;});
   var contents=_pickDistinct(pool,p.show);
   _tkOpenOverlay({cards:contents,picks:p.pick,source:'pack',title:p.label});
@@ -254,20 +272,30 @@ function renderTkShop(){
     var box=document.getElementById('shop-tkpack-'+i);if(!box)continue;
     var p=(shopPool.tkPacks||[])[i];
     if(!p){box.innerHTML='';box.className='shop-pack-box';box.onclick=null;box.onmouseenter=null;box.onmouseleave=null;continue;}
-    var isKey=p.kind==='key';
-    box.innerHTML='<div class="tk-pack-art '+(isKey?'key':'ticket')+'">'
-      +'<span class="tk-pack-emoji">'+(isKey?'🗝️':'🎟️')+'</span>'
+    var emoji=p.kind==='key'?'🗝️':p.kind==='tile'?'🔤':'🎟️';
+    var color=p.kind==='key'?'#9ab8ff':p.kind==='tile'?'#8fe0a0':'#f0c060';
+    box.innerHTML='<div class="tk-pack-art '+p.kind+'">'
+      +'<span class="tk-pack-emoji">'+emoji+'</span>'
       +'<span class="tk-pack-size">'+TK_PACK_SIZES[p.size].label+'</span></div>'
-      +'<div class="shop-pack-cost" style="color:'+(isKey?'#9ab8ff':'#f0c060')+'">$'+p.cost+'</div>';
+      +'<div class="shop-pack-cost" style="color:'+color+'">$'+p.cost+'</div>';
     box.className='shop-pack-box'+(p.sold?' sold':'');
-    _tkHoverTip(box,p.label,'Opens '+p.show+' '+(isKey?'keys':'tickets')+' — choose '+p.pick+'.',isKey?'#9ab8ff':'#f0c060');
+    var tip=p.kind==='tile'
+      ?'Reveals '+p.show+' tiles — choose '+(p.pick>1?'up to '+p.pick:'1')+' to add to your bag.'
+      :'Opens '+p.show+' '+(p.kind==='key'?'keys':'tickets')+' — choose '+p.pick+'.';
+    _tkHoverTip(box,p.label,tip,color);
     if(!p.sold){(function(idx){box.onclick=function(){buyTkPack(idx);};})(i);}else box.onclick=null;
   }
 }
 
 // ── Inventory ────────────────────────────────────────────────────────────────
+// Click a mini to arm it (USE button appears), click again to disarm.
+// _tkInvSel is the armed inventory index (-1 = none); it survives a blocked
+// use (e.g. no hand tiles selected yet) so the player can fix it and retry.
+var _tkInvSel=-1;
+
 function renderConsumables(){
   var inv=S.consumables||[];
+  if(_tkInvSel>=inv.length)_tkInvSel=-1;
   var targets=[
     {el:document.getElementById('consumable-row'),mini:'tk-mini'},
     {el:document.getElementById('shop-consumables'),mini:'tk-mini'}
@@ -279,12 +307,23 @@ function renderConsumables(){
     inv.forEach(function(c,i){
       var d=tkd(c.id);if(!d)return;
       var m=document.createElement('div');
-      m.className=tg.mini+' '+(d.kind==='key'?'key':'ticket');
+      m.className=tg.mini+' '+(d.kind==='key'?'key':'ticket')+(i===_tkInvSel?' tk-sel':'');
       m.innerHTML=d.iconPng
         ?'<img src="'+d.iconPng+'" style="width:80%;image-rendering:pixelated;pointer-events:none">'
         :'<span style="pointer-events:none">'+d.icon+'</span>';
-      _tkHoverTip(m,d.name,d.desc+' (click to use)',d.fg);
-      m.onclick=function(){useConsumable(i);};
+      if(i===_tkInvSel){
+        var b=document.createElement('button');
+        b.className='tk-use-btn mini';b.textContent='USE';
+        b.onclick=function(e){e.stopPropagation();useConsumable(i);};
+        m.appendChild(b);
+      }
+      _tkHoverTip(m,d.name,d.desc+(d.sel&&S.phase==='play'?' (select hand tiles, then click + USE)':' (click, then USE)'),d.fg);
+      m.onclick=function(){
+        if(window._scoring||_tkOv||_tkBusy)return;
+        _tkInvSel=(_tkInvSel===i)?-1:i;
+        if(typeof _playTileClick==='function')_playTileClick('select');
+        renderConsumables();
+      };
       row.appendChild(m);
     });
     if(inv.length){
@@ -294,14 +333,69 @@ function renderConsumables(){
       row.appendChild(ctr);
     }
   });
+  _tkTipHideStale();
 }
 
 function useConsumable(i){
   if(window._scoring)return;
-  if(_tkOv)return;
+  if(_tkOv||_tkBusy)return;
   var c=(S.consumables||[])[i];if(!c)return;
   var def=tkd(c.id);if(!def)return;
+  // Play phase: no overlay — the consumable acts on the hand directly
+  // (click-selected tiles are the targets). The overlay is kept for the
+  // shop, where the hand isn't visible.
+  if(S.phase==='play'){_tkUseFromHand(i,def);return;}
+  _tkInvSel=-1;renderConsumables();
   _tkOpenOverlay({cards:[c.id],picks:1,source:'inv',invIndex:i,title:def.name,autoSelect:true});
+}
+
+// ── Inventory use during play (no overlay) ───────────────────────────────────
+// Targets are the real hand tiles: tile-targeted consumables act on the
+// tiles the player has click-selected (same selection as discard, resolved
+// left→right for the Alchemist), random-destroy ones roll over the whole
+// hand. Reuses the defs' use(sel,st) interface — entries carry handMode so
+// _tkBurnSwap animates the live .hand-tile element instead of overlay cards.
+function _tkUseFromHand(invIndex,def){
+  var entries=[];
+  for(var hi=0;hi<S.hand.length;hi++){
+    var t=S.hand[hi];
+    if(!t||t.state!=='hand')continue;
+    var el=document.querySelector('#hand-area [data-tile-id="'+t.id+'"]');
+    entries.push({t:t,el:el||document.createElement('div'),dead:false,baseTf:'',handMode:true,wasSel:!!t.sel});
+  }
+  var st={source:'inv',tiles:entries,handMode:true};
+  var sel=entries.filter(function(e){return e.wasSel;});
+  var reason=def.canUse?def.canUse(st):null;
+  if(!reason&&def.sel){
+    var min=def.sel.min||def.sel.n;
+    if(!entries.length)reason='No tiles in your hand!';
+    else if(sel.length<min)reason='Select '+min+' tile'+(min>1?'s':'')+' in your hand first!';
+    else if(sel.length>def.sel.n)reason='Select at most '+def.sel.n+' tile'+(def.sel.n>1?'s':'')+'!';
+  }
+  if(!reason&&!def.sel&&(def.id==='tk_shredder'||def.id==='ky_rust')&&!entries.length)
+    reason='No tiles to destroy!';
+  if(reason){toast(reason);return;}
+  if(!def.sel)sel=[];
+  sel.forEach(function(e){e.t.sel=false;});
+  _tkInvSel=-1;
+  // Consumed up front so slot-room checks inside use() (Lucky Draw, Encore)
+  // see the freed slot — same order as the overlay path.
+  S.consumables.splice(invIndex,1);
+  renderConsumables();
+  _tkBusy=true;
+  var dur=def.use(sel,st)||600;
+  if(def.kind==='ticket'&&def.id!=='tk_encore')S.lastTicket=def.id;
+  setTimeout(function(){
+    _tkBusy=false;
+    renderHand();renderHUD();renderStampBar();renderConsumables();
+    var bc=document.getElementById('bag-count');if(bc)bc.textContent=S.bag.length;
+    sel.forEach(function(e){
+      if(e.dead)return;
+      var el=document.querySelector('#hand-area [data-tile-id="'+e.t.id+'"]');
+      if(el)el.style.animation='tkNewIn 0.5s cubic-bezier(0.34,1.56,0.64,1)';
+    });
+    if(S.phase==='play'&&typeof saveGame==='function')saveGame();
+  },dur);
 }
 
 // ── Pack / use overlay ───────────────────────────────────────────────────────
@@ -325,7 +419,7 @@ function _tkOpenOverlay(opts){
   document.getElementById('tk-skip-btn').textContent=opts.source==='inv'?'Cancel':'Skip';
 
   // 7 random bag tiles — the targets tile-specific consumables act on.
-  var row=document.getElementById('tk-tiles-row');row.innerHTML='';
+  var row=document.getElementById('tk-tiles-row');row.innerHTML='';row.style.display='';
   var samp=S.bag.slice();
   for(var i=samp.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=samp[i];samp[i]=samp[j];samp[j]=t;}
   samp=samp.slice(0,7);
@@ -343,7 +437,7 @@ function _tkOpenOverlay(opts){
   }
   if(!samp.length)row.innerHTML='<div style="color:#8880a8;font-size:26px">Your bag is empty</div>';
 
-  var crow=document.getElementById('tk-cards-row');crow.innerHTML='';
+  var crow=document.getElementById('tk-cards-row');crow.innerHTML='';crow.classList.remove('tk-tile-mode');
   for(var ci=0;ci<opts.cards.length;ci++){
     var def=tkd(opts.cards[ci]);if(!def)continue;
     var card=document.createElement('div');
@@ -489,9 +583,107 @@ function _tkSkipOverlay(){
 function _tkCloseOverlay(){
   var ov=document.getElementById('tk-overlay');
   if(ov)ov.style.display='none';
+  var take=document.getElementById('tk-take-btn');if(take&&take.parentNode)take.parentNode.removeChild(take);
   _tkOv=null;_tkBusy=false;
   if(typeof S!=='undefined'&&S.phase==='shop'){renderShop();renderHUD();}
   renderConsumables();
+}
+
+// ── Tile pack overlay ─────────────────────────────────────────────────────────
+// A tile pack reveals `show` freshly rolled tiles; the player picks `pick` of
+// them to add permanently to the bag. Reuses the #tk-overlay shell — the bag-
+// tile row is hidden since the pack tiles are the choices themselves.
+function _tkRollPackTile(){
+  var letters=Object.keys(DIST);
+  var letter=letters[Math.floor(_rng()*letters.length)];
+  var variant=_rng()<TK_TILE_COLOR_CHANCE?TK_TILE_COLORS[Math.floor(_rng()*TK_TILE_COLORS.length)]:null;
+  var material=_rng()<TK_TILE_MATERIAL_CHANCE?TK_TILE_MATERIALS[Math.floor(_rng()*TK_TILE_MATERIALS.length)]:null;
+  return{letter:letter,isBlank:false,variant:variant,material:material};
+}
+
+function _tkTileName(t){
+  var n=t.isBlank?'Blank':t.letter;
+  if(t.variant)n=t.variant.charAt(0).toUpperCase()+t.variant.slice(1)+' '+n;
+  if(t.material)n=t.material.charAt(0).toUpperCase()+t.material.slice(1)+' '+n;
+  return n;
+}
+
+function _tkOpenTileOverlay(p){
+  var ov=document.getElementById('tk-overlay');if(!ov||_tkOv)return;
+  _tkOv={mode:'tile',pick:p.pick,entries:[],selTiles:[],source:'pack'};
+  document.getElementById('tk-ov-name').textContent=p.label;
+  document.getElementById('tk-ov-picks').textContent=p.pick>1?('Choose up to '+p.pick):'Choose 1';
+  document.getElementById('tk-skip-btn').textContent='Skip';
+
+  var trow=document.getElementById('tk-tiles-row');trow.innerHTML='';trow.style.display='none';
+
+  var crow=document.getElementById('tk-cards-row');crow.innerHTML='';crow.classList.add('tk-tile-mode');
+  for(var ci=0;ci<p.show;ci++){
+    var t=_tkRollPackTile();
+    var wrap=document.createElement('div');
+    wrap.className='tk-tilepack-card';
+    wrap.appendChild(_tkTileFace(t,84));
+    var lbl=document.createElement('div');
+    lbl.className='tk-tilepack-label';
+    lbl.textContent=(t.variant||t.material)?_tkTileName(t):'';
+    wrap.appendChild(lbl);
+    crow.appendChild(wrap);
+    var entry={t:t,el:wrap};
+    (function(e){wrap.addEventListener('click',function(){_tkTilePackClick(e);});})(entry);
+    _tkOv.entries.push(entry);
+  }
+
+  var footer=document.getElementById('tk-ov-footer');
+  var take=document.createElement('button');
+  take.id='tk-take-btn';take.className='btn btn-green';
+  take.style.cssText='width:auto;padding:8px 24px;margin:0';
+  take.textContent='TAKE';take.disabled=true;
+  take.onclick=function(){_tkTilePackTake();};
+  footer.insertBefore(take,document.getElementById('tk-skip-btn'));
+
+  ov.style.display='flex';
+  _tkTilePackHint();
+}
+
+function _tkTilePackClick(entry){
+  if(_tkBusy||!_tkOv||_tkOv.mode!=='tile')return;
+  _playTileClick('select');
+  var ix=_tkOv.selTiles.indexOf(entry);
+  if(ix>=0){entry.el.classList.remove('tk-sel');_tkOv.selTiles.splice(ix,1);}
+  else{
+    // At the cap: swap out the oldest selection instead of blocking.
+    if(_tkOv.selTiles.length>=_tkOv.pick){var old=_tkOv.selTiles.shift();old.el.classList.remove('tk-sel');}
+    _tkOv.selTiles.push(entry);entry.el.classList.add('tk-sel');
+  }
+  _tkTilePackHint();
+}
+
+function _tkTilePackHint(){
+  if(!_tkOv||_tkOv.mode!=='tile')return;
+  var h=document.getElementById('tk-hint');
+  var max=_tkOv.pick,have=_tkOv.selTiles.length,ready=have>=1;
+  if(h)h.textContent=ready
+    ?'Press TAKE to add '+(have>1?'these tiles':'this tile')+' to your bag'
+    :(max>1?'Select up to '+max+' tiles above':'Select a tile above');
+  var btn=document.getElementById('tk-take-btn');if(btn)btn.disabled=!ready;
+}
+
+function _tkTilePackTake(){
+  if(_tkBusy||!_tkOv||_tkOv.mode!=='tile')return;
+  if(!_tkOv.selTiles.length){toast('Select a tile first!');return;}
+  var sel=_tkOv.selTiles.slice(),added=[];
+  sel.forEach(function(e){
+    addTileToBag({letter:e.t.letter,isBlank:e.t.isBlank,variant:e.t.variant,material:e.t.material});
+    added.push(_tkTileName(e.t));
+    var f=e.el.querySelector('.tile');if(f)f.style.animation='tkNewIn 0.5s cubic-bezier(0.34,1.56,0.64,1)';
+  });
+  S.bag=shuffle(S.bag);
+  var bc=document.getElementById('bag-count');if(bc)bc.textContent=S.bag.length;
+  if(typeof _rankObserve==='function')_rankObserve();
+  if(typeof saveGame==='function')saveGame();
+  toast('Added to bag: '+added.join(', ')+'!');
+  _tkBusy=true;
+  setTimeout(function(){_tkBusy=false;_tkCloseOverlay();},560);
 }
 
 // ── Burn-off conversion animation ────────────────────────────────────────────
@@ -499,6 +691,7 @@ function _tkCloseOverlay(){
 // new face grows out of the middle. destroy=true burns to nothing and
 // collapses the slot.
 function _tkBurnSwap(entry,destroy,done){
+  if(entry.handMode)return _tkHandBurn(entry,destroy,done);
   var el=entry.el;
   var old=el.querySelector('.tile');
   if(old){
@@ -527,6 +720,19 @@ function _tkBurnSwap(entry,destroy,done){
   }
 }
 
+// Hand-mode burn: entry.el is the live .hand-tile itself (or a detached
+// dummy if the tile was mid-flight). It only plays the burn-away — the
+// post-use renderHand in _tkUseFromHand redraws the new face and pops it in.
+function _tkHandBurn(entry,destroy,done){
+  if(destroy)entry.dead=true;
+  var el=entry.el;
+  if(el&&el.parentNode){
+    _tkEmbers(el);
+    el.style.animation='tkBurnOut 0.55s ease-in forwards';
+  }
+  if(done)setTimeout(done,800);
+}
+
 function _tkEmbers(el){
   for(var i=0;i<7;i++){
     var e=document.createElement('div');
@@ -542,9 +748,13 @@ function _tkEmbers(el){
 }
 
 // ── Hover tooltip (reuses the fixed shop tooltip element) ────────────────────
+// tt._tkOwner tracks which element opened the tooltip: if that element is
+// removed mid-hover (inventory re-render after a use), mouseleave never
+// fires, so _tkTipHideStale() hides the orphaned tooltip instead.
 function _tkHoverTip(el,name,desc,fg){
   el.onmouseenter=function(){
     var tt=document.getElementById('shop-sticker-tooltip');if(!tt)return;
+    tt._tkOwner=el;
     document.getElementById('shoptt-name').textContent=name;
     document.getElementById('shoptt-name').style.color=fg||'#f0e080';
     document.getElementById('shoptt-desc').textContent=desc;
@@ -562,8 +772,15 @@ function _tkHoverTip(el,name,desc,fg){
   };
   el.onmouseleave=function(){
     var tt=document.getElementById('shop-sticker-tooltip');
-    if(tt){tt.style.opacity='0';tt.style.display='none';}
+    if(tt){tt.style.opacity='0';tt.style.display='none';tt._tkOwner=null;}
   };
+}
+
+function _tkTipHideStale(){
+  var tt=document.getElementById('shop-sticker-tooltip');
+  if(tt&&tt._tkOwner&&!document.contains(tt._tkOwner)){
+    tt.style.opacity='0';tt.style.display='none';tt._tkOwner=null;
+  }
 }
 
 // ── Dev helper (console): devGiveTk('tk_red') / devGiveTk() for a random one ──

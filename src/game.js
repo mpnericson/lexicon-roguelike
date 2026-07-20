@@ -87,8 +87,8 @@ function startGame(seed){
   var _co=_cids.slice();
   for(var _ci=_co.length-1;_ci>0;_ci--){var _cj=Math.floor(_rng()*(_ci+1));var _ct=_co[_ci];_co[_ci]=_co[_cj];_co[_cj]=_ct;}
   S={bag:_bag,hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),btTop:Array(B*B).fill(null),
-     ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,palUnlocked:false,devMode:false,
-     phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,bhMult:1,palMult:1,playerMult:1,cartographerMult:1,palWords:[],localCooldowns:new Set(),
+     ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,discardsThisRound:0,palUnlocked:false,devMode:false,
+     phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,bhMult:1,palMult:1,playerMult:1,cartographerMult:1,palWords:[],
      lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,
      constraintOrder:_co.slice(0,BOARDS.length),usedLetters:new Set(),stickersSoldThisBoard:0,crossroadsCount:0,ouroborosBonus:0,gamblerSpins:0,
      stamps:[],bagBlueAnchors:{},pool:_bag.slice(),
@@ -232,6 +232,9 @@ function roundComplete(){
     var _activeWords=[];(S.bounties||[]).forEach(function(sc){(sc.words||[]).forEach(function(w){_activeWords.push(w.word);});});
     var _newB=_generateBounties(1,_activeWords);if(_newB.length){S.bounties=S.bounties||[];S.bounties.push(_newB[0]);sheriffWord=_newB[0].words[0].word;}
   }
+  // End-of-round sticker/stamp effects (Delayed Gratification, Egg) — fired
+  // while S.disc still holds this round's leftovers (reset in _doBoardAnimation).
+  _fireAllHooks('onEndRound',[]);
   var msg='You scored '+S.score.toLocaleString()+', beating '+tgt().toLocaleString()+'.';
   if(playsBonus>0)msg+=' +$'+playsBonus+' efficiency bonus!';
   if(sheriffWord)msg+=' Sheriff: free bounty "'+sheriffWord+'"!';
@@ -300,7 +303,7 @@ function _doBoardAnimation(newBoard,pbBlanks){
       var _pbMsg=pbBlanks?' Paint Bucket: '+pbBlanks+' tile'+(pbBlanks!==1?'s':'')+' blanked.':'';
       toast(S.endless?'Endless mode! Targets keep rising.':'New board — tiles cleared!'+_pbMsg);
     }
-    S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
+    S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.discardsThisRound=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
     S.usedLetters=new Set();S.stickersSoldThisBoard=0;
     var _rc=currentConstraint();if(_rc==='c_oneplay')S.plays=1;if(_rc==='c_nodisc')S.disc=0;
     var _insatN=countStamp('insatiable');

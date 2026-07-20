@@ -96,7 +96,7 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
         face.style.transform='scale('+(_ob?'1':(68/_tsz).toFixed(3))+')';
         face.style.boxShadow=_ob?'0 4px 12px rgba(0,0,0,.5)':'0 12px 28px rgba(0,0,0,.7)';
         activeDrag.cx=me.clientX;activeDrag.cy=me.clientY;activeDrag.gapLeft=me.clientX;activeDrag.gapRight=me.clientX;
-        var over=sqAt(me.clientX,me.clientY);if(over>=0&&over!==sqIdx&&!S.bt[over])setHL(over);else clearHL();
+        var over=sqAt(me.clientX,me.clientY);if(over>=0&&over!==sqIdx&&(!S.bt[over]||_jengaCanStack(over)))setHL(over);else clearHL();
       }
     }
     function up(me){
@@ -124,7 +124,7 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
           hpDraw();
         }
         _playTileClick('land');
-      } else if(over>=0&&over!==sqIdx&&!S.bt[over]&&(!window.TUT||!TUT.active||_tutPlaceOK(btRef,over))){
+      } else if(over>=0&&over!==sqIdx&&(!S.bt[over]||_jengaCanStack(over))&&(!window.TUT||!TUT.active||_tutPlaceOK(btRef,over))){
         var sqEl=document.querySelector('[data-sq-idx="'+over+'"]');var tr=sqEl?sqEl.getBoundingClientRect():null;
         if(tr){face.style.transition='left .13s,top .13s,transform .13s';face.style.left=(tr.left+tr.width/2-_tsz/2)+'px';face.style.top=(tr.top+tr.height/2-_tsz/2)+'px';face.style.transform='scale(1)';}
         setTimeout(function(){
@@ -133,7 +133,12 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
           if(src){
             if(isTop){if(S.btTop)S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
             setTileState(src,'board',{boardSq:over,isNew:true});
-            S.bt[over]=src;
+            if(_jengaCanStack(over)){
+              if(!S.btTop)S.btTop=Array(B*B).fill(null);
+              S.btTop[over]=src;
+            } else {
+              S.bt[over]=src;
+            }
           }
           activeDrag=null;renderBoard();renderHand();
         },140);
@@ -200,15 +205,20 @@ function computeStampInsert(mouseX,dragVi,ph){
 }
 
 // ph = physics instance (SP for game bar, SSP for shop bar), dragSrc = 'stamp'|'shop-stamp'
-// Clamp model — no phases, nothing latches. Every move event recomputes
-// "seated" from the cursor alone (cursor below the top of the bar). While
-// seated the face is cursor-driven but clamped:
-//   floor — it can rise off its seat but never sink below it;
-//   neighbours — its x rides the physics hole (ph.gapHoleX), which steps aside
-//   when the drag's leading edge crosses halfway through the adjacent stamp
-//   (the same gap-follow rule the hand uses, physics.js).
-// Once the cursor clears the top of the bar the face tracks it freely; dipping
-// back below re-seats it wherever the hole is. Drop commits wherever the tile
+// Collision model — no phases, no scripted exit, nothing latches. The face
+// always tracks the cursor 1:1; every move event just applies solid clamps:
+//   floor — the seat: the tile can rise freely but never sinks below it;
+//   contacts — while the tile's bottom overlaps the seated tiles, its x stops
+//   dead against any RESTING neighbour (and the bar's end walls). A yielding
+//   neighbour — one mid-spring because the gap-follow told it to step aside
+//   (same leading-edge-halfway trigger the hand uses, physics.js) — exerts no
+//   contact, so the face slides into the space exactly as fast as it opens.
+// So "it can only leave vertically" is emergent: at rest both sides are solid
+// and the floor is below — up is the only open direction. Push sideways and
+// the neighbour gives way, which IS the lateral reorder. The instant the
+// tile's bottom clears the neighbours' tops it's free; descending re-seats it
+// — the hole tracks the cursor whenever it's within a tile of the seat, so a
+// gap is open by the time the tile lands. Drop commits wherever the tile
 // visibly is: seated or over the bar → insert at the hole; anywhere else →
 // fly home, no reorder. Tap = exclusive select — selecting one stamp deselects
 // any other; the selected stamp shows a floating Sell button.
@@ -220,7 +230,7 @@ function attachStampDrag(face,vi,ts,ph,dragSrc){
     if(document.getElementById('live-score-row').classList.contains('scoring'))return;
     var sx=ev.clientX,sy=ev.clientY;var sr=face.getBoundingClientRect();
     var moved=false;var tw=ph.TILE_W;
-    var origX=sr.left+tw/2;var wasSeated=true;
+    var origX=sr.left+tw/2;var wasSeated=true;var lastX=origX;
     var barEl=document.getElementById(dragSrc==='shop-stamp'?'shop-stamp-bar':'stamp-bar');
     ph.held=vi;
     if(ph.settleDur>=9999){ph.settleAt=0;ph.settleCallback=null;ph.settleDur=150;}
@@ -238,30 +248,51 @@ function attachStampDrag(face,vi,ts,ph,dragSrc){
         renderStampBar();
       }
       if(!moved)return;
-      var seated=me.clientY>=sr.top-20;
+      // Pure geometry, no phases. near = hole-alive zone: within a tile of the
+      // seat the physics hole tracks the cursor, so a neighbour yields ahead of
+      // a push and a gap is open before a descending tile lands. seated = the
+      // tile still vertically overlaps the seated tiles: the face is
+      // cursor-centred but floored, and tiles are tw tall, so contact ends
+      // once the cursor is half a tile above the seat.
+      var near=me.clientY>=sr.top-tw;
+      var seated=me.clientY>=sr.top-tw/2;
+      var br=barEl?barEl.getBoundingClientRect():sr;
+      var fx=Math.max(br.left,Math.min(br.right,me.clientX));
       if(seated){
-        // Clamps, not phases: x = hole centre (neighbours), y floored at the
-        // seat. The eased left is what makes hole steps read as slides.
-        face.style.transition='left .12s ease,transform 0.1s ease,box-shadow 0.1s ease';
-        face.style.left=((ph.gapHoleX!=null?ph.gapHoleX:origX)-tw/2)+'px';
+        // Hard collision: x tracks the cursor 1:1 until it contacts a RESTING
+        // neighbour or the bar's end walls. A yielding neighbour (mid-spring,
+        // stepping aside per the gap-follow) exerts no contact, so the face
+        // rides into the space exactly as it opens. If contacts momentarily
+        // leave no room (the row is still parting), hold the last valid spot
+        // instead of teleporting.
+        var lo=br.left+tw/2,hi=br.right-tw/2;
+        for(var j=0;j<ph.tiles.length;j++){
+          if(Math.abs(ph.vx[j]||0)>0.5)continue;
+          if(ph.x[j]<=me.clientX)lo=Math.max(lo,ph.x[j]+tw);else hi=Math.min(hi,ph.x[j]-tw);
+        }
+        if(lo<=hi)lastX=Math.max(lo,Math.min(hi,me.clientX));
+        face.style.transition='transform 0.1s ease,box-shadow 0.1s ease';
+        face.style.left=(lastX-tw/2)+'px';
+        // Floor: rise freely, never sink below the seat.
         face.style.top=Math.min(me.clientY-tw/2,sr.top)+'px';
-        // Feed the physics the seated tile, not the raw cursor: cx clamped into
-        // the bar keeps the hole alive (and pushable to the end slots) even when
-        // the cursor drifts past the bar's edge or below it.
-        var br=barEl?barEl.getBoundingClientRect():sr;
-        var fx=Math.max(br.left,Math.min(br.right,me.clientX));
-        activeDrag.cx=fx;activeDrag.cy=sr.top+tw/2;activeDrag.gapLeft=fx;activeDrag.gapRight=fx;
       } else {
-        // Free tracking above the bar. On the seated→free frame the left ease is
-        // still on, so the face catches up to the cursor smoothly, then unhooks.
-        if(wasSeated)setTimeout(function(){if(ts._dragging)face.style.transition='transform 0.1s ease,box-shadow 0.1s ease';},130);
+        // Clear of the rack — free tracking. Ease the catch-up from the last
+        // seated x onto the cursor, then unhook back to direct tracking.
+        if(wasSeated){
+          face.style.transition='left .12s ease,transform 0.1s ease,box-shadow 0.1s ease';
+          setTimeout(function(){if(ts._dragging)face.style.transition='transform 0.1s ease,box-shadow 0.1s ease';},130);
+        }
+        lastX=me.clientX;
         face.style.left=(me.clientX-tw/2)+'px';face.style.top=(me.clientY-tw/2)+'px';
-        activeDrag.cx=me.clientX;activeDrag.cy=me.clientY;activeDrag.gapLeft=me.clientX;activeDrag.gapRight=me.clientX;
       }
+      // Feed the physics the bar-clamped cursor: while near, cy is pinned to
+      // the seat so the hole stays alive (and pushable to the end slots) even
+      // if the cursor drifts past the bar's edge or below it.
+      activeDrag.cx=fx;activeDrag.cy=near?sr.top+tw/2:me.clientY;
+      activeDrag.gapLeft=fx;activeDrag.gapRight=fx;
       wasSeated=seated;
-      var inBar=ph.inArea(me.clientX,me.clientY);
-      face.style.transform='scale('+(inBar?'1':'1.08')+')';
-      face.style.boxShadow=inBar?'0 4px 12px rgba(0,0,0,.5)':'0 12px 28px rgba(0,0,0,.7)';
+      face.style.transform='scale('+(seated?'1':'1.08')+')';
+      face.style.boxShadow=seated?'0 4px 12px rgba(0,0,0,.5)':'0 12px 28px rgba(0,0,0,.7)';
     }
     function up(me){
       document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
@@ -279,7 +310,7 @@ function attachStampDrag(face,vi,ts,ph,dragSrc){
       ts._dragging=false;
       // Commit wherever the tile visibly is: seated (or over the bar) → the
       // hole the face is riding; anywhere else → the cancel branch below.
-      if(me.clientY>=sr.top-20||ph.inArea(me.clientX,me.clientY)){
+      if(me.clientY>=sr.top-tw/2||ph.inArea(me.clientX,me.clientY)){
         var ins=ph.gapHoleIdx!=null?ph.gapHoleIdx:computeStampInsert(me.clientX,-1,ph);
         var gi=S.stamps.indexOf(ts);
         if(gi>=0){S.stamps.splice(gi,1);ins=Math.max(0,Math.min(ins,S.stamps.length));S.stamps.splice(ins,0,ts);}
@@ -307,12 +338,27 @@ function attachStampDrag(face,vi,ts,ph,dragSrc){
 
 // Multi-tile drag: all selected tiles physically leave the hand together.
 //
-// Phase 1 (vertical exit):
+// Phase 1 (seated):
 //   All tiles rise with the cursor's y, each locked to its grabbed x. The hand
 //   is frozen (settle hold), so the holes stay where the tiles were and no
-//   other tile moves until the group clears the row.
+//   other tile moves until the group leaves the row. Exits:
+//   up — tile bottoms clear the hand-area top (same threshold as ph.inArea)
+//   → Phase 2.
+//   sideways (single tile) — the cursor crosses the centre of the adjacent
+//   seated tile (over halfway through it) → seated PATH REORDER, not Phase 2:
+//   the tile flies focus-mode style (cardinal legs, each accelerating from
+//   standstill — see FOCUS.CHASE/CHASE_ACCEL) up out of its slot, across the
+//   surface to the slot nearest the cursor (retargeting while airborne), then
+//   down into it. The hand stays frozen — nothing recentres; only the tiles
+//   between the old hole and the landing slot slide one slot over to fill the
+//   hole, starting the moment the descent starts. Repeatable while seated;
+//   pulling up mid-anything still exits to Phase 2, and a Phase-1 drop inserts
+//   at the current hole.
+//   sideways (multi-tile group) — same trigger relative to the anchor's slot,
+//   but groups hand off to Phase 2 as a surface SLIDE (_wasAtSurface pre-set,
+//   dwell rules apply; "nearest slot" is ill-defined for a group).
 //
-// Phase 2 (triggers when tile bottoms clear hand-area top, same threshold as ph.inArea):
+// Phase 2 (triggers on a Phase-1 exit):
 //   Hand gap closes to rest positions. Dragging tiles slide laterally to form a
 //   cluster around the anchor (_clOff offsets ease to the tight formation over
 //   ~300ms via _clStep — JS-driven so it works while the pointer is idle too).
@@ -328,6 +374,16 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
   var _phase2Fired=false;
   var _lastCx=sx,_lastCy=sy,_lastSq=-1;
   var _committedSlotX=null; // locked slot centre when cursor crosses funnel threshold
+  var _latBreakAt=-1; // when a multi-tile group exited Phase 1 sideways — brief top/left ease onto the surface
+  // Seated path-reorder state (single-tile drags only; _seatSlots null for groups).
+  var _seatSlots=null;   // frozen slot centres (n slots: remaining tiles + the hole), ascending
+  var _holeSlot=-1;      // which slot is currently vacant (the dragged tile's seat)
+  var _slotOf=null;      // HP tile index -> slot index occupancy map
+  var _seatTopY=0,_surfTopY=0; // face top at the seat / riding the surface (bottom flush with tile tops)
+  var _pathFlying=false,_pathDescending=false,_pathTarget=-1;
+  var _pathRAF=null,_pathSpd=0,_pathHx=0,_pathHy=0;
+  var _shifts=[];        // displaced-tile slides {j,from,to,t0}
+  var _PATH_SPEED=30,_PATH_ACCEL=1.4; // px/frame — mirrors FOCUS.CHASE/CHASE_ACCEL leg motion
   var dragIdx=0;
   var _clOff=[],_clT=1,_clRAF=null; // Phase-2 cluster formation: x-offsets from anchor easing → tight row
   // Surface-mode dwell: gap only opens after cursor stays in a slot zone for 800ms.
@@ -375,7 +431,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     var sc=overBoard?0.75:1.08;
     var step=overBoard?Math.ceil(68*0.75)+2:72;
     var sh=overBoard?'0 4px 12px rgba(0,0,0,.5)':'0 12px 28px rgba(0,0,0,.7)';
-    var tr=posTr?('left '+posTr+',transform 0.1s ease,box-shadow 0.1s ease'):'transform 0.1s ease,box-shadow 0.1s ease';
+    var tr=posTr?('left '+posTr+',top '+posTr+',transform 0.1s ease,box-shadow 0.1s ease'):'transform 0.1s ease,box-shadow 0.1s ease';
     var _e=1-Math.pow(1-_clT,3); // cluster formation ease: 0 = grab spread, 1 = tight row
     for(var i=0;i<dragEls.length;i++){
       if(!dragEls[i])continue;
@@ -415,6 +471,116 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     _updateAll(_lastCx,_lastCy,_overBoard);
   }
 
+  // ---- Seated path reorder (single tile) — focus-mode cardinal-leg flight ----
+  // Build the seated slot grid from the CANONICAL rest layout (hpRest with the
+  // dragged tile's slot included) — never from measured rects or live HP.x:
+  // the grabbed tile's rect is skewed by the .hand-tile:hover transform, the
+  // hand may be grabbed mid-spring, and any delta between the shift targets
+  // and the true rests shows up as a visible nudge of the displaced tiles at
+  // release, when everything settles to hpRest.
+  function _buildSeatGrid(holeSlot){
+    hpBounds();
+    _seatSlots=hpRest(HP.x.length+1);
+    _holeSlot=Math.max(0,Math.min(holeSlot,HP.x.length));
+    _slotOf=[];
+    for(var j=0;j<HP.x.length;j++)_slotOf[j]=j<_holeSlot?j:j+1; // HP order = S.hand order = layout order
+    var _ha=document.getElementById('hand-area');
+    _seatTopY=_ha?_ha.getBoundingClientRect().top:(initRects[0]?initRects[0].top:0); // .hand-tile sits at top:0 of #hand-area
+    _surfTopY=_seatTopY-78; // one tile height up — bottom rides flush with seated tile tops
+  }
+  // Re-enter Phase 1 from Phase 2: a single tile that fully descended into an
+  // open slot becomes seated again — frozen hand, solid neighbours, path-flight
+  // reorder — so it can't be dragged sideways THROUGH the row.
+  function _reseat(ins){
+    _phase2Fired=false;
+    _pathStop();
+    if(_surfaceDwellTimer){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
+    _surfaceDwellSlotIdx=-1;_surfaceGapOpen=false;_wasAtSurface=false;_cameFromAbove=false;
+    if(_springSlowed){HP.SPRING=0.14;HP.DAMP=0.55;_springSlowed=false;}
+    _gapOpenAt=-1;_gapWasOpen=false;
+    if(_clRAF){cancelAnimationFrame(_clRAF);_clRAF=null;}_clT=1;
+    if(activeDrag){activeDrag.funnelInsertIdx=undefined;activeDrag._prevGapRef=undefined;}
+    _buildSeatGrid(ins);
+    // Ease the row from its Phase-2 gap layout onto the seated grid, then freeze.
+    HP.fromX=HP.x.slice();
+    HP.toX=[];
+    for(var j=0;j<HP.x.length;j++)HP.toX.push(_seatSlots[_slotOf[j]]);
+    HP.settleDur=150;HP.settleAt=performance.now();
+    HP.settleCallback=function(){HP.fromX=HP.x.slice();HP.toX=HP.x.slice();HP.settleDur=9999;HP.settleAt=performance.now();};
+  }
+  function _nearestSlot(cx){
+    var best=0,bd=Infinity;
+    for(var s=0;s<_seatSlots.length;s++){var d=Math.abs(_seatSlots[s]-cx);if(d<bd){bd=d;best=s;}}
+    return best;
+  }
+  function _tileAtSlot(s){for(var j=0;j<_slotOf.length;j++)if(_slotOf[j]===s)return j;return -1;}
+  // Displaced tiles: everything between the old hole and the landing slot moves
+  // ONE slot toward the hole, filling it. Fired at descent start so the slide
+  // happens while the dragged tile drops in. The hand is frozen (settle hold),
+  // so writing fromX/toX/x directly is what moves a tile.
+  function _commitShift(target){
+    var now=performance.now();
+    if(target>_holeSlot){
+      for(var s=_holeSlot+1;s<=target;s++){var j=_tileAtSlot(s);if(j<0)continue;_slotOf[j]=s-1;_shifts.push({j:j,from:HP.x[j],to:_seatSlots[s-1],t0:now});}
+    }else{
+      for(var s=_holeSlot-1;s>=target;s--){var j=_tileAtSlot(s);if(j<0)continue;_slotOf[j]=s+1;_shifts.push({j:j,from:HP.x[j],to:_seatSlots[s+1],t0:now});}
+    }
+    _holeSlot=target;
+  }
+  function _stepShifts(){
+    var now=performance.now(),keep=[];
+    for(var i=0;i<_shifts.length;i++){
+      var sh=_shifts[i],t=Math.min(1,(now-sh.t0)/180),e=1-Math.pow(1-t,2);
+      HP.x[sh.j]=HP.fromX[sh.j]=HP.toX[sh.j]=sh.from+(sh.to-sh.from)*e;
+      if(t<1)keep.push(sh);
+    }
+    _shifts=keep;
+  }
+  function _pathStop(){
+    if(_pathRAF){cancelAnimationFrame(_pathRAF);_pathRAF=null;}
+    for(var i=0;i<_shifts.length;i++){var sh=_shifts[i];HP.x[sh.j]=HP.fromX[sh.j]=HP.toX[sh.j]=sh.to;}
+    _shifts=[];_pathFlying=false;_pathDescending=false;_pathSpd=0;_pathHx=0;_pathHy=0;
+  }
+  function _startFlight(){
+    if(_pathFlying)return;
+    _pathFlying=true;_pathDescending=false;_pathSpd=0;_pathHx=0;_pathHy=0;
+    _pathTarget=_nearestSlot(_lastCx);
+    if(dragEls[0])dragEls[0].style.transition='transform 0.1s ease,box-shadow 0.1s ease';
+    if(!_pathRAF)_pathRAF=requestAnimationFrame(_pathTick);
+  }
+  function _pathTick(){
+    _pathRAF=null;
+    if(_phase2Fired)return;
+    _stepShifts();
+    if(_pathFlying){
+      var el=dragEls[0];
+      if(!el){_pathStop();return;}
+      if(!_pathDescending)_pathTarget=_nearestSlot(_lastCx); // slide toward wherever the cursor is
+      var x=parseFloat(el.style.left)+34,y=parseFloat(el.style.top);
+      var tx=_seatSlots[_pathTarget];
+      // Descent commit: once above the target, lock it and start the neighbour shift.
+      if(Math.abs(x-tx)<=0.5&&!_pathDescending){_pathDescending=true;_commitShift(_pathTarget);}
+      // Cardinal waypoints: rise to the surface (or cross at current height if
+      // already above it), across to the target, straight down into the seat.
+      var wp;
+      if(Math.abs(x-tx)>0.5)wp=(y>_surfTopY+0.5)?{x:x,y:_surfTopY}:{x:tx,y:y};
+      else wp={x:tx,y:_seatTopY};
+      var dx=wp.x-x,dy=wp.y-y,dd=Math.hypot(dx,dy);
+      if(_pathDescending&&dd<=0.5){
+        el.style.left=(tx-34)+'px';el.style.top=_seatTopY+'px';
+        _pathFlying=false;_pathDescending=false;_pathSpd=0;
+      }else if(dd>0.5){
+        var ux=dx/dd,uy=dy/dd;
+        if(ux*_pathHx+uy*_pathHy<0.9)_pathSpd=0; // new leg — accelerate from standstill
+        _pathHx=ux;_pathHy=uy;
+        _pathSpd=Math.min(_PATH_SPEED,_pathSpd+_PATH_ACCEL);
+        var mv=Math.min(_pathSpd,dd);
+        el.style.left=(x+ux*mv-34)+'px';el.style.top=(y+uy*mv)+'px';
+      }
+    }
+    if(_pathFlying||_shifts.length)_pathRAF=requestAnimationFrame(_pathTick);
+  }
+
   // Toggle h↔v direction; fires Phase 2 if it hasn't started yet.
   function _toggleDir(){
     dir=dir==='h'?'v':'h';
@@ -434,6 +600,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     HP.held=-1;_clearMHL();activeDrag=null;_dragEndTime=Date.now();
     if(HP.settleDur>=9999){HP.settleAt=0;HP.settleCallback=null;HP.settleDur=150;} // release the phase-1 freeze
     if(_clRAF){cancelAnimationFrame(_clRAF);_clRAF=null;}_clT=1;
+    _pathStop();
     var nSel=selTiles.length;
     HP.movingCount+=nSel;
     for(var i=0;i<selTiles.length;i++)setTileState(selTiles[i].t,'moving',{movingFrom:'hand',movingTo:'hand'});
@@ -472,6 +639,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
       document.removeEventListener('keydown',_onMultiDragKey);
       HP.held=-1;_clearMHL();
       if(_clRAF){cancelAnimationFrame(_clRAF);_clRAF=null;}_clT=1;
+      _pathStop();
       if(_surfaceDwellTimer){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
       _surfaceDwellSlotIdx=-1;_surfaceGapOpen=false;_wasAtSurface=false;
       if(_springSlowed){HP.SPRING=0.14;HP.DAMP=0.55;_springSlowed=false;}
@@ -528,6 +696,15 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
 
       // Freeze hand tiles — solid objects until dragged tiles clear vertically (Phase 2).
       HP.fromX=HP.x.slice();HP.toX=HP.x.slice();HP.settleDur=9999;HP.settleAt=performance.now();HP.settleCallback=null;
+      // Seated path-reorder slot grid (single tile). The hole slot = the
+      // grabbed tile's rank among the remaining tiles (centre from the rect —
+      // the x-centre survives the hover transform, and slots are 68px apart
+      // so a couple px of skew can't flip the rank).
+      if(selTiles.length===1&&initRects[0]){
+        var _gx0=initRects[0].left+initRects[0].width/2;
+        var _rk0=0;for(var _sj=0;_sj<HP.x.length;_sj++)if(HP.x[_sj]<_gx0)_rk0++;
+        _buildSeatGrid(_rk0);
+      }
       var _meCy=me.clientY;
       requestAnimationFrame(function(){
         for(var i=0;i<dragEls.length;i++){
@@ -628,6 +805,17 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
             _ecx=me.clientX+(_nearAnchorX-me.clientX)*(_funnelT*_funnelT);
             _gapCx=_nearAnchorX;_gapCy=_haRF.top;
             if(activeDrag){activeDrag.funnelInsertIdx=_nearInsertIdx;activeDrag._prevGapRef=undefined;}
+            // A single tile that has fully descended into the slot RE-SEATS:
+            // back to Phase 1 (frozen hand, solid neighbours, path-flight
+            // reorder), so it can't be dragged sideways THROUGH the row — the
+            // only lateral move from a seat is flying over the top. (Without
+            // this, a y-wiggle at the surface reset the came-from-above lock
+            // and let the tile break through to any slot.)
+            if(selTiles.length===1&&_gapE>=_Y_DUR&&me.clientY>=_haRF.top+39){
+              _reseat(_nearInsertIdx);
+              _updateAll(_seatSlots[_holeSlot],_seatTopY+39,false,'0.1s ease');
+              return;
+            }
           }else{
             // Waiting for dwell / no slot near — slide freely at surface, suppress gap.
             if(_springSlowed){HP.SPRING=0.14;HP.DAMP=0.55;_springSlowed=false;}
@@ -668,22 +856,61 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
         activeDrag.gapRight=_gapCx;
       }
       if(!_phase2Fired){
-        // Phase 1 — vertical exit: every dragged tile rises with the cursor's y,
-        // locked to its grabbed x. The hand stays frozen (settle hold from drag
-        // start), so the holes stay where the tiles were and nothing else moves
-        // until the group clears the row.
-        for(var i=0;i<dragEls.length;i++){
-          if(!dragEls[i])continue;
-          if(initRects[i])dragEls[i].style.left=initRects[i].left+'px';
-          // Clamp to the seat: the tile can only rise out of its slot, never sink below it.
-          var _p1Top=me.clientY-39;
-          if(initRects[i]&&_p1Top>initRects[i].top)_p1Top=initRects[i].top;
-          dragEls[i].style.top=_p1Top+'px';
+        if(_seatSlots){
+          // Phase 1, single tile: seated at the current hole — x locked to its
+          // centre, y rises with the cursor but never sinks below the seat.
+          // While a flight is running the path RAF owns the face.
+          if(!_pathFlying){
+            if(dragEls[0]){
+              dragEls[0].style.left=(_seatSlots[_holeSlot]-34)+'px';
+              var _p1t=me.clientY-39;if(_p1t>_seatTopY)_p1t=_seatTopY;
+              dragEls[0].style.top=_p1t+'px';
+            }
+            // Lateral trigger: cursor over halfway through the adjacent seated
+            // tile → fly (up, across to the slot nearest the cursor, down).
+            var _tl=_holeSlot>0?_seatSlots[_holeSlot-1]:-Infinity;
+            var _tr=_holeSlot<_seatSlots.length-1?_seatSlots[_holeSlot+1]:Infinity;
+            if(me.clientX<_tl||me.clientX>_tr)_startFlight();
+          }
+          // Vertical exit still works at any time, mid-flight included.
+          if(_haRF&&me.clientY<_haRF.top-34){_pathStop();_firePhase2();}
+        } else {
+          // Phase 1, group: every dragged tile rises with the cursor's y,
+          // locked to its grabbed x. The hand stays frozen (settle hold from
+          // drag start), so the holes stay where the tiles were.
+          for(var i=0;i<dragEls.length;i++){
+            if(!dragEls[i])continue;
+            if(initRects[i])dragEls[i].style.left=initRects[i].left+'px';
+            // Clamp to the seat: the tile can only rise out of its slot, never sink below it.
+            var _p1Top=me.clientY-39;
+            if(initRects[i]&&_p1Top>initRects[i].top)_p1Top=initRects[i].top;
+            dragEls[i].style.top=_p1Top+'px';
+          }
+          // Phase 2 fires when the cursor clears the hand vertically…
+          if(_haRF&&me.clientY<_haRF.top-34){_firePhase2();}
+          else{
+            // …or sideways: crossing the centre of the nearest remaining hand
+            // tile beside the anchor's slot hands the GROUP off to the
+            // surface-mode lateral system ("nearest slot" is ill-defined for a
+            // group, so no path flight here). _wasAtSurface is pre-set so the
+            // handoff counts as a lateral slide (dwell rules), not a descent
+            // from above (which locks the slot).
+            var _ax0=initRects[dragIdx]?initRects[dragIdx].left+34:me.clientX;
+            var _nnL=-Infinity,_nnR=Infinity;
+            for(var _lb=0;_lb<HP.x.length;_lb++){
+              if(HP.x[_lb]<_ax0){if(HP.x[_lb]>_nnL)_nnL=HP.x[_lb];}
+              else if(HP.x[_lb]>_ax0&&HP.x[_lb]<_nnR)_nnR=HP.x[_lb];
+            }
+            if(me.clientX<_nnL||me.clientX>_nnR){
+              _wasAtSurface=true;_latBreakAt=Date.now();
+              _firePhase2();
+            }
+          }
         }
-        // Phase 2 fires when the cursor clears the hand vertically.
-        if(_haRF&&me.clientY<_haRF.top-34){_firePhase2();}
       } else {
-        _updateAll(_ecx,_ecy,_overBoard);
+        // Brief top/left ease right after a lateral Phase-1 exit so the tile
+        // rises from its seat onto the surface instead of snapping.
+        _updateAll(_ecx,_ecy,_overBoard,(_latBreakAt>0&&Date.now()-_latBreakAt<180)?'0.15s ease':undefined);
       }
       if(_overBoard){_lastSq=sq;_updateHL(sq);}
       else{_clearMHL();_lastSq=-1;}
@@ -700,9 +927,6 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     HP.held=-1;_clearMHL();
     if(_surfaceDwellTimer){clearTimeout(_surfaceDwellTimer);_surfaceDwellTimer=null;}
     var _dropLockedSlot=(_cameFromAbove&&_surfaceDwellSlotIdx>=0)?_surfaceDwellSlotIdx:-1;
-    // Phase-1 drop: the tiles never left their slots' x, so the group returns to
-    // its original position regardless of where the cursor wandered.
-    var _p1Ins=!_phase2Fired?Math.max(0,dragVi-dragIdx):-1;
     _surfaceDwellSlotIdx=-1;_surfaceGapOpen=false;_cameFromAbove=false;
     if(!moved){
       activeDrag=null;
@@ -716,6 +940,13 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
     _dragEndTime=Date.now();
     if(HP.settleDur>=9999){HP.settleAt=0;HP.settleCallback=null;HP.settleDur=150;} // release the phase-1 freeze
     if(_clRAF){cancelAnimationFrame(_clRAF);_clRAF=null;}_clT=1;
+    // Releasing mid-flight commits the move the tile was heading for; _pathStop
+    // fast-forwards any neighbour shifts to their final slots.
+    if(_pathFlying&&!_pathDescending)_commitShift(_pathTarget);
+    _pathStop();
+    // Phase-1 drop: seated tiles commit at the current hole (single) or return
+    // to their original slots (group), regardless of where the cursor wandered.
+    var _p1Ins=!_phase2Fired?(_seatSlots?_holeSlot:Math.max(0,dragVi-dragIdx)):-1;
     for(var i=0;i<dragEls.length;i++){if(dragEls[i]&&dragEls[i].parentNode)dragEls[i].parentNode.removeChild(dragEls[i]);}
     activeDrag=null;
     var sq=sqAt(me.clientX,me.clientY);
@@ -731,8 +962,10 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
       // (S.hand may have shifted if a recall arc landed between drag start and drop).
       var selOis=selTiles.map(function(s){var fi=S.hand.indexOf(s.t);return fi>=0?fi:s.oi;});
       multiPlaceSelected(selOis,_startSq(sq),dir);
-    } else if(inHand(me.clientX,me.clientY)){
-      // Dropped in hand — reorder tiles at cursor position.
+    } else if(inHand(me.clientX,me.clientY)||_p1Ins>=0){
+      // Dropped in hand — reorder tiles at cursor position. Phase-1 drops
+      // (_p1Ins>=0) commit even if the cursor strayed outside the hand: the
+      // tiles are visibly seated in the row.
       // Compute insert position in HP.tiles (dragging tiles already excluded).
       var _ins=Math.max(0,Math.min(_dropLockedSlot>=0?_dropLockedSlot:_p1Ins>=0?_p1Ins:computeInsert(me.clientX,-1),S.hand.length));
       // Restore tile states so renderHand includes them in vis.
@@ -1017,6 +1250,228 @@ function _recallTileSweep(sqIdx,swipeVx,swipeVy){
   _recallTileCore(sqIdx,dx,dy,false);
 }
 
+// =====================================================================
+// PHOTOCOPIER — copies made during scoring arc from the sticker's square
+// into the hand. Hand space is reserved up front in playWord
+// (HP.movingCount += copy count, so the hand slides over the moment
+// scoring starts); each copy's score-animation beat calls _spawnPhotocopy,
+// which creates the new pool tile and flies it into a reserved slot.
+// playWord awaits _photocopiesSettled() after the score animation so no
+// copy is still mid-flight when the hand layout is rebuilt for the draw.
+// =====================================================================
+var _pcopyInFlight=0,_pcopyWaiters=[];
+
+function _photocopiesSettled(){
+  if(_pcopyInFlight<=0)return Promise.resolve();
+  return new Promise(function(r){_pcopyWaiters.push(r);});
+}
+
+function _pcopyLanded(){
+  _pcopyInFlight=Math.max(0,_pcopyInFlight-1);
+  if(_pcopyInFlight===0){var w=_pcopyWaiters;_pcopyWaiters=[];for(var i=0;i<w.length;i++)w[i]();}
+}
+
+// copy: {sqIdx, letter, isBlank, variant, material} — pushed by the
+// photocopier's onTileAdd hook onto its score event (ev.photocopy).
+// The copy is a brand-new tile that joins the run (S.pool) permanently.
+function _spawnPhotocopy(copy){
+  var t={letter:copy.letter,isBlank:!!copy.isBlank,id:uid(),variant:copy.variant||null,material:copy.material||null,state:'stored'};
+  setTileState(t,'moving',{movingFrom:'board',movingTo:'hand'});
+  (S.pool=S.pool||[]).push(t);
+  if(S.hand.indexOf(t)<0)S.hand.push(t);
+  // HP.movingCount was already reserved for this copy in playWord — don't
+  // increment again; _landTile releases the slot on landing.
+  _pcopyInFlight++;
+  var sqEl=document.querySelector('[data-sq-idx="'+copy.sqIdx+'"]');
+  var sr=sqEl?sqEl.getBoundingClientRect():null;
+  if(!sr||!sr.width){_landTile(t);_pcopyLanded();return;}
+  var sz=Math.round(sr.width);
+  var spr=tileSpr(t.isBlank?null:t.letter,t.isBlank,t.variant||null,sz);
+  var el=document.createElement('div');
+  el.className='tile tile-spr';
+  el.style.cssText='position:fixed;z-index:9999;pointer-events:none;width:'+sz+'px;height:'+sz+'px;left:'+sr.left+'px;top:'+sr.top+'px;transform-origin:center center;'+spr;
+  el.dataset.spr=spr;
+  applyTileLayers(el,t,sz,spr);
+  document.body.appendChild(el);
+  hpBounds();
+  var ha=document.getElementById('hand-area');var hr=ha?ha.getBoundingClientRect():null;
+  var destY=hr?(hr.top+34):(window.innerHeight-60);
+  var destX=HP.nextLandX();
+  var _pcS=S;
+  _flyTileSpiral(el,performance.now()+180,sr.left+sz/2,sr.top+sz/2,destX,destY,function(){
+    if(S!==_pcS){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;_pcopyLanded();return;}
+    _landTile(t);_playTileClick('land');
+    _pcopyLanded();
+  },sr,0,-40);
+}
+
+// =====================================================================
+// GLASS RETRIEVE — committed glass tiles stay on the board, but can be
+// traded back: click one and it floats up off its square while the hand
+// shakes. Click a shaking hand tile to discard it (no discard charge) —
+// the glass tile arcs into the hand in its place. Click anywhere else
+// (or press a key) to cancel: the hand settles and the glass tile sinks
+// back onto its square.
+// =====================================================================
+var _glassRet=null;        // {tile,sqIdx,el,sz,home:{x,y},x,y,rot,wob,t0,lastT,resolved}
+var _glassSwallowUntil=0;  // swallow trailing click events after the mode resolves
+
+function attachGlassRetrieve(face,sqIdx){
+  face.style.cursor='pointer';
+  face.addEventListener('click',function(ev){
+    if(Date.now()-_dragEndTime<300)return;
+    if(activeDrag||_glassRet||window._scoring)return;
+    if(document.getElementById('live-score-row').classList.contains('scoring'))return;
+    if(S.phase!=='play')return;
+    var bt=S.bt[sqIdx];
+    if(!bt||bt.material!=='glass'||bt.isNew)return;
+    if(S.btTop&&S.btTop[sqIdx])return;
+    // Jenga click-to-stack owns clicks on committed tiles while a hand tile is selected
+    if(hasJenga()){for(var _si=0;_si<S.hand.length;_si++){if(S.hand[_si]&&S.hand[_si].sel)return;}}
+    var anyHand=false;for(var i=0;i<S.hand.length;i++){if(S.hand[i]&&S.hand[i].state==='hand'){anyHand=true;break;}}
+    if(!anyHand){toast('No hand tiles to trade for it!');return;}
+    ev.stopPropagation();
+    _glassRetStart(face,sqIdx,bt);
+  });
+}
+
+function _glassRetStart(face,sqIdx,bt){
+  _playTileClick('pick');
+  var sr=face.getBoundingClientRect();
+  var tsz=parseInt(face.dataset.tsz)||sr.width;
+  var sprCss=face.dataset.spr||'';
+  if(face.parentNode)face.parentNode.removeChild(face);
+  face.className='tile tile-spr';
+  face.style.cssText='position:fixed;z-index:9999;pointer-events:none;width:'+tsz+'px;height:'+tsz+'px;left:'+sr.left+'px;top:'+sr.top+'px;transform-origin:center center;'+(sprCss||'background:#f0e080;border-color:#a89000;');
+  document.body.appendChild(face);
+  setTileState(bt,'dragging'); // stays in S.bt[sqIdx] but renders skip it until resolved
+  _glassRet={tile:bt,sqIdx:sqIdx,el:face,sz:tsz,
+    home:{x:sr.left+tsz/2,y:sr.top+tsz/2},
+    x:sr.left+tsz/2,y:sr.top+tsz/2,rot:0,wob:0,
+    t0:performance.now(),lastT:null,resolved:false};
+  var ha=document.getElementById('hand-area');if(ha)ha.classList.add('glass-sac');
+  document.addEventListener('pointerdown',_glassRetPointer,true);
+  document.addEventListener('click',_glassRetClickSwallow,true);
+  requestAnimationFrame(_glassRetHover);
+}
+
+// Hover: lift ~46px (ease-out, 450ms) then wobble in place — same float feel
+// as the recall hover in _flyTileSpiral. Tracks x/y/rot for the arc handoff.
+function _glassRetHover(){
+  var g=_glassRet;if(!g||g.resolved)return;
+  var now=performance.now();
+  var fDt=g.lastT!==null?now-g.lastT:0;g.lastT=now;
+  var dt=now-g.t0;
+  var e=1-Math.pow(1-Math.min(1,dt/450),2);
+  var wf=Math.max(0,Math.min(1,(dt-350)/100));
+  g.wob+=fDt/2700*Math.PI*2*wf;
+  g.x=g.home.x;
+  g.y=g.home.y-46*e-Math.sin(g.wob)*6*wf;
+  g.rot=Math.sin(g.wob+0.4)*1.2*wf;
+  g.el.style.left=(g.x-g.sz/2)+'px';
+  g.el.style.top=(g.y-g.sz/2)+'px';
+  g.el.style.transform='rotate('+g.rot.toFixed(2)+'deg)';
+  requestAnimationFrame(_glassRetHover);
+}
+
+// Modal capture: hand-tile press = sacrifice, anything else = cancel.
+// Swallows the gesture either way so drags/selection/board clicks can't start.
+function _glassRetPointer(ev){
+  var g=_glassRet;if(!g||g.resolved)return;
+  ev.preventDefault();ev.stopPropagation();
+  var el=ev.target,handEl=null;
+  while(el&&el.classList){if(el.classList.contains('hand-tile')){handEl=el;break;}el=el.parentNode;}
+  var t=null;
+  if(handEl&&handEl.dataset.tileId){
+    for(var i=0;i<S.hand.length;i++){var h=S.hand[i];if(h&&h.state==='hand'&&String(h.id)===handEl.dataset.tileId){t=h;break;}}
+  }
+  if(t)_glassRetSacrifice(t,handEl);else _glassRetCancel();
+}
+
+function _glassRetResolve(){
+  _glassRet.resolved=true;
+  _dragEndTime=Date.now();_glassSwallowUntil=Date.now()+400;
+  document.removeEventListener('pointerdown',_glassRetPointer,true);
+  var ha=document.getElementById('hand-area');if(ha)ha.classList.remove('glass-sac');
+}
+
+function _glassRetClickSwallow(ev){
+  if(_glassRet||Date.now()<_glassSwallowUntil){ev.preventDefault();ev.stopPropagation();return;}
+  document.removeEventListener('click',_glassRetClickSwallow,true);
+}
+
+// Discard the chosen hand tile (pop-and-fade, costs no discard charge) and
+// arc the glass tile into the vacated hand.
+function _glassRetSacrifice(t,handEl){
+  var g=_glassRet;_glassRetResolve();
+  // Hand tile: detach so renderHand closes the gap under it, then pop-fade out
+  var r=handEl.getBoundingClientRect();
+  if(handEl.parentNode)handEl.parentNode.removeChild(handEl);
+  handEl.className='tile tile-spr';
+  handEl.style.cssText='position:fixed;z-index:9998;pointer-events:none;width:'+r.width+'px;height:'+r.height+'px;left:'+r.left+'px;top:'+r.top+'px;transform-origin:center center;'+(handEl.dataset.spr||'');
+  document.body.appendChild(handEl);
+  setTileState(t,'stored',{storedIn:'discard'});
+  S.hand=S.hand.filter(function(x){return x!==t;});
+  renderHand();
+  // Let the shake die down before the hand slides to make room: hold every
+  // tile at its current x (fromX == toX) for a beat, then the settle expires
+  // and the spring closes the gap. Must come after renderHand — hpRebuild
+  // resets settle state when the tile count changes.
+  HP.fromX=HP.x.slice();HP.toX=HP.x.slice();
+  HP.settleAt=performance.now();HP.settleDur=350;
+  (function(el){
+    var t0=performance.now(),dur=200;
+    function tick(now){
+      var k=Math.min(1,(now-t0)/dur),sc,op;
+      if(k<0.2){sc=1+k/0.2*0.3;op=1;}
+      else{var s2=(k-0.2)/0.8;sc=1.3*(1-s2);op=Math.max(0,1-s2*1.5);}
+      el.style.transform='scale('+sc.toFixed(3)+')';el.style.opacity=op+'';
+      if(k<1){requestAnimationFrame(tick);return;}
+      if(el.parentNode)el.parentNode.removeChild(el);
+    }
+    requestAnimationFrame(tick);
+  })(handEl);
+  // Glass tile: off the board, into the hand via the spiral arc
+  var bt=g.tile,sqIdx=g.sqIdx;
+  S.bt[sqIdx]=null;
+  if(S.hand.indexOf(bt)<0)S.hand.push(bt);
+  setTileState(bt,'moving',{movingFrom:'board',movingTo:'hand'});
+  HP.movingCount++;
+  renderBoard();
+  saveGame();
+  if(typeof _rankObserve==='function')_rankObserve(true);
+  var ha=document.getElementById('hand-area');var hr=ha?ha.getBoundingClientRect():null;
+  var destY=hr?(hr.top+34):(window.innerHeight-60);
+  var destX=HP.nextLandX();
+  var _retS=S;
+  _flyTileSpiral(g.el,performance.now(),g.x,g.y,destX,destY,function(){
+    if(S!==_retS){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;return;}
+    _landTile(bt);_playTileClick('land');saveGame();
+  },{left:g.x-g.sz/2,top:g.y-g.sz/2,width:g.sz,height:g.sz},0,0);
+  _glassRet=null;
+}
+
+// Settle the hovering glass tile back onto its square. Safe to call anytime.
+function _glassRetCancel(){
+  var g=_glassRet;if(!g||g.resolved)return;
+  _glassRetResolve();
+  var sx=g.x,sy=g.y,srot=g.rot,t0=performance.now(),dur=220;
+  function tick(now){
+    var k=Math.min(1,(now-t0)/dur),e=1-Math.pow(1-k,3);
+    var x=sx+(g.home.x-sx)*e,y=sy+(g.home.y-sy)*e;
+    g.el.style.left=(x-g.sz/2)+'px';
+    g.el.style.top=(y-g.sz/2)+'px';
+    g.el.style.transform='rotate('+(srot*(1-e)).toFixed(2)+'deg)';
+    if(k<1){requestAnimationFrame(tick);return;}
+    if(g.el.parentNode)g.el.parentNode.removeChild(g.el);
+    setTileState(g.tile,'board',{boardSq:g.sqIdx,isNew:false});
+    _glassRet=null;
+    renderBoard();
+    _playTileClick('land');
+  }
+  requestAnimationFrame(tick);
+}
+
 function recallAll(){
   if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){setTileState(S.btTop[i],'hand');if(S.hand.indexOf(S.btTop[i])<0)S.hand.push(S.btTop[i]);S.btTop[i]=null;}}}
   for(var i=0;i<B*B;i++){var bt=S.bt[i];if(bt&&bt.isNew){setTileState(bt,'hand');if(S.hand.indexOf(bt)<0)S.hand.push(bt);S.bt[i]=null;}}
@@ -1159,7 +1614,6 @@ function clearBoardLetters(){
   }
   S.bt=Array(B*B).fill(null);
   if(S.btTop)S.btTop=Array(B*B).fill(null);
-  if(S.localCooldowns)S.localCooldowns.clear();
 }
 
 function toggleSel(idx){if(Date.now()-_dragEndTime<300)return;if(S.hand[idx]){if(!S.hand[idx].sel&&window.TUT&&TUT.active&&!_tutSelTileOK())return;S.hand[idx].sel=!S.hand[idx].sel;_playTileClick('select');renderHand();}}
