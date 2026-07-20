@@ -16,7 +16,8 @@ function makePhysics(opts) {
     fromX: [], toX: [], settleAt: 0, settleDur: 150,
     settleCallback: null,
     movingCount: 0,  // tiles in 'moving' state heading back to hand (phantom slots)
-    gapHoleIdx: null, gapHoleX: null  // open drag gap: insert index + hole centre x (null when closed)
+    gapHoleIdx: null, gapHoleX: null,  // open drag gap: insert index + hole centre x (null when closed)
+    shufHoleIdx: null  // reserved empty slot for the in-flight shuffle tile (null when idle)
   };
 
   ph.bounds = function() {
@@ -140,10 +141,18 @@ function makePhysics(opts) {
       ph.gapHoleIdx = null; ph.gapHoleX = null;
       // Phantom slots: reserve space on the right for tiles in 'moving' state.
       // Total slot count = real tiles + moving tiles; real tiles occupy leftmost slots.
-      var _nSlots = active.length + (ph.movingCount > 0 ? ph.movingCount : 0);
+      // Shuffle hole: one extra empty slot at shufHoleIdx (the in-flight shuffle
+      // tile's landing spot) — tiles at/after it sit one slot to the right, so
+      // lifting a tile out never re-centers the rack; only the tiles between its
+      // old and new slot slide over to make room.
+      var _hole = ph.shufHoleIdx != null ? ph.shufHoleIdx : -1;
+      var _nSlots = active.length + (_hole >= 0 ? 1 : 0) + (ph.movingCount > 0 ? ph.movingCount : 0);
       var totalW = _nSlots > 0 ? _nSlots * ph.TILE_W + (_nSlots > 1 ? (_nSlots - 1) * ph.GAP : 0) : 0;
       var startX = midX - totalW / 2;
-      for (var j = 0; j < active.length; j++) restX[active[j]] = startX + j * (ph.TILE_W + ph.GAP) + ph.TILE_W / 2;
+      for (var j = 0; j < active.length; j++) {
+        var _col = (_hole >= 0 && j >= _hole) ? j + 1 : j;
+        restX[active[j]] = startX + _col * (ph.TILE_W + ph.GAP) + ph.TILE_W / 2;
+      }
     }
     for (var i = 0; i < n; i++) {
       var f = (restX[i] - ph.x[i]) * ph.SPRING;

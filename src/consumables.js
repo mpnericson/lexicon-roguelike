@@ -224,10 +224,17 @@ var TK_TILE_PACK_SIZES={
   regular:{label:'Regular',show:8,pick:1,cost:5},
   large:  {label:'Large',  show:8,pick:2,cost:7}
 };
-// Each shop slot rolls independently: kind first (ticket 70% / tile 27% /
-// key 3%), then size (50% small / 30% regular / 20% large).
+// Sticker packs keep the ticket show/pick counts but cost $1 more per size.
+var TK_STICKER_PACK_SIZES={
+  small:  {label:'Small',  show:3,pick:1,cost:4},
+  regular:{label:'Regular',show:5,pick:1,cost:6},
+  large:  {label:'Large',  show:5,pick:2,cost:8}
+};
+// Each shop slot rolls independently: kind first (ticket 50% / tile 27% /
+// sticker 20% / key 3%), then size (50% small / 30% regular / 20% large).
 var TK_KEY_CHANCE=0.03;
 var TK_TILE_CHANCE=0.27;
+var TK_STICKER_CHANCE=0.20;
 var TK_SIZE_ODDS=[{size:'small',p:0.5},{size:'regular',p:0.3},{size:'large',p:0.2}];
 // A pack tile rolls a uniform letter, then independently 15% a random colour
 // and 1% a random material (the two axes stack).
@@ -242,16 +249,30 @@ function _tkRollShopPacks(n){
     var kr=_rng(),kind;
     if(kr<TK_KEY_CHANCE)kind='key';
     else if(kr<TK_KEY_CHANCE+TK_TILE_CHANCE)kind='tile';
+    else if(kr<TK_KEY_CHANCE+TK_TILE_CHANCE+TK_STICKER_CHANCE)kind='sticker';
     else kind='ticket';
     var r=_rng(),acc=0,size=TK_SIZE_ODDS[TK_SIZE_ODDS.length-1].size;
     for(var i=0;i<TK_SIZE_ODDS.length;i++){acc+=TK_SIZE_ODDS[i].p;if(r<acc){size=TK_SIZE_ODDS[i].size;break;}}
-    var sz=(kind==='tile'?TK_TILE_PACK_SIZES:TK_PACK_SIZES)[size];
-    var kindLabel=kind==='key'?'Key':kind==='tile'?'Tile':'Ticket';
+    var sz=(kind==='tile'?TK_TILE_PACK_SIZES:kind==='sticker'?TK_STICKER_PACK_SIZES:TK_PACK_SIZES)[size];
+    var kindLabel=kind==='key'?'Key':kind==='tile'?'Tile':kind==='sticker'?'Sticker':'Ticket';
     out.push({kind:kind,size:size,
       label:sz.label+' '+kindLabel+' Pack',
       cost:sz.cost,show:sz.show,pick:sz.pick,sold:false});
   }
   return out;
+}
+
+// Wraps a board-sticker def in the tk-card shape so sticker packs reuse the
+// ticket/key overlay; USE routes the pick through addPrizeFromShop.
+function _tkStickerCardDef(id){
+  var d=sqd(id);if(!d)return null;
+  return{id:id,kind:'sticker',name:d.name,desc:d.desc,icon:d.icon,iconPng:d.iconPng,
+    use:function(){
+      addPrizeFromShop(id);
+      var qty=d.qty||1;
+      toast((qty>1?qty+'× ':'')+d.name+' queued — place '+(qty>1?'them':'it')+' after leaving shop!');
+      return 600;
+    }};
 }
 
 function buyTkPack(i){
@@ -261,6 +282,13 @@ function buyTkPack(i){
   p.sold=true;
   renderShop();renderHUD();
   if(p.kind==='tile'){_tkOpenTileOverlay(p);return;}
+  if(p.kind==='sticker'){
+    // Stickers only (no stamps), shop-shelf rarity weights.
+    var stickers=wrandN(_stickersByRarity(['common','uncommon','rare','legendary']),
+      {common:5,uncommon:2,rare:0.8,legendary:0.1},p.show);
+    _tkOpenOverlay({cards:stickers,picks:p.pick,source:'pack',title:p.label,sq:true});
+    return;
+  }
   var pool=TK.filter(function(d){return d.kind===p.kind;}).map(function(d){return d.id;});
   var contents=_pickDistinct(pool,p.show);
   _tkOpenOverlay({cards:contents,picks:p.pick,source:'pack',title:p.label});
@@ -272,8 +300,8 @@ function renderTkShop(){
     var box=document.getElementById('shop-tkpack-'+i);if(!box)continue;
     var p=(shopPool.tkPacks||[])[i];
     if(!p){box.innerHTML='';box.className='shop-pack-box';box.onclick=null;box.onmouseenter=null;box.onmouseleave=null;continue;}
-    var emoji=p.kind==='key'?'🗝️':p.kind==='tile'?'🔤':'🎟️';
-    var color=p.kind==='key'?'#9ab8ff':p.kind==='tile'?'#8fe0a0':'#f0c060';
+    var emoji=p.kind==='key'?'🗝️':p.kind==='tile'?'🔤':p.kind==='sticker'?'🏷️':'🎟️';
+    var color=p.kind==='key'?'#9ab8ff':p.kind==='tile'?'#8fe0a0':p.kind==='sticker'?'#a8e048':'#f0c060';
     box.innerHTML='<div class="tk-pack-art '+p.kind+'">'
       +'<span class="tk-pack-emoji">'+emoji+'</span>'
       +'<span class="tk-pack-size">'+TK_PACK_SIZES[p.size].label+'</span></div>'
@@ -281,6 +309,8 @@ function renderTkShop(){
     box.className='shop-pack-box'+(p.sold?' sold':'');
     var tip=p.kind==='tile'
       ?'Reveals '+p.show+' tiles — choose '+(p.pick>1?'up to '+p.pick:'1')+' to add to your bag.'
+      :p.kind==='sticker'
+      ?'Opens '+p.show+' stickers — choose '+p.pick+' to place on your board.'
       :'Opens '+p.show+' '+(p.kind==='key'?'keys':'tickets')+' — choose '+p.pick+'.';
     _tkHoverTip(box,p.label,tip,color);
     if(!p.sold){(function(idx){box.onclick=function(){buyTkPack(idx);};})(i);}else box.onclick=null;
@@ -419,8 +449,9 @@ function _tkOpenOverlay(opts){
   document.getElementById('tk-skip-btn').textContent=opts.source==='inv'?'Cancel':'Skip';
 
   // 7 random bag tiles — the targets tile-specific consumables act on.
-  var row=document.getElementById('tk-tiles-row');row.innerHTML='';row.style.display='';
-  var samp=S.bag.slice();
+  // Sticker packs (opts.sq) have no tile targets, so the row stays hidden.
+  var row=document.getElementById('tk-tiles-row');row.innerHTML='';row.style.display=opts.sq?'none':'';
+  var samp=opts.sq?[]:S.bag.slice();
   for(var i=samp.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=samp[i];samp[i]=samp[j];samp[j]=t;}
   samp=samp.slice(0,7);
   for(var si=0;si<samp.length;si++){
@@ -435,17 +466,17 @@ function _tkOpenOverlay(opts){
     (function(e){wrap.addEventListener('click',function(){_tkTileClick(e);});})(entry);
     _tkOv.tiles.push(entry);
   }
-  if(!samp.length)row.innerHTML='<div style="color:#8880a8;font-size:26px">Your bag is empty</div>';
+  if(!samp.length&&!opts.sq)row.innerHTML='<div style="color:#8880a8;font-size:26px">Your bag is empty</div>';
 
   var crow=document.getElementById('tk-cards-row');crow.innerHTML='';crow.classList.remove('tk-tile-mode');
   for(var ci=0;ci<opts.cards.length;ci++){
-    var def=tkd(opts.cards[ci]);if(!def)continue;
+    var def=opts.sq?_tkStickerCardDef(opts.cards[ci]):tkd(opts.cards[ci]);if(!def)continue;
     var card=document.createElement('div');
-    card.className='tk-card '+(def.kind==='key'?'key':'ticket');
+    card.className='tk-card '+(def.kind==='key'?'key':def.kind==='sticker'?'sticker':'ticket');
     var art=def.iconPng
       ?'<img src="'+def.iconPng+'" style="width:60%;image-rendering:pixelated;margin:6px 0 2px">'
       :'<div class="tk-icon">'+def.icon+'</div>';
-    card.innerHTML='<div class="tk-kind">'+(def.kind==='key'?'KEY':'TICKET')+'</div>'
+    card.innerHTML='<div class="tk-kind">'+(def.kind==='key'?'KEY':def.kind==='sticker'?'STICKER':'TICKET')+'</div>'
       +art+'<div class="tk-cname">'+def.name+'</div><div class="tk-cdesc">'+def.desc+'</div>';
     crow.appendChild(card);
     var ce={def:def,el:card,used:false};

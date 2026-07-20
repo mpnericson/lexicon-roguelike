@@ -395,16 +395,186 @@ function flashTiles(nt){
   for(var i=0;i<nt.length;i++){var el=document.querySelector('[data-sq-idx="'+nt[i].idx+'"] .board-tile');if(!el)continue;el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');setTimeout((function(e){return function(){e.classList.remove('flash');};})(el),580);}
 }
 
+// ── Animated shuffle ──────────────────────────────────────────────────
+// shuffleHand rolls a new hand order, then flies the MINIMUM set of tiles
+// into place one at a time — tiles forming the longest increasing
+// subsequence w.r.t. the new order never lift, they just slide on the
+// springs. Movers travel in axis-aligned legs only (straight up, across,
+// straight down), each leg accelerating from rest. Whole sequence budgeted
+// at ~3.5s. Clicking mid-animation rerolls the order: the airborne tile
+// changes course toward its new slot (climbing back to travel height
+// first) and a fresh minimal plan continues after it lands.
+var _shuf=null; // {S, pos, settled, queue, per, flight}
+// Travel height must exceed the 68px tile + 4px shadow so a flier fully
+// clears the seated tiles before its lateral leg starts.
+var SHUF_LIFT=84;
+
+function _shufFreeTiles(){
+  var out=[];
+  for(var i=0;i<S.hand.length;i++){var t=S.hand[i];if(t&&t.state==='hand')out.push(t);}
+  return out;
+}
+
+// Minimal move plan: tiles in the longest increasing subsequence (by slot in
+// the new order) are 'settled' and never fly; everything else queues up.
+function _shufPlan(rack,order){
+  var pos={};for(var i=0;i<order.length;i++)pos[order[i].id]=i;
+  var n=rack.length,P=[],len=[],par=[],best=0,bi=-1;
+  for(var i=0;i<n;i++)P.push(pos[rack[i].id]);
+  for(var i=0;i<n;i++){
+    len[i]=1;par[i]=-1;
+    for(var j=0;j<i;j++)if(P[j]<P[i]&&len[j]+1>len[i]){len[i]=len[j]+1;par[i]=j;}
+    if(len[i]>best){best=len[i];bi=i;}
+  }
+  var keep={};for(var k=bi;k>=0;k=par[k])keep[rack[k].id]=true;
+  var settled={},queue=[];
+  for(var i=0;i<n;i++){if(keep[rack[i].id])settled[rack[i].id]=true;else queue.push(rack[i]);}
+  return{pos:pos,settled:settled,queue:queue};
+}
+
+// Vis-order landing slot for t: right after the last settled tile that comes
+// before it in the new order. Settled tiles are always in correct relative
+// order, so this is unambiguous; unsettled tiles in between fly out later.
+function _shufInsertIdx(t){
+  var vis=_shufFreeTiles(),p=_shuf.pos[t.id],lastSmall=-1,firstLarge=-1;
+  for(var i=0;i<vis.length;i++){
+    var q=_shuf.pos[vis[i].id];
+    if(q===undefined||!_shuf.settled[vis[i].id])continue;
+    if(q<p)lastSmall=i;
+    else if(firstLarge<0)firstLarge=i;
+  }
+  if(lastSmall>=0)return lastSmall+1;
+  if(firstLarge>=0)return firstLarge;
+  return vis.length;
+}
+
+// Rest-slot centre x for landing at vis index idx, in the post-landing layout
+// (current rack + the lander + any phantom slots reserved by recall arcs).
+function _shufDestX(idx){
+  hpBounds();
+  var n=_shufFreeTiles().length+1+(HP.movingCount>0?HP.movingCount:0);
+  return HP.rest(n)[idx];
+}
+
+function _shufAbort(){
+  if(_shuf&&_shuf.flight&&_shuf.flight.el.parentNode)_shuf.flight.el.parentNode.removeChild(_shuf.flight.el);
+  _shuf=null;HP.shufHoleIdx=null;
+}
+
+// Axis-aligned flight legs from (x0,y0) to (x1,0): up to travel height,
+// across, drop in. Leg durations share one acceleration (time ∝ √distance);
+// each leg eases in from rest, so every direction change starts at 0 speed.
+function _shufLegs(x0,y0,x1,total){
+  var H=-SHUF_LIFT,legs=[];
+  if(y0-H>0.5)legs.push({axis:'y',from:y0,to:H});
+  var yTop=legs.length?H:y0;
+  if(Math.abs(x1-x0)>0.5)legs.push({axis:'x',from:x0,to:x1});
+  legs.push({axis:'y',from:yTop,to:0});
+  var sum=0;
+  for(var i=0;i<legs.length;i++){legs[i].d=Math.abs(legs[i].to-legs[i].from);sum+=Math.sqrt(legs[i].d);}
+  for(var i=0;i<legs.length;i++)legs[i].dur=sum>0?total*Math.sqrt(legs[i].d)/sum:total/legs.length;
+  return legs;
+}
+
+function _shufStartNext(){
+  var t=null;
+  while(_shuf.queue.length){var c=_shuf.queue.shift();if(c&&c.state==='hand'){t=c;break;}}
+  if(!t){_shuf=null;HP.shufHoleIdx=null;return;}
+  var area=document.getElementById('hand-area');
+  var el=area?area.querySelector('[data-tile-id="'+t.id+'"]'):null;
+  if(!el){_shufStartNext();return;} // no element (mid-burst etc.) — leave it be
+  var r=el.getBoundingClientRect(),hr=area.getBoundingClientRect();
+  var clone=el.cloneNode(true);
+  clone.classList.remove('selected');
+  clone.style.cssText+=';position:fixed;left:'+r.left+'px;top:'+r.top+'px;z-index:9999;margin:0;pointer-events:none;transition:none;transform:scale(1.06)';
+  document.body.appendChild(clone);
+  setTileState(t,'moving',{movingFrom:'hand',movingTo:'hand'});
+  renderHand();
+  // Reserve the landing slot as a hole immediately: the rack keeps its full
+  // width (no re-centering), and only the tiles between the flier's old and
+  // new slot slide over to make room.
+  var idx=_shufInsertIdx(t);
+  HP.shufHoleIdx=idx;
+  var x0=r.left+34,y0=r.top-hr.top,destX=_shufDestX(idx);
+  _shuf.flight={t:t,el:clone,cx:x0,cy:y0,x1:destX,baseTop:hr.top,
+    legs:_shufLegs(x0,y0,destX,_shuf.per),li:0,segStart:performance.now()};
+  requestAnimationFrame(_shufTick);
+}
+
+function _shufTick(){
+  if(!_shuf||!_shuf.flight)return;
+  if(S!==_shuf.S){_shufAbort();return;}
+  var f=_shuf.flight,now=performance.now();
+  while(f.li<f.legs.length){
+    var L=f.legs[f.li],p=(now-f.segStart)/L.dur;
+    if(p>=1){ // leg done — snap to its end, carry leftover time into the next
+      if(L.axis==='x')f.cx=L.to;else f.cy=L.to;
+      f.segStart+=L.dur;f.li++;continue;
+    }
+    var v=L.from+(L.to-L.from)*p*p; // ease-in: accelerate from rest
+    if(L.axis==='x')f.cx=v;else f.cy=v;
+    break;
+  }
+  f.el.style.left=(f.cx-34)+'px';
+  f.el.style.top=(f.baseTop+f.cy)+'px';
+  if(f.li<f.legs.length){requestAnimationFrame(_shufTick);return;}
+  _shufLand();
+}
+
+function _shufLand(){
+  var f=_shuf.flight;_shuf.flight=null;
+  if(f.el.parentNode)f.el.parentNode.removeChild(f.el);
+  var t=f.t,idx=_shufInsertIdx(t); // recompute — rack may have changed mid-flight
+  HP.shufHoleIdx=null; // the lander fills the hole this frame — no one else moves
+  // Reposition within S.hand: in front of the tile currently at vis index idx.
+  S.hand=S.hand.filter(function(x){return x!==t;});
+  var c=0,hi=S.hand.length;
+  for(var i=0;i<S.hand.length;i++){var h=S.hand[i];if(h&&h.state==='hand'){if(c===idx){hi=i;break;}c++;}}
+  S.hand.splice(hi,0,t);
+  setTileState(t,'hand');
+  _shuf.settled[t.id]=true;
+  // Splice physics arrays at the same vis index so hpRebuild keeps positions.
+  HP.x.splice(idx,0,f.x1);HP.vx.splice(idx,0,0);
+  renderHand();
+  _playTileClick('land');
+  if(_shuf.queue.length)_shufStartNext();else _shuf=null;
+}
+
 function shuffleHand(){
   if(S.phase!=='play')return;
+  if(_shuf&&S!==_shuf.S)_shufAbort();
+  var flight=_shuf?_shuf.flight:null;
+  var rack=_shufFreeTiles();
+  if(rack.length+(flight?1:0)<2)return;
   _playTileClick('pick');
-  var freeIdxs=[],freeTiles=[];
-  for(var i=0;i<S.hand.length;i++){if(S.hand[i]){freeIdxs.push(i);freeTiles.push(S.hand[i]);}}
-  if(freeTiles.length<2)return;
-  for(var i=freeTiles.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var tmp=freeTiles[i];freeTiles[i]=freeTiles[j];freeTiles[j]=tmp;}
-  for(var i=0;i<freeIdxs.length;i++)S.hand[freeIdxs[i]]=freeTiles[i];
-  renderHand();
-  for(var i=0;i<HP.vx.length;i++)HP.vx[i]+=(Math.random()-0.5)*22;
+  // Roll a new order over every free tile (flier included). With nothing
+  // airborne, insist on an order that differs so the click always moves something.
+  var all=flight?rack.concat([flight.t]):rack.slice(),order;
+  for(var tries=0;tries<24;tries++){
+    order=all.slice();
+    for(var i=order.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var tmp=order[i];order[i]=order[j];order[j]=tmp;}
+    if(flight)break;
+    var same=true;
+    for(var i=0;i<rack.length;i++)if(order[i]!==rack[i]){same=false;break;}
+    if(!same)break;
+  }
+  var plan=_shufPlan(rack,order);
+  var k=plan.queue.length+(flight?1:0);
+  if(!k){_shuf=null;return;}
+  var per=Math.max(AT(400),Math.min(AT(3500)/k,AT(1000)));
+  _shuf={S:S,pos:plan.pos,settled:plan.settled,queue:plan.queue,per:per,flight:flight};
+  if(flight){
+    // Redirect the airborne tile toward its slot in the rerolled order —
+    // fresh legs from where it is now, hole moved to the new landing slot;
+    // the rest of the plan runs after it lands.
+    var fIdx=_shufInsertIdx(flight.t);
+    HP.shufHoleIdx=fIdx;
+    flight.x1=_shufDestX(fIdx);
+    flight.legs=_shufLegs(flight.cx,flight.cy,flight.x1,per);
+    flight.li=0;flight.segStart=performance.now();
+  } else {
+    _shufStartNext();
+  }
 }
 
 function discardTiles(){

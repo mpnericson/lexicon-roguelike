@@ -53,6 +53,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .tk-pack-art.ticket{background:linear-gradient(160deg,#7a3050,#4a1830);border:2px solid #c06080}
 .tk-pack-art.key{background:linear-gradient(160deg,#203050,#101a30);border:2px solid #6080c0}
 .tk-pack-art.tile{background:linear-gradient(160deg,#1f5a38,#0e2c1c);border:2px solid #4fae6e}
+.tk-pack-art.sticker{background:linear-gradient(160deg,#5a6a1a,#2a340c);border:2px solid #a8c848}
 .tk-pack-emoji{font-size:clamp(12px,3vw,44px)}
 .tk-pack-size{font-size:clamp(7px,1.2vw,18px);color:#f0e0c0;margin-top:4%}
 #tk-overlay{position:fixed;inset:0;z-index:240;display:none;flex-direction:column;align-items:center;justify-content:center;gap:24px;background:radial-gradient(ellipse at center,rgba(42,22,64,0.96) 0%,rgba(10,6,20,0.98) 75%)}
@@ -65,6 +66,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .tk-card{position:relative;width:132px;height:196px;border-radius:10px;cursor:pointer;transition:transform 0.15s ease,box-shadow 0.15s ease,opacity 0.3s ease;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:8px 7px;box-sizing:border-box;text-align:center}
 .tk-card.ticket{background:linear-gradient(160deg,#efe2bd,#d8c491);border:3px solid #8a7440;color:#3a2c10}
 .tk-card.key{background:linear-gradient(160deg,#232f52,#141c36);border:3px solid #5a78c0;color:#cfe0ff}
+.tk-card.sticker{background:linear-gradient(160deg,#e2edb4,#c2d488);border:3px solid #7a8a38;color:#28330e}
 .tk-card:hover{transform:translateY(-6px)}
 .tk-card.tk-sel{transform:translateY(-14px);box-shadow:0 0 0 3px #f0e080,0 12px 26px rgba(0,0,0,0.55)}
 .tk-card.tk-used{opacity:0.22;pointer-events:none;transform:translateY(-26px) scale(0.92)}
@@ -495,8 +497,7 @@ body.focus-exiting #focus-bg{opacity:0}
     </div>
     <!-- Tiles + shuffle button + zoom buttons -->
     <div id="hand-wrap">
-      <!-- shuffle-btn hidden; shuffleHand() preserved in play.js for re-adding with asset later -->
-      <button id="shuffle-btn" onclick="shuffleHand()" title="Shuffle hand" style="display:none">⇄</button>
+      <button id="shuffle-btn" onclick="shuffleHand()" title="Shuffle hand">⇄</button>
       <div id="hand-area"></div>
       <!-- zoom buttons hidden; code preserved in ui.js (zoomBoard/zoomOut) and anim.js (animBoardZoomIn/Out)
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">

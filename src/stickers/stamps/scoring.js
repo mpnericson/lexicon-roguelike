@@ -280,8 +280,8 @@ SQ.push({id:'drunk_text',name:'Drunk Text',
 
 // ── THE PLAYER ────────────────────────────────────────────────────────────────
 // type: stamp · rarity: legendary · cost: $8 · qty: 1
-// The game's first legendary — also the 3-legendary jackpot prize of the
-// symbol slot machine (shop.js SYMBOL_PAYOUTS).
+// The game's first legendary — a possible legendary jackpot prize of the
+// slot machines (shop.js SLOT_MACHINES).
 // onPostWord: applies ctx.state.playerMult (accumulated by play.js when a
 // best-play word is detected). Starts at 1 and grows by +0.5 per best play.
 SQ.push({id:'the_player',name:'The Player',desc:'Each best play permanently adds ×0.5 mult. Starts at ×1.',

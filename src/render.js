@@ -71,10 +71,10 @@ function _makeBountyScroll(bounty){
       var f=10;
       (function nf(){
         _bImg(f);
-        if(f>1){f--;setTimeout(nf,24);}
+        if(f>1){f--;setTimeout(nf,AT(24));}
         else{
           // Slide back to original DOM position and shrink simultaneously
-          div.style.transition='transform 0.12s ease,padding-top 0.12s ease';
+          div.style.transition='transform '+(AT(120)/1000)+'s ease,padding-top '+(AT(120)/1000)+'s ease';
           div.style.paddingTop='30%';
           div.style.transform='';
           setTimeout(function(){
@@ -83,11 +83,11 @@ function _makeBountyScroll(bounty){
             var sibs=_getSiblings();
             for(var j=0;j<sibs.length;j++){
               void sibs[j].offsetHeight;
-              sibs[j].style.transition='opacity 0.2s';
+              sibs[j].style.transition='opacity '+(AT(200)/1000)+'s';
               sibs[j].style.opacity='';
               sibs[j].style.pointerEvents='';
             }
-          },130);
+          },AT(130));
         }
       })();
 
@@ -105,7 +105,7 @@ function _makeBountyScroll(bounty){
       var divTop=div.getBoundingClientRect().top;
       div._slideUp=divTop-browTop; // pixels to translate up
       void div.offsetHeight;
-      div.style.transition='transform 0.3s ease,padding-top 0.3s ease';
+      div.style.transition='transform '+(AT(300)/1000)+'s ease,padding-top '+(AT(300)/1000)+'s ease';
       div.style.paddingTop='100%';
       div.style.transform='translateY(-'+div._slideUp+'px)';
       div._anim=true;
@@ -114,10 +114,10 @@ function _makeBountyScroll(bounty){
         var f=3;
         (function nf(){
           _bImg(f);
-          if(f<11){f++;setTimeout(nf,60);}
+          if(f<11){f++;setTimeout(nf,AT(60));}
           else{content.style.opacity='1';div._unfurled=true;div._anim=false;}
         })();
-      },300);
+      },AT(300));
     }
   });
 

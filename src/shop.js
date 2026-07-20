@@ -17,59 +17,128 @@ function wrandN(pool,w,n){
   return out;
 }
 
-// ── SYMBOL SLOT MACHINE (DEV-ONLY for now) ───────────────────────────────────
-// The grey button arms symbol mode (yellow/pink re-arm the default machine);
-// the handle then spins the reels with SYMBOLS instead of sticker/stamp icons.
-// One seeded categorical roll (SYMBOL_PAYOUTS, probabilities sum to 100) picks
-// the outcome first; the reels are then dressed to match. Placeholder emoji
-// icons until real assets exist — swap in iconPng on SLOT_SYMBOLS when ready.
+// ── SYMBOL SLOT MACHINE ──────────────────────────────────────────────────────
+// Three machines share the reels: the grey button arms Budget, yellow arms
+// Regular, pink arms Rare; the handle spins whichever is armed. Each machine
+// has its own payout table and its own escalating cost (reset per shop visit).
+// One seeded categorical roll picks the outcome first; the reels are then
+// dressed to match. Symbol art lives in one sheet (slot_symbols.png, six
+// 32×32 cells: common, uncommon, rare, legendary, pack, money) cropped via
+// background-position, so re-exporting the sheet updates the reels directly.
+var SLOT_SYMBOL_SHEET='Assets/sprites/slot_symbols.png',SLOT_SYMBOL_SHEET_N=6;
 var SLOT_SYMBOLS=[
-  {id:'sym_legendary',name:'Legendary',icon:'👑',fg:'#ffd700'},
-  {id:'sym_rare',     name:'Rare',     icon:'💎',fg:'#c060ff'},
-  {id:'sym_uncommon', name:'Uncommon', icon:'🔷',fg:'#60c060'},
-  {id:'sym_common',   name:'Common',   icon:'⚪',fg:'#a0a0a0'},
-  {id:'sym_gold',     name:'Gold',     icon:'🪙',fg:'#f0e040'},
-  {id:'sym_sticker',  name:'Sticker',  icon:'🏷️',fg:'#80f040'}
+  {id:'sym_legendary',name:'Legendary',icon:'👑',fg:'#ffd700',sheetIdx:3},
+  {id:'sym_rare',     name:'Rare',     icon:'💎',fg:'#c060ff',sheetIdx:2},
+  {id:'sym_uncommon', name:'Uncommon', icon:'🔷',fg:'#60c060',sheetIdx:1},
+  {id:'sym_common',   name:'Common',   icon:'⚪',fg:'#a0a0a0',sheetIdx:0},
+  {id:'sym_gold',     name:'Gold',     icon:'🪙',fg:'#f0e040',sheetIdx:5},
+  {id:'sym_pack',     name:'Pack',     icon:'📦',fg:'#e0a060',sheetIdx:4}
 ];
 function _symDef(id){for(var i=0;i<SLOT_SYMBOLS.length;i++)if(SLOT_SYMBOLS[i].id===id)return SLOT_SYMBOLS[i];return null;}
 
-// Payout table. kind: 'stamp_fixed' (exact ids) | 'stamp_pick' (choose 1 of 3)
-// | 'stamp_one' (1 random, no choice) | 'sticker_pick' (choose 1 of 3)
-// | 'gold' | 'nothing'. n = matching symbols shown on the reels.
-var SYMBOL_PAYOUTS=[
-  {p:0.5, sym:'sym_legendary',n:3,kind:'stamp_fixed', ids:['the_player']},
-  {p:1,   sym:'sym_rare',     n:3,kind:'stamp_pick',  rarity:['rare']},
-  {p:3.5, sym:'sym_rare',     n:2,kind:'stamp_one',   rarity:['rare']},
-  {p:5,   sym:'sym_uncommon', n:3,kind:'stamp_pick',  rarity:['uncommon']},
-  {p:10,  sym:'sym_uncommon', n:2,kind:'stamp_one',   rarity:['uncommon']},
-  {p:8,   sym:'sym_common',   n:3,kind:'stamp_pick',  rarity:['common']},
-  {p:16,  sym:'sym_common',   n:2,kind:'stamp_one',   rarity:['common']},
-  {p:2,   sym:'sym_gold',     n:3,kind:'gold',amount:15},
-  {p:5,   sym:'sym_gold',     n:2,kind:'gold',amount:5},
-  {p:8,   sym:'sym_sticker',  n:3,kind:'sticker_pick',rarity:['rare','uncommon']},
-  {p:16,  sym:'sym_sticker',  n:2,kind:'sticker_pick',rarity:['uncommon','common']},
-  {p:25,  sym:null,           n:0,kind:'nothing'}
-];
-
-function _rollSymbolPayout(){
-  var roll=_rng()*100,acc=0;
-  for(var i=0;i<SYMBOL_PAYOUTS.length;i++){acc+=SYMBOL_PAYOUTS[i].p;if(roll<acc)return SYMBOL_PAYOUTS[i];}
-  return SYMBOL_PAYOUTS[SYMBOL_PAYOUTS.length-1];
+// background-position % maps 0..100 across the sheet's excess width, so cell
+// idx of N sits at idx*100/(N-1)%. (The .reel-icon window is square, matching
+// the square sheet cells, so 100% height fills it exactly.)
+function _symSheetHTML(d){
+  return '<div style="width:100%;height:100%;'
+    +'background-image:url(\''+SLOT_SYMBOL_SHEET+'\');'
+    +'background-size:'+(SLOT_SYMBOL_SHEET_N*100)+'% 100%;'
+    +'background-position:'+(d.sheetIdx*100/(SLOT_SYMBOL_SHEET_N-1))+'% 0;'
+    +'background-repeat:no-repeat;image-rendering:pixelated"></div>';
 }
 
-// Reel dressing for a rolled outcome. Every pair pays, so a 'nothing' spin
-// must show three DISTINCT symbols, and a legendary pair (which has no payout)
-// can never appear. Pairs land on reels 1+2 so reel 3 carries the anticipation.
-function _dressSymbolReels(o){
+// Payout kinds: 'stamp_pick' (choose 1 of `count`) | 'stamp_one' (1 random, no
+// choice) | 'gold' | 'pack_pick' (choose 1 of 3 packs) | 'pack_one' (1 pack) |
+// 'nothing'. n = matching symbols shown on the reels. Pack `draw` modes:
+// 'shop' = same kind odds as a shop pack slot (ticket 50 / tile 27 / sticker
+// 20 / key 3), 'uniform' = all four kinds equal, 'keyfirst' = key guaranteed,
+// remaining slots uniform. Multi-slot pack draws are always distinct kinds
+// (drawn slot by slot, prior kinds removed from the pool).
+var SLOT_MACHINES={
+  budget:{name:'Budget',base:2,inc:1,tint:'reel-common',priceColor:'#a8d8a8',payouts:[
+    {p:1,  sym:'sym_rare',    n:3,kind:'stamp_one', rarity:['rare']},
+    {p:4,  sym:'sym_uncommon',n:3,kind:'stamp_pick',rarity:['uncommon'],count:3},
+    {p:5,  sym:'sym_uncommon',n:2,kind:'stamp_one', rarity:['uncommon']},
+    {p:15, sym:'sym_common',  n:3,kind:'stamp_pick',rarity:['common'],count:3},
+    {p:20, sym:'sym_common',  n:2,kind:'stamp_one', rarity:['common']},
+    {p:3,  sym:'sym_gold',    n:3,kind:'gold',amount:10},
+    {p:7,  sym:'sym_gold',    n:2,kind:'gold',amount:4},
+    {p:5,  sym:'sym_pack',    n:3,kind:'pack_pick',size:'small',draw:'shop'},
+    {p:20, sym:'sym_pack',    n:2,kind:'pack_one', size:'small',draw:'shop'},
+    {p:20, sym:null,          n:0,kind:'nothing'}
+  ]},
+  // NOTE: design-spec weights sum to 101 — the roll is over the actual total,
+  // so every probability here is effectively /1.01.
+  regular:{name:'Regular',base:4,inc:2,tint:null,priceColor:'#ffd870',payouts:[
+    {p:0.5,sym:'sym_legendary',n:3,kind:'stamp_one', rarity:['legendary']},
+    {p:2,  sym:'sym_rare',     n:3,kind:'stamp_pick',rarity:['rare'],count:3},
+    {p:4.5,sym:'sym_rare',     n:2,kind:'stamp_one', rarity:['rare']},
+    {p:6,  sym:'sym_uncommon', n:3,kind:'stamp_pick',rarity:['uncommon'],count:3},
+    {p:15, sym:'sym_uncommon', n:2,kind:'stamp_one', rarity:['uncommon']},
+    {p:10, sym:'sym_common',   n:3,kind:'stamp_pick',rarity:['common'],count:3},
+    {p:25, sym:'sym_common',   n:2,kind:'stamp_pick',rarity:['common'],count:2},
+    {p:3,  sym:'sym_gold',     n:3,kind:'gold',amount:15},
+    {p:6,  sym:'sym_gold',     n:2,kind:'gold',amount:5},
+    {p:4,  sym:'sym_pack',     n:3,kind:'pack_pick',size:'regular',draw:'uniform'},
+    {p:15, sym:'sym_pack',     n:2,kind:'pack_one', size:'regular',draw:'shop'},
+    {p:10, sym:null,           n:0,kind:'nothing'}
+  ]},
+  // The rare machine never misses — no 'nothing' row. Weights sum to 90 and
+  // the roll normalizes over the actual total, so each listed probability is
+  // effectively ×(100/90).
+  rare:{name:'Rare',base:8,inc:4,tint:'reel-rare',priceColor:'#f0a0e0',payouts:[
+    {p:0.5, sym:'sym_legendary',n:3,kind:'stamp_pick',rarity:['legendary'],count:3},
+    {p:1,   sym:'sym_legendary',n:2,kind:'stamp_one', rarity:['legendary']},
+    {p:5,   sym:'sym_rare',     n:3,kind:'stamp_pick',rarity:['rare'],count:3},
+    {p:13.5,sym:'sym_rare',     n:2,kind:'stamp_one', rarity:['rare']},
+    {p:15,  sym:'sym_uncommon', n:3,kind:'stamp_pick',rarity:['uncommon'],count:3},
+    {p:20,  sym:'sym_uncommon', n:2,kind:'stamp_pick',rarity:['uncommon'],count:2},
+    {p:5,   sym:'sym_gold',     n:3,kind:'gold',amount:25},
+    {p:10,  sym:'sym_gold',     n:2,kind:'gold',amount:10},
+    {p:5,   sym:'sym_pack',     n:3,kind:'pack_pick',size:'large',draw:'keyfirst'},
+    {p:15,  sym:'sym_pack',     n:2,kind:'pack_one', size:'large',draw:'uniform'}
+  ]}
+};
+
+function _rollSlotPayout(md){
+  var tbl=md.payouts,total=0,i;
+  for(i=0;i<tbl.length;i++)total+=tbl[i].p;
+  var roll=_rng()*total,acc=0;
+  for(i=0;i<tbl.length;i++){acc+=tbl[i].p;if(roll<acc)return tbl[i];}
+  return tbl[tbl.length-1];
+}
+
+// Reel dressing for a rolled outcome. Pairs land on two RANDOM reels (the odd
+// reel shows a non-matching symbol); a 'nothing' spin must show three DISTINCT
+// symbols, since some pairs have no payout on some machines and must never
+// show. Teases: 15% of pairs force the pair onto reels 1+2 and park the
+// matching symbol one slot past the payline on reel 3 (near miss);
+// 5% of the regular machine's 'nothing' rolls land two legendaries and
+// near-miss the third — safe on regular ONLY because a legendary pair has no
+// payout there (rare pays 2-legendary, so no tease on rare).
+// Returns {symbols:[s1,s2,s3], nearMiss:null|{reel,sym}}.
+var SLOT_PAIR_NEARMISS_P=0.15,SLOT_LEG_TEASE_P=0.05;
+function _dressSymbolReels(o,machine){
   var all=SLOT_SYMBOLS.map(function(s){return s.id;});
-  if(o.n===3)return[o.sym,o.sym,o.sym];
+  if(o.n===3)return{symbols:[o.sym,o.sym,o.sym],nearMiss:null};
   if(o.n===2){
     var rest=all.filter(function(id){return id!==o.sym;});
-    return[o.sym,o.sym,rest[Math.floor(_rng()*rest.length)]];
+    var other=rest[Math.floor(_rng()*rest.length)];
+    if(_rng()<SLOT_PAIR_NEARMISS_P)
+      return{symbols:[o.sym,o.sym,other],nearMiss:{reel:2,sym:o.sym}};
+    var arr=[[0,1],[0,2],[1,2]][Math.floor(_rng()*3)];
+    var symbols=[other,other,other];
+    symbols[arr[0]]=o.sym;symbols[arr[1]]=o.sym;
+    return{symbols:symbols,nearMiss:null};
+  }
+  if(machine==='regular'&&_rng()<SLOT_LEG_TEASE_P){
+    var nonLeg=all.filter(function(id){return id!=='sym_legendary';});
+    return{symbols:['sym_legendary','sym_legendary',nonLeg[Math.floor(_rng()*nonLeg.length)]],
+      nearMiss:{reel:2,sym:'sym_legendary'}};
   }
   var pool=all.slice(),out=[];
   for(var k=0;k<3;k++)out.push(pool.splice(Math.floor(_rng()*pool.length),1)[0]);
-  return out;
+  return{symbols:out,nearMiss:null};
 }
 
 function _stampsByRarity(rs){return SQ.filter(function(d){return d.type==='stamp'&&rs.indexOf(d.rarity)>=0;}).map(function(d){return d.id;});}
@@ -78,6 +147,55 @@ function _pickDistinct(arr,n){
   arr=arr.slice();var out=[];
   while(arr.length&&out.length<n)out.push(arr.splice(Math.floor(_rng()*arr.length),1)[0]);
   return out;
+}
+
+// ── Slot pack prizes ──
+// Kind weights mirror the shop pack slot (constants in consumables.js) so the
+// two stay in sync if the shop odds change.
+function _slotPackKindWeights(draw){
+  if(draw==='uniform')return{ticket:1,tile:1,sticker:1,key:1};
+  return{ticket:1-TK_KEY_CHANCE-TK_TILE_CHANCE-TK_STICKER_CHANCE,
+    tile:TK_TILE_CHANCE,sticker:TK_STICKER_CHANCE,key:TK_KEY_CHANCE};
+}
+
+// Draw `count` pack kinds slot by slot, removing already-drawn kinds from the
+// pool (multi-pack prizes always offer distinct kinds). 'keyfirst' seats a
+// guaranteed key, then fills the rest uniformly.
+function _slotRollPackKinds(draw,count){
+  var kinds=[];
+  if(draw==='keyfirst'){kinds.push('key');draw='uniform';}
+  while(kinds.length<count){
+    var w=_slotPackKindWeights(draw);
+    var pool=Object.keys(w).filter(function(k){return kinds.indexOf(k)<0;});
+    if(!pool.length)break;
+    var sum=0;pool.forEach(function(k){sum+=w[k];});
+    var r=_rng()*sum,acc=0,pick=pool[pool.length-1];
+    for(var i=0;i<pool.length;i++){acc+=w[pool[i]];if(r<acc){pick=pool[i];break;}}
+    kinds.push(pick);
+  }
+  return kinds;
+}
+
+// Same descriptor shape as a _tkRollShopPacks entry, so the won pack can open
+// through the exact overlay path buyTkPack uses.
+function _slotPackDef(kind,size){
+  var sz=(kind==='tile'?TK_TILE_PACK_SIZES:kind==='sticker'?TK_STICKER_PACK_SIZES:TK_PACK_SIZES)[size];
+  var kindLabel=kind==='key'?'Key':kind==='tile'?'Tile':kind==='sticker'?'Sticker':'Ticket';
+  return{pack:true,kind:kind,size:size,label:sz.label+' '+kindLabel+' Pack',
+    cost:sz.cost,show:sz.show,pick:sz.pick};
+}
+
+// Open a pack won from the slots — buyTkPack minus the charge/shop-slot state.
+function _openWonPack(p){
+  if(p.kind==='tile'){_tkOpenTileOverlay(p);return;}
+  if(p.kind==='sticker'){
+    var stickers=wrandN(_stickersByRarity(['common','uncommon','rare','legendary']),
+      {common:5,uncommon:2,rare:0.8,legendary:0.1},p.show);
+    _tkOpenOverlay({cards:stickers,picks:p.pick,source:'pack',title:p.label,sq:true});
+    return;
+  }
+  var pool=TK.filter(function(d){return d.kind===p.kind;}).map(function(d){return d.id;});
+  _tkOpenOverlay({cards:_pickDistinct(pool,p.show),picks:p.pick,source:'pack',title:p.label});
 }
 
 var ALL_PACK_TYPES=[
@@ -101,11 +219,11 @@ function refreshShop(){
   shopPool.bounties=_generateBounties(3,_bActiveWords).map(function(sc){
     return{theme:sc.theme,words:sc.words,cost:2,accepted:false};
   });
-  shopPool.slotSpinCost=5;
+  shopPool.slotCosts={budget:SLOT_MACHINES.budget.base,regular:SLOT_MACHINES.regular.base,rare:SLOT_MACHINES.rare.base};
   shopPool.slotSpinsThisVisit=0;
   shopPool.slotResult=null;
   shopPool.slotMode=null;
-  shopPool.slotArmed='stamps';
+  shopPool.slotArmed='budget';
 }
 
 function enterShopPhase(){
@@ -197,8 +315,7 @@ function renderShop(){
   var n=(S.stickerInventory||[]).length;
   var qbar=document.getElementById('shop-queue-bar');
   if(qbar){qbar.style.display=n>0?'block':'none';qbar.textContent=n+' sticker'+(n!==1?'s':'')+' in inventory — place during play.';}
-  var priceEl=document.getElementById('shop-slot-price');
-  if(priceEl)priceEl.textContent='$'+(shopPool.slotSpinCost||4);
+  _updateSlotPrice();
   if(typeof renderTkShop==='function'){renderTkShop();renderConsumables();}
   var sqItems=shopPool.sq||[];
   for(var pi=0;pi<2;pi++){
@@ -269,6 +386,7 @@ function initShopUI(){
   _initReels();
   _initSlotButtons();
   _initSlotTray();
+  _initSlotHelp();
   // STICKER REEL REMOVED — add back _initStickerReel() here when ready
 }
 
@@ -388,16 +506,17 @@ function _initSlotButtons(){
     hovered=getBtn(e);
     // Reel starts decelerating the moment the button is released
     _releaseFlick();
-    // Buttons arm the machine mode; the handle pulls the actual spin. The
-    // reel tint (set at flick peak by _flickReels) doubles as the mode light.
-    // Symbol mode is DEV-ONLY for now — without dev mode grey is just a flick.
-    var armMap={grey:'symbols',yellow:'stamps',pink:'stamps'};
+    // Buttons arm a machine; the handle pulls the actual spin. The reel tint
+    // (set at flick peak by _flickReels) doubles as the mode light.
+    var armMap={grey:'budget',yellow:'regular',pink:'rare'};
     var newMode=armMap[wasPressed.name];
-    if(newMode==='symbols'&&!S.devMode)newMode=null;
     if(newMode&&newMode!==shopPool.slotArmed){
       shopPool.slotArmed=newMode;
-      toast(newMode==='symbols'?'Symbol machine armed — pull the handle!':'Prize machine armed — pull the handle!');
+      toast(SLOT_MACHINES[newMode].name+' machine armed ($'+_slotCost(newMode)+' a spin) — pull the handle!');
+      // Paytable pop-up follows the armed machine
+      if(document.getElementById('shop-slot-help-panel'))_renderSlotHelp();
     }
+    _updateSlotPrice();
     if(animTimer){
       pendingRelease={wasPressed:wasPressed};
     } else {
@@ -412,6 +531,93 @@ function _initSlotButtons(){
     if(hoverTimer){clearTimeout(hoverTimer);hoverTimer=null;}
     pressed=null;hovered=null;update();
   });
+}
+
+// ── SLOT PAYTABLE (the "?" bubble left of the machine buttons) ──
+// Shows the ARMED machine's combos with mini sheet-crop sprites and the
+// effective probability of each row (p / table total, so the regular table's
+// 101-point spec and the rare table's 90-point spec display truthfully).
+function _slotPct(p,total){
+  var x=p*100/total;
+  var s=x<1?x.toFixed(2):x.toFixed(1);
+  return s.replace(/\.?0+$/,'')+'%';
+}
+
+function _slotPrizeLabel(o){
+  if(o.kind==='nothing')return'No prize';
+  if(o.kind==='gold')return'$'+o.amount;
+  if(o.kind==='stamp_one')return'1 '+o.rarity[0]+' stamp';
+  if(o.kind==='stamp_pick')return'Choice of '+(o.count||3)+' '+o.rarity[0]+' stamps';
+  var sz=o.size.charAt(0).toUpperCase()+o.size.slice(1);
+  if(o.kind==='pack_one')return sz+' pack';
+  if(o.kind==='pack_pick')return'Choice of 3 '+o.size+' packs'+(o.draw==='keyfirst'?' (key guaranteed)':'');
+  return'';
+}
+
+function _initSlotHelp(){
+  var canvas=document.getElementById('shop-canvas');if(!canvas)return;
+  var old=document.getElementById('shop-slot-help-btn');if(old&&old.parentNode)old.parentNode.removeChild(old);
+  _closeSlotHelp(true);
+  var btn=document.createElement('div');
+  btn.id='shop-slot-help-btn';
+  btn.textContent='?';
+  btn.style.cssText='position:absolute;left:1.2%;top:51.6%;width:3.4%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;'
+    +'background:rgba(10,10,26,0.85);border:1px solid #8a7a5a;border-radius:50%;color:#f0d080;'
+    +'font-family:\'Jersey 10\',Georgia,serif;font-size:clamp(10px,1.6vw,26px);line-height:1;'
+    +'cursor:pointer;z-index:6;user-select:none;';
+  btn.onmouseenter=function(){btn.style.background='rgba(30,30,60,0.95)';btn.style.color='#ffe8a0';};
+  btn.onmouseleave=function(){btn.style.background='rgba(10,10,26,0.85)';btn.style.color='#f0d080';};
+  btn.onclick=function(){
+    if(document.getElementById('shop-slot-help-panel'))_closeSlotHelp();
+    else _renderSlotHelp();
+  };
+  canvas.appendChild(btn);
+}
+
+function _closeSlotHelp(instant){
+  var p=document.getElementById('shop-slot-help-panel');
+  if(!p||!p.parentNode)return;
+  if(instant||p.dataset.closing){if(p.parentNode)p.parentNode.removeChild(p);return;}
+  p.dataset.closing='1';
+  p.style.transform='scale(0)';
+  setTimeout(function(){if(p.parentNode)p.parentNode.removeChild(p);},AT(160));
+}
+
+// Little pop-up anchored to the "?" — springs open from its top-left corner.
+function _renderSlotHelp(){
+  var canvas=document.getElementById('shop-canvas');if(!canvas)return;
+  _closeSlotHelp(true);
+  var machine=shopPool.slotArmed||'budget';
+  var md=SLOT_MACHINES[machine]||SLOT_MACHINES.budget;
+  var total=md.payouts.reduce(function(s,o){return s+o.p;},0);
+  var cr=canvas.getBoundingClientRect();
+  var mini=Math.max(8,Math.round(cr.width*0.022));
+  var panel=document.createElement('div');
+  panel.id='shop-slot-help-panel';
+  panel.style.cssText='position:absolute;left:1.5%;bottom:49.5%;width:40%;max-height:46%;overflow-y:auto;box-sizing:border-box;'
+    +'background:rgba(6,6,20,0.96);border:1px solid #5a5a8a;border-radius:6px;padding:1.2% 1.8%;z-index:20;cursor:pointer;'
+    +'box-shadow:0 4px 14px rgba(0,0,0,0.6);'
+    +'font-family:\'Jersey 10\',Georgia,serif;color:#c8c8e0;text-align:left;'
+    +'transform:scale(0);transform-origin:bottom left;'
+    +'transition:transform '+(AT(180)/1000)+'s cubic-bezier(0.34,1.56,0.64,1);will-change:transform;';
+  var html='<div style="font-size:clamp(10px,1.5vw,24px);color:'+md.priceColor+';margin-bottom:1.2%">'
+    +md.name+' spin — $'+_slotCost(machine)+' (+$'+md.inc+' per spin)</div>';
+  md.payouts.forEach(function(o){
+    var icons='';
+    if(o.sym){
+      var d=_symDef(o.sym);
+      for(var k=0;k<o.n;k++)icons+='<span style="display:inline-block;width:'+mini+'px;height:'+mini+'px;margin-right:2px;vertical-align:middle">'+_symSheetHTML(d)+'</span>';
+    } else icons='<span style="color:#666a8a">&mdash;</span>';
+    html+='<div style="display:flex;align-items:center;gap:2%;font-size:clamp(8px,1.15vw,19px);padding:0.4% 0">'
+      +'<div style="width:'+(mini*3+8)+'px;flex:none">'+icons+'</div>'
+      +'<div style="flex:1">'+_slotPrizeLabel(o)+'</div>'
+      +'<div style="flex:none;color:#f0e080">'+_slotPct(o.p,total)+'</div></div>';
+  });
+  html+='<div style="font-size:clamp(7px,0.95vw,15px);color:#8888aa;margin-top:1.2%">Arm a machine button to see its odds &middot; click to close</div>';
+  panel.innerHTML=html;
+  panel.onclick=function(){_closeSlotHelp();};
+  canvas.appendChild(panel);
+  requestAnimationFrame(function(){panel.style.transform='scale(1)';});
 }
 
 function _initSlotTray(){
@@ -493,7 +699,8 @@ function _buildReelStrip(items,itemH,numCopies){
       item.className='reel-item';
       item.style.height=itemH+'px';
       item.dataset.sqid=items[ii];
-      var iconHtml=d.iconPng?'<img src="'+d.iconPng+'" alt="">':d.icon;
+      var iconHtml=d.sheetIdx!==undefined?_symSheetHTML(d)
+        :d.iconPng?'<img src="'+d.iconPng+'" alt="">':d.icon;
       item.innerHTML='<div class="reel-icon">'+iconHtml+'</div>';
       strip.appendChild(item);
     }
@@ -504,7 +711,8 @@ function _buildReelStrip(items,itemH,numCopies){
 function _initReels(){
   _stopReels();
   _reelResultShown=false;
-  for(var _ri=0;_ri<3;_ri++){var _rel=document.getElementById('shop-reel-'+(_ri+1));if(_rel){_rel.classList.remove('reel-common','reel-rare');if(S.devMode&&shopPool.slotArmed==='symbols')_rel.classList.add('reel-common');}}
+  var _armDef=SLOT_MACHINES[shopPool.slotArmed];
+  for(var _ri=0;_ri<3;_ri++){var _rel=document.getElementById('shop-reel-'+(_ri+1));if(_rel){_rel.classList.remove('reel-common','reel-rare');if(_armDef&&_armDef.tint)_rel.classList.add(_armDef.tint);}}
   var allIds=SQ.map(function(d){return d.id;});
   function cosmShuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
   function seedShuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
@@ -518,30 +726,34 @@ function _initReels(){
     // The painted window in the shop art is taller than one reel unit; center the landed
     // item within that extra height instead of leaving it flush against the top edge.
     var centerPad=Math.max(0,(rect.height-itemH)/2);
-    var cosmItems=cosmShuffle(allIds);
     var resItems=seedShuffle(allIds);
-    var N=cosmItems.length;
+    var N=resItems.length;
     var loopLen=N*itemH;
     var vThreshEst=REEL_SNAP_THRESH*itemH;
     var totalDistEst=REEL_FAST_SPEED*REEL_FLICK_DECEL_TAU*(1-vThreshEst/REEL_FAST_SPEED);
     var numCopies=Math.max(3,Math.ceil((loopLen+totalDistEst)/loopLen)+1);
-    var cosStrip=_buildReelStrip(cosmItems,itemH,numCopies);
     var resStrip=_buildReelStrip(resItems,itemH,numCopies);
     resStrip.style.display='none';
-    el.appendChild(cosStrip);
-    el.appendChild(resStrip);
-    // Symbol strip (grey-button spin): 6 symbols per loop, so it needs far
+    // Symbol strip (all standard spins): 6 symbols per loop, so it needs far
     // more copies to cover the same decel distance.
     var symItems=seedShuffle(SLOT_SYMBOLS.map(function(s){return s.id;}));
     var symLoopLen=symItems.length*itemH;
     var symNumCopies=Math.max(3,Math.ceil((symLoopLen+totalDistEst)/symLoopLen)+1);
     var symStrip=_buildReelStrip(symItems,itemH,symNumCopies);
     symStrip.style.display='none';
+    // Idle cosmetic strip shows the slot symbols too (unseeded shuffle). It
+    // only idles/flicks (offset wraps every loop) but reuse the symbol copy
+    // count so it can never scroll out of bounds.
+    var cosmItems=cosmShuffle(SLOT_SYMBOLS.map(function(s){return s.id;}));
+    var cosN=cosmItems.length;
+    var cosStrip=_buildReelStrip(cosmItems,itemH,symNumCopies);
+    el.appendChild(cosStrip);
+    el.appendChild(resStrip);
     el.appendChild(symStrip);
-    var startOff=Math.random()*(N*itemH);
+    var startOff=Math.random()*(cosN*itemH);
     cosStrip.style.transform='translateY('+(centerPad-startOff)+'px)';
     _reels.push({el:el,cosStrip:cosStrip,resStrip:resStrip,
-      cosmItems:cosmItems,resItems:resItems,itemH:itemH,N:N,numCopies:numCopies,centerPad:centerPad,
+      cosmItems:cosmItems,resItems:resItems,itemH:itemH,N:N,cosN:cosN,numCopies:numCopies,centerPad:centerPad,
       symStrip:symStrip,symItems:symItems,symN:symItems.length,symNumCopies:symNumCopies,symMode:false,
       offset:startOff,state:'idle',accelT0:0,
       resultId:null,resultIdx:-1,snapTarget:0,
@@ -562,7 +774,7 @@ function _reelLoop(ts){
     var r=_reels[ri];
     if(!r||r.state==='stopped')continue;
     var strip=r.symMode?r.symStrip:(r.useResultStrip?r.resStrip:r.cosStrip);
-    var loopLen=(r.symMode?r.symN:r.N)*r.itemH;
+    var loopLen=(r.symMode?r.symN:r.useResultStrip?r.N:r.cosN)*r.itemH;
     if(r.state==='idle'){
       r.offset+=REEL_IDLE_SPEED*dt;
       if(r.offset>=loopLen)r.offset-=loopLen;
@@ -662,6 +874,24 @@ function _stopReelAt(ri,resultId){
       var elA=allItems[copy*N+snapInLoop];
       var elB=allItems[copy*N+curResultIdx];
       if(elA&&elB){var tmp=elA.innerHTML;elA.innerHTML=elB.innerHTML;elB.innerHTML=tmp;var tmpSqid=elA.dataset.sqid;elA.dataset.sqid=elB.dataset.sqid;elB.dataset.sqid=tmpSqid;}
+    }
+  }
+  // Near-miss tease: park the teased symbol one slot below the landed one so
+  // it peeks into the window ("stopped one short"). Only symbol-mode results
+  // carry nearMiss (legacy results are arrays), and the result swap above
+  // already owns the landed slot — nm.sym is never the result symbol.
+  var nm=r.symMode&&shopPool.slotResult&&shopPool.slotResult.nearMiss;
+  if(nm&&nm.reel===ri){
+    var nearSlot=(snapInLoop+1)%N;
+    var nearIdx=items.indexOf(nm.sym);
+    if(nearIdx>=0&&nearIdx!==nearSlot&&nearSlot!==snapInLoop){
+      var disp2=items[nearSlot];
+      items[nearSlot]=nm.sym;items[nearIdx]=disp2;
+      var allItems2=stripEl.querySelectorAll('.reel-item');
+      for(var c2=0;c2<copies;c2++){
+        var eA=allItems2[c2*N+nearSlot],eB=allItems2[c2*N+nearIdx];
+        if(eA&&eB){var t2=eA.innerHTML;eA.innerHTML=eB.innerHTML;eB.innerHTML=t2;var ts2=eA.dataset.sqid;eA.dataset.sqid=eB.dataset.sqid;eB.dataset.sqid=ts2;}
+      }
     }
   }
   r.resultIdx=snapInLoop;
@@ -806,10 +1036,12 @@ function _showPillowPrizes(ids,canvas){
   canvas.appendChild(dismissEl);
   _pillowEls.push(dismissEl);
 
-  // Prize icons on each pillow (a single prize sits on the centre pillow)
+  // Prize icons on each pillow (a single prize sits on the centre pillow).
+  // Entries are SQ ids (stamps/stickers) or pack descriptors from _slotPackDef.
   var pOff=ids.length===1?1:0;
   ids.forEach(function(id,i){
     if(i+pOff>=_PILLOWS.length)return;
+    if(typeof id==='object'&&id&&id.pack){_showPackPillow(id,i,pOff,canvas);return;}
     var d=sqd(id);if(!d)return;
     var p=_PILLOWS[i+pOff];
     // Icon size in canvas %: pillows are ~35×25 native; fill most of each
@@ -840,6 +1072,40 @@ function _showPillowPrizes(ids,canvas){
   });
 }
 
+// A pack prize on a pillow: kind emoji + size label. Clicking closes the tray
+// and opens the pack through the same overlay path as a bought shop pack.
+function _showPackPillow(pk,i,pOff,canvas){
+  var p=_PILLOWS[i+pOff];
+  var wPct=12.5,hPct=16.25;
+  var leftPct=p.cx/256*100-wPct/2;
+  var topPct=p.cy/160*100-hPct/2;
+  var emoji=pk.kind==='key'?'🗝️':pk.kind==='tile'?'🔤':pk.kind==='sticker'?'🏷️':'🎟️';
+  var color=pk.kind==='key'?'#9ab8ff':pk.kind==='tile'?'#8fe0a0':pk.kind==='sticker'?'#a8e048':'#f0c060';
+  var el=document.createElement('div');
+  el.style.cssText='position:absolute;left:'+leftPct+'%;top:'+topPct+'%;width:'+wPct+'%;height:'+hPct+'%;z-index:15;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;transform:scale(0);transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);will-change:transform;';
+  el.innerHTML='<span style="font-size:clamp(8px,2vw,32px)">'+emoji+'</span>'
+    +'<span style="font-size:clamp(6px,0.9vw,14px);color:'+color+';font-family:\'Jersey 10\',Georgia,serif;white-space:nowrap">'+(pk.size==='regular'?'REG':pk.size.toUpperCase())+'</span>';
+  el.onclick=function(){
+    _pillowEls.forEach(function(e){if(e&&e.parentNode)e.parentNode.removeChild(e);});
+    _pillowEls=[];
+    _shopTipHideImmediate();
+    _closeSlotTray(function(){
+      _resetSymbolReels();
+      toast(pk.label+' won!');
+      _openWonPack(pk);
+    });
+  };
+  var tip=pk.kind==='tile'
+    ?'Reveals '+pk.show+' tiles — choose '+(pk.pick>1?'up to '+pk.pick:'1')+' to add to your bag.'
+    :pk.kind==='sticker'
+    ?'Opens '+pk.show+' stickers — choose '+pk.pick+' to place on your board.'
+    :'Opens '+pk.show+' '+(pk.kind==='key'?'keys':'tickets')+' — choose '+pk.pick+'.';
+  _tkHoverTip(el,pk.label,tip,color);
+  canvas.appendChild(el);
+  _pillowEls.push(el);
+  setTimeout(function(){el.style.transform='scale(1)';},AT(i*100+60));
+}
+
 function _dismissPillowPrizes(){
   _pillowEls.forEach(function(e){if(e&&e.parentNode)e.parentNode.removeChild(e);});
   _pillowEls=[];
@@ -850,7 +1116,7 @@ function _dismissPillowPrizes(){
     if(_reels){for(var ri=0;ri<_reels.length;ri++){
       var r=_reels[ri];if(!r)continue;
       r.state='idle';r.resultId=null;r.resultIdx=-1;r.useResultStrip=false;r.symMode=false;
-      var ll=r.N*r.itemH;r.offset=((r.offset%ll)+ll)%ll;
+      var ll=r.cosN*r.itemH;r.offset=((r.offset%ll)+ll)%ll;
       r.resStrip.style.display='none';r.symStrip.style.display='none';r.cosStrip.style.display='';
       r.cosStrip.style.transform='translateY('+(r.centerPad-r.offset)+'px)';
     }}
@@ -870,7 +1136,7 @@ function _pickReelResult(id){
     for(var ri=0;ri<_reels.length;ri++){
       var r=_reels[ri];if(!r)continue;
       r.state='idle';r.resultId=null;r.resultIdx=-1;r.useResultStrip=false;r.symMode=false;
-      var loopLen=r.N*r.itemH;
+      var loopLen=r.cosN*r.itemH;
       r.offset=((r.offset%loopLen)+loopLen)%loopLen;
       r.resStrip.style.display='none';
       r.symStrip.style.display='none';
@@ -968,25 +1234,45 @@ function _releaseFlick(){
   }
 }
 
-// Shared spin gate + cost: both machines draw from the same escalating pot.
-function _chargeSlotSpin(){
+// Next spin price for a machine (falls back to base if costs aren't rolled yet).
+function _slotCost(machine){
+  var md=SLOT_MACHINES[machine]||SLOT_MACHINES.budget;
+  return(shopPool.slotCosts&&shopPool.slotCosts[machine])||md.base;
+}
+
+// The price window shows the ARMED machine's next spin cost, in its colour.
+function _updateSlotPrice(){
+  var el=document.getElementById('shop-slot-price');if(!el)return;
+  var machine=shopPool.slotArmed||'budget';
+  var md=SLOT_MACHINES[machine]||SLOT_MACHINES.budget;
+  el.textContent='$'+_slotCost(machine);
+  el.style.color=md.priceColor;
+}
+
+// Spin gate + cost. Each machine has its own escalating price (budget +$1,
+// regular +$2, rare +$4 per spin of THAT machine), reset per shop visit.
+function _chargeSlotSpin(machine){
   if(_trayIsOpen){toast('Close the tray first!');return false;}
   if(document.querySelector('.reel-item.reel-sel')){toast('Pick a prize from the reels first!');return false;}
   // Reels already committed to a spin — a second spin would double-charge and
   // leave the first spin's stop timers pointing at the wrong results.
   if(_reels&&_reels.some(function(r){return r&&r.state!=='idle'&&r.state!=='flick';}))return false;
-  var cost=shopPool.slotSpinCost||4;
+  var cost=_slotCost(machine);
   if(!spendGold(cost))return false;
+  _closeSlotHelp(); // pop-up would cover the reels mid-spin
+  if(!shopPool.slotCosts)shopPool.slotCosts={};
+  shopPool.slotCosts[machine]=cost+(SLOT_MACHINES[machine]||SLOT_MACHINES.budget).inc;
   shopPool.slotSpinsThisVisit=(shopPool.slotSpinsThisVisit||0)+1;
-  shopPool.slotSpinCost=5+shopPool.slotSpinsThisVisit*3;
   if(hasStamp('skilled_gambler'))S.gamblerSpins=(S.gamblerSpins||0)+1;
   renderHUD();renderShop();
   if(hasStamp('skilled_gambler'))stampScaleBounce('skilled_gambler');
   return true;
 }
 
+// Legacy stamp-icon spin — kept ONLY for the tutorial's authored results
+// (TUT.forceSlot). Regular play always routes through spinSymbolSlots.
 function spinSlots(){
-  if(!_chargeSlotSpin())return;
+  if(!_chargeSlotSpin('budget'))return;
   var results=wrandN(SQ.map(function(d){return d.id;}),{common:5,uncommon:2,rare:0.8,legendary:0.1},3);
   if(window.TUT&&TUT.active&&TUT.forceSlot){results=TUT.forceSlot.slice();TUT.forceSlot=null;}
   shopPool.slotMode='stamps';
@@ -1025,24 +1311,26 @@ function spinSlots(){
   setTimeout(function(){_stopReelAt(2,results[2]);},AT(2200));
 }
 
-// The handle spins whichever machine the buttons have armed.
-// Symbol mode is dev-only for now — the devMode check also disarms it safely
-// if dev mode is toggled off while symbols are armed.
+// The handle spins whichever machine the buttons have armed. The tutorial's
+// authored slot lesson still uses the legacy stamp-icon spin.
 function spinArmedSlots(){
-  if(S.devMode&&shopPool.slotArmed==='symbols')spinSymbolSlots();
-  else spinSlots();
+  if(window.TUT&&TUT.active&&TUT.forceSlot){spinSlots();return;}
+  spinSymbolSlots(shopPool.slotArmed||'budget');
 }
 
-// ── SYMBOL SPIN (armed by the grey button, fired by the handle) ──
+// ── SYMBOL SPIN (fired by the handle on whichever machine is armed) ──
 // Same reel choreography as spinSlots, but on the symbol strip. The outcome
-// is rolled up front (SYMBOL_PAYOUTS) and the reels dressed to match; when a
-// pair lands on reels 1+2, reel 3's stop is delayed for anticipation.
-function spinSymbolSlots(){
-  if(!_chargeSlotSpin())return;
-  var outcome=_rollSymbolPayout();
-  var dress=_dressSymbolReels(outcome);
+// is rolled up front from the machine's payout table and the reels dressed to
+// match; when a pair lands on reels 1+2, reel 3's stop is delayed for
+// anticipation.
+function spinSymbolSlots(machine){
+  var md=SLOT_MACHINES[machine]||SLOT_MACHINES.budget;
+  if(!_chargeSlotSpin(machine))return;
+  var outcome=_rollSlotPayout(md);
+  var dressObj=_dressSymbolReels(outcome,machine);
+  var dress=dressObj.symbols;
   shopPool.slotMode='symbols';
-  shopPool.slotResult={outcome:outcome,symbols:dress};
+  shopPool.slotResult={outcome:outcome,symbols:dress,machine:machine,nearMiss:dressObj.nearMiss};
   _reelResultShown=false;
   if(_flickColorTimer){clearTimeout(_flickColorTimer);_flickColorTimer=null;}
   if(_reels){
@@ -1050,9 +1338,9 @@ function spinSymbolSlots(){
     for(var ri=0;ri<_reels.length;ri++){
       var r=_reels[ri];if(!r)continue;
       var startSpeed=_flickSpeedNow(r,_now);
-      // Keep the grey tint through the spin — it's the symbol-mode light
+      // Keep the machine's tint through the spin — it's the mode light
       var reelEl=document.getElementById('shop-reel-'+(ri+1));
-      if(reelEl){reelEl.classList.remove('reel-rare');reelEl.classList.add('reel-common');}
+      if(reelEl){reelEl.classList.remove('reel-common','reel-rare');if(md.tint)reelEl.classList.add(md.tint);}
       // Splice: swap to symbol strip at the same fractional scroll position
       r.offset=r.offset%(r.symN*r.itemH);
       r.cosStrip.style.display='none';
@@ -1086,19 +1374,21 @@ function _resolveSymbolPayout(){
       toast('🎰 '+(o.n===3?'Triple':'Double')+' gold! +$'+o.amount);
       _resetSymbolReels();return;
     }
-    var ids;
-    if(o.kind==='stamp_fixed')ids=o.ids.slice();
-    else if(o.kind==='stamp_pick')ids=_pickDistinct(_stampsByRarity(o.rarity),3);
-    else if(o.kind==='stamp_one')ids=_pickDistinct(_stampsByRarity(o.rarity),1);
-    else ids=_pickDistinct(_stickersByRarity(o.rarity),3); // sticker_pick
-    if(!ids.length){toast('🎰 No match!');_resetSymbolReels();return;}
-    // Stamp prize with a full bar → gold consolation at sell value
-    if(o.kind.indexOf('stamp')===0&&(S.stamps||[]).length>=5){
-      var d=sqd(ids[0]);var g=Math.max(1,Math.floor(((d&&d.cost)||4)/2));
-      S.gold+=g;renderHUD();
-      toast('Stamp bar full! +$'+g+' instead');
-      _resetSymbolReels();return;
+    if(o.kind==='pack_pick'||o.kind==='pack_one'){
+      var kinds=_slotRollPackKinds(o.draw,o.kind==='pack_pick'?3:1);
+      var packs=kinds.map(function(k){return _slotPackDef(k,o.size);});
+      var pcanvas=document.getElementById('shop-canvas');
+      if(!pcanvas||!packs.length){_resetSymbolReels();return;}
+      _openSlotTray(function(){_showPillowPrizes(packs,pcanvas);});
+      return;
     }
+    var ids;
+    if(o.kind==='stamp_pick')ids=_pickDistinct(_stampsByRarity(o.rarity),o.count||3);
+    else ids=_pickDistinct(_stampsByRarity(o.rarity),1); // stamp_one
+    if(!ids.length){toast('🎰 No match!');_resetSymbolReels();return;}
+    // Full stamp bar is NOT a consolation case — the tray still opens so the
+    // player can sell a stamp from the shop bar to make room (the pillow
+    // click handler keeps the prize up until there's space or it's dismissed).
     var canvas=document.getElementById('shop-canvas');
     if(!canvas){_resetSymbolReels();return;}
     _openSlotTray(function(){_showPillowPrizes(ids,canvas);});
@@ -1116,7 +1406,7 @@ function _resetSymbolReels(){
     r.symStrip.style.display='none';
     r.resStrip.style.display='none';
     r.cosStrip.style.display='';
-    var ll=r.N*r.itemH;r.offset=((r.offset%ll)+ll)%ll;
+    var ll=r.cosN*r.itemH;r.offset=((r.offset%ll)+ll)%ll;
     r.cosStrip.style.transform='translateY('+(r.centerPad-r.offset)+'px)';
   }
 }

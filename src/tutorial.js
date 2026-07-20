@@ -539,7 +539,7 @@ function _tutBuildScript(){
      },
      holes:function(){return[_tutRect('#shop-handle-hit',6)];},
      advanceWhen:function(){return !!(shopPool.slotResult&&shopPool.slotResult.length);},
-     text:'A spin costs $5 and shows three prizes — you keep one. Drag the handle down and release.'},
+     text:'A spin costs $2 and shows three prizes — you keep one. Drag the handle down and release.'},
 
     {title:'Claim a Prize',passthrough:true,revealOnHoles:true,revealDelay:1200,
      holes:function(){return _tutPillowHoles('pressure_cooker');},
@@ -638,7 +638,7 @@ function _tutBuildScript(){
      onEnter:function(){TUT.forceSlot=['yankee','hotel','kilo'];},
      holes:function(){return[_tutRect('#shop-handle-hit',6)];},
      advanceWhen:function(){return !!(shopPool.slotResult&&shopPool.slotResult.length);},
-     text:'Pull the handle again ($5).'},
+     text:'Pull the handle again ($2).'},
 
     {title:'Claim the Yankee',passthrough:true,revealOnHoles:true,revealDelay:1200,
      holes:function(){return _tutPillowHoles('yankee');},
