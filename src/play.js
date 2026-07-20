@@ -67,7 +67,7 @@ async function playWord(){
   // word (main or cross) can trigger an egg; each distinct egg fires once.
   var _eggApplied=false,_eggSeen={};
   for(var _egi=0;_egi<_words.length;_egi++){var _egw=_words[_egi].word;if(_eggSeen[_egw])continue;_eggSeen[_egw]=1;if(applyEasterEgg(_egw,nt))_eggApplied=true;}
-  if(_eggApplied)await new Promise(function(r){setTimeout(r,420);});
+  if(_eggApplied)await new Promise(function(r){setTimeout(r,AT(420));});
   // Bounty check — any formed word (main or cross) can complete a bounty scroll.
   // Glow starts NOW, reward applied inside scoring, slide-out after scoring.
   // _matchedBounties: one entry per completed scroll {scrollIdx, reward, idxs}.
@@ -319,7 +319,7 @@ async function playWord(){
   if(_playBtn)_playBtn.disabled=false;
   saveGame();
   if(window.TUT&&TUT.active)tutEvent('word-played',{word:main.word});
-  if(S.score>=tgt())setTimeout(roundComplete,700);
+  if(S.score>=tgt())setTimeout(roundComplete,AT(700));
   else if(S.plays===0)setTimeout(function(){
     // Safety Net: if score >= 25% of target, advance to shop and destroy the stamp
     var _snIdx=-1;for(var _si=0;_si<(S.stamps||[]).length;_si++){if(S.stamps[_si].id==='safety_net'){_snIdx=_si;break;}}

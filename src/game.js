@@ -478,7 +478,7 @@ function _bagToggleExpand(letter,clickedIdx,container,allTiles){
       _bagPendingExpand=null;
       if(_bagExpandGen!==g)return;
       _bagExpandLetter(letter,clickedIdx,container,allTiles,0.7);
-    },Math.round(_priseMs*0.7)+273);
+    },Math.round(AT(_priseMs*0.7+273)));
   }else{
     // Nothing expanded — go straight to expand (no collapse, no animation pause)
     _bagExpandLetter(letter,clickedIdx,container,allTiles);
@@ -486,7 +486,7 @@ function _bagToggleExpand(letter,clickedIdx,container,allTiles){
 }
 
 function _bagExpandLetter(letter,clickedIdx,container,allTiles,speedMult){
-  speedMult=speedMult||1;
+  speedMult=(speedMult||1)/ASPD(); // global animation-speed setting compounds with caller's multiplier
   var gen=++_bagExpandGen;
   container.dataset.expandedLetter=letter;
   var items=Array.from(container.querySelectorAll('.bag-float-item'));
@@ -802,7 +802,7 @@ function _bagExpandLetter(letter,clickedIdx,container,allTiles,speedMult){
 }
 
 function _bagCollapseLetter(container,speedMult){
-  speedMult=speedMult||1;
+  speedMult=(speedMult||1)/ASPD(); // global animation-speed setting compounds with caller's multiplier
   var gen=++_bagExpandGen;
   // Clear state immediately so rapid clicks see consistent state
   delete container.dataset.expandedLetter;
@@ -861,6 +861,7 @@ function _bagCollapseLetter(container,speedMult){
 // bag transition swaps what's underneath. Appended immediately (covering the
 // swap), fade starts on the next frame, removed when done.
 function _fadeBridge(color,ms){
+  ms=AT(ms);
   var bridge=document.createElement('div');
   bridge.style.cssText='position:fixed;inset:0;background:'+color+';z-index:9990;pointer-events:none;transition:opacity '+(ms/1000)+'s ease;';
   document.body.appendChild(bridge);
@@ -909,7 +910,7 @@ function _bagTransitionOpen(srcSprId,onDone,onNearDone){
       if(s.spr)s.spr.style.visibility='';
       if(onDone)onDone();
     }
-  },64);
+  },AT(64));
 }
 
 function _bagTransitionClose(srcSprId,onDone){
@@ -925,7 +926,7 @@ function _bagTransitionClose(srcSprId,onDone){
       if(s.spr)s.spr.style.visibility='';
       if(onDone)onDone();
     }
-  },64);
+  },AT(64));
 }
 
 function openBagModal(){
@@ -952,7 +953,7 @@ function openBagModal(){
     var tilesDiv=document.getElementById('bag-ui-tiles');
     _renderBagFloatTiles(tilesDiv,S.bag,73);
     tilesDiv.style.animation='none';void tilesDiv.offsetHeight;
-    tilesDiv.style.animation='bagTunnelZoom 0.52s ease-out both';
+    tilesDiv.style.animation='bagTunnelZoom '+(AT(520)/1000)+'s ease-out both';
   });
 }
 
@@ -969,11 +970,21 @@ function closeBagUI(){
 }
 
 // ─── Tile Audio ───────────────────────────────────────────────────────────────
-var _audioCtx=null,_scoreDingN=0;
+var _audioCtx=null,_scoreDingN=0,_masterGain=null;
 function _getAudioCtx(){
-  if(!_audioCtx)_audioCtx=new(window.AudioContext||window['webkitAudioContext'])();
+  if(!_audioCtx){
+    _audioCtx=new(window.AudioContext||window['webkitAudioContext'])();
+    _masterGain=_audioCtx.createGain();
+    _masterGain.gain.value=SETTINGS.volume;
+    _masterGain.connect(_audioCtx.destination);
+  }
   if(_audioCtx.state==='suspended')_audioCtx.resume();
   return _audioCtx;
+}
+function setVolume(v){
+  SETTINGS.volume=Math.max(0,Math.min(1,v));
+  saveSettings();
+  if(_masterGain)_masterGain.gain.value=SETTINGS.volume;
 }
 function _playScoreDing(){
   try{
@@ -993,7 +1004,7 @@ function _playScoreDing(){
     var comp=ctx.createDynamicsCompressor();
     comp.threshold.value=-14;comp.knee.value=8;comp.ratio.value=4;
     comp.attack.value=0.002;comp.release.value=0.1;
-    comp.connect(ctx.destination);
+    comp.connect(_masterGain);
     var lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3400;lp.Q.value=0.6;
     lp.connect(comp);
     for(var o=0;o<NUM_OCTS;o++){
@@ -1040,7 +1051,7 @@ function _playCoinClink(down){
       g.gain.setValueAtTime(0,now);
       g.gain.linearRampToValueAtTime(amp,now+0.004);
       g.gain.exponentialRampToValueAtTime(0.001,now+0.15);
-      osc.connect(g);g.connect(ctx.destination);
+      osc.connect(g);g.connect(_masterGain);
       osc.start(now);osc.stop(now+0.17);
     }
     // Short noise transient for the "clink" attack.
@@ -1052,7 +1063,7 @@ function _playCoinClink(down){
     var filt=ctx.createBiquadFilter();filt.type='bandpass';
     filt.frequency.value=(down?2600:4600)*pv;filt.Q.value=5;
     var ng=ctx.createGain();ng.gain.setValueAtTime(0.08,now);ng.gain.exponentialRampToValueAtTime(0.001,now+0.02);
-    src.connect(filt);filt.connect(ng);ng.connect(ctx.destination);src.start(now);
+    src.connect(filt);filt.connect(ng);ng.connect(_masterGain);src.start(now);
   }catch(e){}
 }
 function _playReelTick(){
@@ -1065,7 +1076,7 @@ function _playReelTick(){
     var src=ctx.createBufferSource();src.buffer=buf;
     var filt=ctx.createBiquadFilter();filt.type='bandpass';filt.frequency.value=2800;filt.Q.value=6;
     var g=ctx.createGain();g.gain.setValueAtTime(0.07,now);g.gain.exponentialRampToValueAtTime(0.001,now+0.018);
-    src.connect(filt);filt.connect(g);g.connect(ctx.destination);src.start(now);
+    src.connect(filt);filt.connect(g);g.connect(_masterGain);src.start(now);
   }catch(e){}
 }
 function _playTileClick(type){
@@ -1096,7 +1107,7 @@ function _playTileClick(type){
       gain.gain.setValueAtTime(0.2,now);
       gain.gain.exponentialRampToValueAtTime(0.001,now+0.035);
     }
-    src.connect(filt);filt.connect(gain);gain.connect(ctx.destination);
+    src.connect(filt);filt.connect(gain);gain.connect(_masterGain);
     src.start(now);
   }catch(e){}
 }
@@ -1112,11 +1123,11 @@ function _playSpringBoing(){
     var ckSrc=ctx.createBufferSource();ckSrc.buffer=ckBuf;
     var ckF=ctx.createBiquadFilter();ckF.type='bandpass';ckF.frequency.value=1600;ckF.Q.value=2.2;
     var ckG=ctx.createGain();ckG.gain.setValueAtTime(0.32,now);ckG.gain.exponentialRampToValueAtTime(0.001,now+0.038);
-    ckSrc.connect(ckF);ckF.connect(ckG);ckG.connect(ctx.destination);ckSrc.start(now);
+    ckSrc.connect(ckF);ckF.connect(ckG);ckG.connect(_masterGain);ckSrc.start(now);
     // Descending boing: fundamental sine 500→65 Hz
     var osc=ctx.createOscillator();osc.type='sine';
     var env=ctx.createGain();
-    osc.connect(env);env.connect(ctx.destination);
+    osc.connect(env);env.connect(_masterGain);
     osc.frequency.setValueAtTime(500,now);
     osc.frequency.exponentialRampToValueAtTime(65,now+0.58);
     env.gain.setValueAtTime(0,now);
@@ -1125,7 +1136,7 @@ function _playSpringBoing(){
     // Bright harmonic twang: triangle, drops faster
     var osc2=ctx.createOscillator();osc2.type='triangle';
     var env2=ctx.createGain();
-    osc2.connect(env2);env2.connect(ctx.destination);
+    osc2.connect(env2);env2.connect(_masterGain);
     osc2.frequency.setValueAtTime(1000,now);
     osc2.frequency.exponentialRampToValueAtTime(130,now+0.26);
     env2.gain.setValueAtTime(0,now);

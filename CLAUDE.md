@@ -18,6 +18,7 @@ Open `index.html` directly in a browser also works.
 | File | Role |
 |------|------|
 | `index.html` | All CSS + HTML structure. Loads every JS file via `<script>` tags. |
+| `src/version.js` | `GAME_VERSION` shown at the bottom of the dropdown menu. Base is hand-edited; build number auto-bumped every commit by `scripts/git-hooks/pre-commit` (enabled via `git config core.hooksPath scripts/git-hooks`). |
 | `src/data.js` | Constants: `B=15` (board size), `LS` (letter scores), `DIST` (tile counts), `BOARDS`/`CONSTRAINTS` (progression), `setTileState` (tile state machine), utility fns (`uid`, `_rng`, `shuffle`, `sqd`). `SQ` sticker defs live in `src/stickers/`. |
 | `src/game.js` | Global state `S`, `startGame`, `roundComplete`/`advanceRound`, `showGO`, `toast`, modals, bag modal + letter expand/collapse, WebAudio SFX, `transformTile`, `openBlankChooser`, `hasStamp`/`countStamp`. |
 | `src/save.js` | localStorage run persistence: `saveGame`, `loadGame`, `resumeGame`, `clearSave`. |

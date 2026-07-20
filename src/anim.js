@@ -35,7 +35,7 @@ function animBountySlideOut(chipIndex) {
       + 'width:' + chipR.width + 'px;height:' + chipR.height + 'px;z-index:9998;pointer-events:none;';
     document.body.appendChild(clone);
     chip.style.visibility = 'hidden';
-    var slideOutDur = 600;
+    var slideOutDur = AT(600);
     var slideOutDist = chipR.left + chipR.width + 20;
     var slideStart = performance.now();
     function animateSlide(now) {
@@ -46,7 +46,7 @@ function animBountySlideOut(chipIndex) {
       if (tOut < 1) { requestAnimationFrame(animateSlide); return; }
       clone.remove();
       if (!belowChips.length) { resolve(); return; }
-      var slideUpDur = 500;
+      var slideUpDur = AT(500);
       var upStart = performance.now();
       function animateUp(now2) {
         var tUp = Math.min(1, (now2 - upStart) / slideUpDur);
@@ -86,7 +86,7 @@ function _bagSpriteIntro(state, onDone) {
   function next() {
     state.img.src = 'Assets/animations/bag/bag-frame' + frames[fi] + '.png';
     fi++;
-    if (fi < frames.length) setTimeout(next, 80);
+    if (fi < frames.length) setTimeout(next, AT(80));
     else onDone();
   }
   next();
@@ -98,7 +98,7 @@ function _bagSpriteShakeStart(state) {
   state.shakeInterval = setInterval(function() {
     state.img.src = 'Assets/animations/bag/bag-frame' + frames[fi % frames.length] + '.png';
     fi++;
-  }, 100);
+  }, AT(100));
 }
 
 function _bagSpriteOutro(state, bagEl, onDone) {
@@ -108,7 +108,7 @@ function _bagSpriteOutro(state, bagEl, onDone) {
   function next() {
     state.img.src = 'Assets/animations/bag/bag-frame' + frames[fi] + '.png';
     fi++;
-    if (fi < frames.length) setTimeout(next, 80);
+    if (fi < frames.length) setTimeout(next, AT(80));
     else { state.overlay.remove(); bagEl.style.visibility = ''; if(window._bagSpriteReset)window._bagSpriteReset(); onDone(); }
   }
   next();
@@ -140,19 +140,19 @@ function animBoardToShop(onDone) {
   // Play intro, then start shake loop
   _bagSpriteIntro(bagState, function() { _bagSpriteShakeStart(bagState); });
 
-  var T = 1500;
+  var T = AT(1500);
   var done = 0;
 
   for (var i = 0; i < N; i++) {
     (function(tile, idx) {
       var delay = T * Math.sqrt(idx / N);
-      var flightDur = Math.max(200, 680 - 460 * (idx / N));
+      var flightDur = AT(Math.max(200, 680 - 460 * (idx / N)));
       setTimeout(function() {
         _liftAndFly(tile, layer, tx, ty, flightDur, function() {
           done++;
           if (done === N) {
             _bagSpriteOutro(bagState, bagEl, function() {
-              setTimeout(function() { _closeBoard(onDone); }, 80);
+              setTimeout(function() { _closeBoard(onDone); }, AT(80));
             });
           }
         });
@@ -171,7 +171,7 @@ function _liftAndFly(tile, layer, tx, ty, flightDur, onDone) {
   layer.appendChild(clone);
   tile.el.style.visibility = 'hidden';
 
-  var liftDur = 90;
+  var liftDur = AT(90);
   var liftAmt = 12 + Math.random() * 10;
   var liftRot = (Math.random() - 0.5) * 30;
   var liftStart = performance.now();
@@ -292,7 +292,7 @@ function animShopToBoard(onBoardReady) {
   var perspCont = fold.perspCont, topWrap = fold.topWrap, botWrap = fold.botWrap;
   var fillScale = fold.fillScale;
 
-  var dur = 700;
+  var dur = AT(700);
   var start = performance.now();
 
   function step(now) {
@@ -336,9 +336,9 @@ function _burstTilesFromBag(els, bx, by, staggerT, onDone) {
       var cpx = (bx + tx) / 2 + (Math.random() - 0.5) * 130;
       var cpy = Math.min(by, ty) - 65 - Math.random() * 80;
       var dist = Math.sqrt((tx - bx) * (tx - bx) + (ty - by) * (ty - by));
-      var flightDur = 300 + dist * 0.32;
+      var flightDur = AT(300 + dist * 0.32);
 
-      var delay = staggerT * Math.sqrt(idx / N); // sqrt stagger — fast burst, slows as bag empties
+      var delay = AT(staggerT * Math.sqrt(idx / N)); // sqrt stagger — fast burst, slows as bag empties
       setTimeout(function() {
         var flyStart = performance.now();
         function flyTick(now) {
@@ -384,7 +384,7 @@ function _burstBoardTiles(onDone) {
   var shuffled = shuffle(tiles.slice());
 
   _burstTilesFromBag(shuffled, bx, by, 900, function() {
-    setTimeout(onDone, 80);
+    setTimeout(onDone, AT(80));
   });
 }
 
@@ -410,8 +410,8 @@ function animSpringTrap(fromRect, tileData, onDone) {
   var cpY = (startY + endY) / 2 - arcLift;
 
   var MAX_SCALE  = 6.5;
-  var ARC_DUR    = 760;  // spring launch to bag mouth (fast, then decelerates)
-  var SWALLOW_DUR = 380; // tile shrinks into bag as bag closes
+  var ARC_DUR    = AT(760);  // spring launch to bag mouth (fast, then decelerates)
+  var SWALLOW_DUR = AT(380); // tile shrinks into bag as bag closes
 
   var spr   = tileSpr(tileData.isBlank ? null : tileData.letter, tileData.isBlank, tileData.variant || null, sz);
   var layer = document.getElementById('anim-layer');
@@ -496,7 +496,7 @@ function animWormhole(fromRect, toRect, tileData, onDone) {
   applyTileLayers(el, tileData, sz, spr);
   layer.appendChild(el);
 
-  var IN_DUR = 380, GAP_DUR = 140, OUT_DUR = 380;
+  var IN_DUR = AT(380), GAP_DUR = AT(140), OUT_DUR = AT(380);
   var t0 = performance.now(), phase = 0;
   function tick(now) {
     var elapsed = now - t0;
@@ -720,7 +720,7 @@ function _closeBoard(onDone) {
 
   var fillScale = fold.fillScale;
   var coverScale = fillScale / 1.2; // scale at which perspCont exactly covers viewport (no overshoot margin)
-  var dur = 950;
+  var dur = AT(950);
   var start = performance.now();
   var onDoneScheduled = false;
 
@@ -751,7 +751,7 @@ function _closeBoard(onDone) {
 
     var fo = performance.now();
     function fadeOverlay(n) {
-      var ft = Math.min(1, (n - fo) / 120);
+      var ft = Math.min(1, (n - fo) / AT(120));
       perspCont.style.opacity = (1 - ft) + '';
       if (ft < 1) { requestAnimationFrame(fadeOverlay); return; }
       fold.cleanup();

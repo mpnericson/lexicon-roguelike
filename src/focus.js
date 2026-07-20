@@ -688,7 +688,7 @@ function _focusArcTilesHome() {
   for (var j = 0; j < nNew; j++) {
     (function (b, idx) {
       var sr = { left: b.x - 34, top: b.y - 34, width: 68, height: 68 };
-      var holdUntil = now + K.EXIT_ARC_HOLD + idx * K.EXIT_ARC_STAGGER;
+      var holdUntil = now + AT(K.EXIT_ARC_HOLD + idx * K.EXIT_ARC_STAGGER);
       var destX = slots[nHand + idx];
       _flyTileSpiral(b.el, holdUntil, b.x, b.y, destX, destY, function () {
         _landTile(b.t); _playTileClick('land');

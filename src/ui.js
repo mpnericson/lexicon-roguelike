@@ -261,6 +261,32 @@ function openCollection(){
   document.getElementById('collection-modal').style.display='flex';
 }
 
+// ── Settings modal ──
+// Animation speed is a discrete slider over these stops; slider value = index.
+var _ANIM_SPEEDS=[0.5,1,2,4];
+function openSettingsModal(){
+  document.getElementById('menu-dropdown').style.display='none';
+  var vol=Math.round(SETTINGS.volume*100);
+  document.getElementById('set-vol').value=vol;
+  document.getElementById('set-vol-val').textContent=vol+'%';
+  var ai=_ANIM_SPEEDS.indexOf(SETTINGS.animSpeed);if(ai<0)ai=1;
+  document.getElementById('set-anim').value=ai;
+  document.getElementById('set-anim-val').textContent=_ANIM_SPEEDS[ai]+'×';
+  document.getElementById('settings-modal').style.display='flex';
+}
+function setVolumeFromSlider(val){
+  var v=Math.max(0,Math.min(100,parseInt(val,10)||0));
+  document.getElementById('set-vol-val').textContent=v+'%';
+  setVolume(v/100);
+  _playTileClick('select'); // audible sample of the new level
+}
+function setAnimSpeedFromSlider(idx){
+  var i=Math.max(0,Math.min(_ANIM_SPEEDS.length-1,parseInt(idx,10)||0));
+  SETTINGS.animSpeed=_ANIM_SPEEDS[i];
+  saveSettings();
+  document.getElementById('set-anim-val').textContent=_ANIM_SPEEDS[i]+'×';
+}
+
 function toggleDevMode(){
   S.devMode=!S.devMode;
   document.getElementById('devmode-item').textContent='Dev Mode: '+(S.devMode?'ON':'Off');
@@ -286,6 +312,8 @@ function toggleMenu(){
   if(dd.style.display==='none'){
     var sd=document.getElementById('seed-display');
     if(sd)sd.textContent='Seed: '+(S.seed||'—');
+    var vd=document.getElementById('version-display');
+    if(vd)vd.textContent='v'+(typeof GAME_VERSION!=='undefined'?GAME_VERSION:'?');
     var r=document.getElementById('menu-wrap').getBoundingClientRect();
     dd.style.top=(r.bottom+4)+'px';
     dd.style.right=(window.innerWidth-r.right)+'px';

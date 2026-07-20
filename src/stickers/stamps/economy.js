@@ -128,11 +128,11 @@ SQ.push({id:'the_target',name:'The Target',
   }});
 
 // ── PIÑATA ────────────────────────────────────────────────────────────────────
-// type: stamp · rarity: uncommon · cost: $5
+// type: stamp · rarity: rare · cost: $5
 // onSell: scatters 4–8 random stickers onto random free squares.
 SQ.push({id:'pinata',name:'Piñata',
   desc:'Sell to break it open — scatters 4-8 random stickers onto free squares.',
-  rarity:'uncommon',cost:5,bg:'#2a0a28',fg:'#f8c060',icon:'🎊',type:'stamp',
+  rarity:'rare',cost:5,bg:'#2a0a28',fg:'#f8c060',icon:'🎊',type:'stamp',
   onSell:function(){
     var _pnPool=[];
     for(var _pni=0;_pni<SQ.length;_pni++){if(SQ[_pni].type==='board'||SQ[_pni].type==='local')_pnPool.push(SQ[_pni].id);}

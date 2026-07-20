@@ -1,0 +1,14 @@
+#!/bin/sh
+# Auto-bumps the build number in src/version.js on every commit, so every
+# push to GitHub carries a fresh version (v<GAME_VERSION_BASE>.<commit count>).
+#
+# Enabled via: git config core.hooksPath scripts/git-hooks
+# (Re-run that one command after a fresh clone.)
+
+cd "$(git rev-parse --show-toplevel)" || exit 0
+f="src/version.js"
+[ -f "$f" ] || exit 0
+
+n=$(( $(git rev-list --count HEAD 2>/dev/null || echo 0) + 1 ))
+sed -i '' "s/var GAME_BUILD='[0-9]*'/var GAME_BUILD='$n'/" "$f" && git add "$f"
+exit 0

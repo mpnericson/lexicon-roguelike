@@ -622,7 +622,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
           _flyTileToHand(el,320,destX,destY,cpX,cpY,function(){
             _landTile(t);_playTileClick('land');
           },preRect);
-        },idx*80);
+        },AT(idx*80));
       })(dragEls[i],selTiles[i].t,i);
     }
     if(nSel===0)renderHand();
@@ -1039,6 +1039,7 @@ function _handLandingParams(nBefore,nTotal,idx){
 // preCapRect: optional pre-captured DOMRect for when tEl has already been detached.
 function _flyTileToHand(tEl,dur,destX,destY,cpX,cpY,onDone,preCapRect){
   if(!tEl){if(onDone)onDone();return;}
+  dur=AT(dur);
   var sr=preCapRect||tEl.getBoundingClientRect();
   if(tEl.parentNode)tEl.parentNode.removeChild(tEl);
   var boardSz=sr.width,handSz=68,endScale=handSz/boardSz;
@@ -1073,8 +1074,8 @@ var _SPIRAL_ARC_DUR=1100;
 // Returns a holdUntil timestamp for the next arc slot (stagger landing times across a batch).
 function _allocArcSlot(){
   var now=performance.now();
-  var slot=Math.max(now+650,_nextArcAt);
-  _nextArcAt=slot+_ARC_STAGGER;
+  var slot=Math.max(now+AT(650),_nextArcAt);
+  _nextArcAt=slot+AT(_ARC_STAGGER);
   return slot;
 }
 
@@ -1087,7 +1088,7 @@ function _allocArcSlot(){
 // driftDx/driftDy: directional momentum offset for phase 1 (default: straight up 60px).
 // physicsV0: if provided, replaces ease-out with initial-velocity + constant-decel physics (px/ms).
 function _flyTileSpiral(tEl,holdUntil,srcX,srcY,destX,destY,onDone,preCapRect,driftDx,driftDy,physicsV0,arcDur){
-  var _spiralDur=arcDur||_SPIRAL_ARC_DUR; // caller can shorten the sweep
+  var _spiralDur=AT(arcDur||_SPIRAL_ARC_DUR); // caller can shorten the sweep
   if(!tEl){if(onDone)onDone();return;}
   var sr=preCapRect||tEl.getBoundingClientRect();
   if(tEl.parentNode)tEl.parentNode.removeChild(tEl);
@@ -1101,7 +1102,7 @@ function _flyTileSpiral(tEl,holdUntil,srcX,srcY,destX,destY,onDone,preCapRect,dr
   var _dStart=performance.now(),_dDur=450;
   var _GRAV=0.00070; // px/ms²  (constant deceleration during launch phase)
   function _driftPos(now){
-    var dt=now-_dStart;
+    var dt=(now-_dStart)*ASPD(); // scaled time base — same trajectory, 1/speed the wall time
     if(physicsV0!==undefined){
       // clamp dt at peak (when vy = 0) so tile holds position instead of falling back
       var dtC=Math.min(dt,physicsV0/_GRAV);
@@ -1116,7 +1117,7 @@ function _flyTileSpiral(tEl,holdUntil,srcX,srcY,destX,destY,onDone,preCapRect,dr
   function hoverTick(now){
     var p=_driftPos(now);
     tEl.style.left=(p.x-boardSz/2)+'px';tEl.style.top=(p.y-boardSz/2)+'px';
-    var dt=now-_dStart;
+    var dt=(now-_dStart)*ASPD(); // same scaled clock as _driftPos
     var fDt=_lastHoverT!==null?now-_lastHoverT:0; _lastHoverT=now;
     var wobbleFrac;
     if(physicsV0!==undefined){
@@ -1298,7 +1299,7 @@ function _spawnPhotocopy(copy){
   var destY=hr?(hr.top+34):(window.innerHeight-60);
   var destX=HP.nextLandX();
   var _pcS=S;
-  _flyTileSpiral(el,performance.now()+180,sr.left+sz/2,sr.top+sz/2,destX,destY,function(){
+  _flyTileSpiral(el,performance.now()+AT(180),sr.left+sz/2,sr.top+sz/2,destX,destY,function(){
     if(S!==_pcS){HP.movingCount=Math.max(0,HP.movingCount-1);if(!HP.movingCount)_nextArcAt=0;_pcopyLanded();return;}
     _landTile(t);_playTileClick('land');
     _pcopyLanded();
@@ -1582,7 +1583,7 @@ function _burstNewTilesFromBag(nKept,nTotal,bagEl,onDone){
       document.body.appendChild(flyEl);
       allFlyEls.push(flyEl);
       setTimeout(function(){
-        var scx=bx,scy=by,fStart=performance.now(),fDur=320;
+        var scx=bx,scy=by,fStart=performance.now(),fDur=AT(320);
         function tick(now){
           var t=Math.min(1,(now-fStart)/fDur);
           var e=1-Math.pow(1-t,3),u=1-e;
@@ -1602,7 +1603,7 @@ function _burstNewTilesFromBag(nKept,nTotal,bagEl,onDone){
           }
         }
         requestAnimationFrame(tick);
-      },idx*130);
+      },AT(idx*130));
     })(afterVis[nKept+_j],_j);
   }
 }

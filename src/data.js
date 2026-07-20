@@ -45,6 +45,26 @@ function wordAsTilesHTML(word,sz,variant){sz=sz||24;var h='<span style="display:
 function rcl(i){return String.fromCharCode(65+i%B)+(Math.floor(i/B)+1);}
 
 var B=15;
+
+// ── Settings — persist across runs (separate localStorage key from the run save) ──
+// volume: 0..1 master SFX gain. animSpeed: coefficient every scaled animation
+// divides its durations by (0.5 = half speed, 4 = 4× speed). AT(ms) converts a
+// baseline duration to the current speed; ASPD() is the raw coefficient (used
+// where a rate is multiplied instead of a duration divided).
+var SETTINGS={volume:1,animSpeed:1};
+var SETTINGS_KEY='lexicon_settings';
+function loadSettings(){
+  try{
+    var s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}');
+    if(typeof s.volume==='number')SETTINGS.volume=Math.max(0,Math.min(1,s.volume));
+    if(s.animSpeed===0.5||s.animSpeed===1||s.animSpeed===2||s.animSpeed===4)SETTINGS.animSpeed=s.animSpeed;
+  }catch(e){}
+}
+function saveSettings(){try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(SETTINGS));}catch(e){}}
+loadSettings();
+function ASPD(){return SETTINGS.animSpeed||1;}
+function AT(ms){return ms/ASPD();}
+
 var LS={A:2,B:8,C:4,D:4,E:2,F:8,G:4,H:4,I:2,J:16,K:8,L:2,M:4,N:2,O:2,P:4,Q:16,R:2,S:2,T:2,U:4,V:16,W:8,X:8,Y:8,Z:8};
 var DIST={A:5,B:1,C:2,D:2,E:6,F:1,G:2,H:2,I:4,J:1,K:1,L:3,M:2,N:3,O:4,P:2,Q:1,R:4,S:3,T:4,U:2,V:1,W:1,X:1,Y:1,Z:1};
 // Bounty reward config — change type/value here to rebalance

@@ -447,7 +447,7 @@ function _initSlotHandle(){
     var finalFrame=frameFromDy(Math.max(0,(e.clientY||startY)-startY));
     var didSpin=finalFrame>=5;
     var f=finalFrame;
-    var t=setInterval(function(){f--;if(f<=0){clearInterval(t);setFrame(0,false);if(didSpin)spinArmedSlots();}else setFrame(f,false);},55);
+    var t=setInterval(function(){f--;if(f<=0){clearInterval(t);setFrame(0,false);if(didSpin)spinArmedSlots();}else setFrame(f,false);},AT(55));
   }
   hit.addEventListener('pointerup',onRelease);
   hit.addEventListener('pointercancel',onRelease);
@@ -568,26 +568,29 @@ function _reelLoop(ts){
       if(r.offset>=loopLen)r.offset-=loopLen;
       strip.style.transform='translateY('+(r.centerPad-r.offset)+'px)';
     } else if(r.state==='accelerating'){
-      // Logarithmic accel — same shape as flick, steep pickup tapering to peak
-      var accelTau=Math.min((ts-r.accelT0)/REEL_ACCEL_MS,1.0);
+      // Logarithmic accel — same shape as flick, steep pickup tapering to peak.
+      // Spin-cycle states (accel/spin/decel/snap/eject) run on an ASPD()-scaled
+      // clock so the whole spin compresses/stretches with the animation-speed
+      // setting; idle drift and manual flicks stay on real time.
+      var accelTau=Math.min((ts-r.accelT0)*ASPD()/REEL_ACCEL_MS,1.0);
       var speed=r.accelStartSpeed+(REEL_FAST_SPEED-r.accelStartSpeed)*Math.log(1+accelTau*(Math.E-1));
-      r.offset+=speed*dt;
+      r.offset+=speed*dt*ASPD();
       strip.style.transform='translateY('+(r.centerPad-(r.offset%loopLen))+'px)';
       if(accelTau>=1.0)r.state='spinning';
     } else if(r.state==='spinning'){
-      r.offset+=REEL_FAST_SPEED*dt;
+      r.offset+=REEL_FAST_SPEED*dt*ASPD();
       // modulo for rendering so strip never scrolls out of its 3-copy bounds
       strip.style.transform='translateY('+(r.centerPad-(r.offset%loopLen))+'px)';
     } else if(r.state==='decel'){
       // Exponential: v(t)=v₀·exp(-t/τ) — same formula as flick decel; pos(t)=v₀·τ·(1-exp(-t/τ))
-      var elapsed=(ts-r.stopT0)/1000;
+      var elapsed=(ts-r.stopT0)*ASPD()/1000;
       var vNow=REEL_FAST_SPEED*Math.exp(-elapsed/REEL_FLICK_DECEL_TAU);
       r.offset=r.stopFrom+REEL_FAST_SPEED*REEL_FLICK_DECEL_TAU*(1-Math.exp(-elapsed/REEL_FLICK_DECEL_TAU));
       strip.style.transform='translateY('+(r.centerPad-r.offset)+'px)';
       if(vNow<=REEL_SNAP_THRESH*r.itemH){r.snapFrom=r.offset;r.snapT0=ts;r.state='snap';}
     } else if(r.state==='snap'){
       // Underdamped spring: ζ=0.4, ωn=30 — one elastic bounce before settling
-      var elapsed=(ts-r.snapT0)/1000;
+      var elapsed=(ts-r.snapT0)*ASPD()/1000;
       var d0=r.snapFrom-r.snapTarget;
       var v0snap=REEL_SNAP_THRESH*r.itemH;
       var zeta=0.4,wn=30,wd=wn*Math.sqrt(1-zeta*zeta);
@@ -598,7 +601,7 @@ function _reelLoop(ts){
       if(elapsed>0.5){r.offset=r.snapTarget;r.state='stopped';strip.style.transform='translateY('+(r.centerPad-r.offset)+'px)';}
     } else if(r.state==='eject'){
       // All reels scroll downward in sync (offset decreasing = strip moves down)
-      r.offset-=REEL_EJECT_SPEED*dt;
+      r.offset-=REEL_EJECT_SPEED*dt*ASPD();
       strip.style.transform='translateY('+(r.centerPad-r.offset)+'px)';
     } else if(r.state==='flick'){
       // flickDecelT0 is set at release; if released during accel, stamp it at the first decel frame
@@ -740,13 +743,13 @@ function _animateSlotResult(){
 
     // Phase 1: Fade reel layer — borders, frame, other items above/below
     // Won prize icons remain visible via the canvas-level clipper copies
-    reelLayer.style.transition='opacity 0.5s ease';
+    reelLayer.style.transition='opacity '+(AT(500)/1000)+'s ease';
     reelLayer.style.opacity='0';
 
     // Phase 2: After fade, roll won icons down within their clippers
     setTimeout(function(){
       copies.forEach(function(c){
-        c.icon.style.transition='top 0.52s cubic-bezier(0.55,0,1,1)';
+        c.icon.style.transition='top '+(AT(520)/1000)+'s cubic-bezier(0.55,0,1,1)';
         c.icon.style.top='110%';
       });
 
@@ -756,9 +759,9 @@ function _animateSlotResult(){
         _openSlotTray(function(){
           _showPillowPrizes(wins.map(function(w){return w.id;}),canvas);
         });
-      },560);
-    },500);
-  },350);
+      },AT(560));
+    },AT(500));
+  },AT(350));
 }
 
 function _openSlotTray(onDone){
@@ -772,7 +775,7 @@ function _openSlotTray(onDone){
   function step(){
     el.src='Assets/animations/slot-tray/slot_tray'+frames[fi]+'.png';
     fi++;
-    if(fi<frames.length){_trayAnimTimer=setTimeout(step,delays[fi-1]);}
+    if(fi<frames.length){_trayAnimTimer=setTimeout(step,AT(delays[fi-1]));}
     else{_trayAnimTimer=null;if(onDone)onDone();}
   }
   step();
@@ -787,7 +790,7 @@ function _closeSlotTray(onDone){
   function step(){
     el.src='Assets/animations/slot-tray/slot_tray'+frames[fi]+'.png';
     fi++;
-    if(fi<frames.length){_trayAnimTimer=setTimeout(step,62);}
+    if(fi<frames.length){_trayAnimTimer=setTimeout(step,AT(62));}
     else{_trayAnimTimer=null;if(onDone)onDone();}
   }
   step();
@@ -833,7 +836,7 @@ function _showPillowPrizes(ids,canvas){
     el.onmouseleave=function(){_shopTipHide();};
     canvas.appendChild(el);
     _pillowEls.push(el);
-    setTimeout(function(){el.style.transform='scale(1)';},i*100+60);
+    setTimeout(function(){el.style.transform='scale(1)';},AT(i*100+60));
   });
 }
 
@@ -1017,9 +1020,9 @@ function spinSlots(){
   }
   // Stagger: 400ms apart. Decel (800ms) + crawl (2000ms) are identical for all reels,
   // so stop times are exactly 400ms apart — guaranteed L→M→R order.
-  setTimeout(function(){_stopReelAt(0,results[0]);},1400);
-  setTimeout(function(){_stopReelAt(1,results[1]);},1800);
-  setTimeout(function(){_stopReelAt(2,results[2]);},2200);
+  setTimeout(function(){_stopReelAt(0,results[0]);},AT(1400));
+  setTimeout(function(){_stopReelAt(1,results[1]);},AT(1800));
+  setTimeout(function(){_stopReelAt(2,results[2]);},AT(2200));
 }
 
 // The handle spins whichever machine the buttons have armed.
@@ -1065,9 +1068,9 @@ function spinSymbolSlots(){
     }
   }
   var thirdDelay=(dress[0]===dress[1])?3400:2200; // near-miss stretch on a pair
-  setTimeout(function(){_stopReelAt(0,dress[0]);},1400);
-  setTimeout(function(){_stopReelAt(1,dress[1]);},1800);
-  setTimeout(function(){_stopReelAt(2,dress[2]);},thirdDelay);
+  setTimeout(function(){_stopReelAt(0,dress[0]);},AT(1400));
+  setTimeout(function(){_stopReelAt(1,dress[1]);},AT(1800));
+  setTimeout(function(){_stopReelAt(2,dress[2]);},AT(thirdDelay));
 }
 
 // Fired by _onReelStopped once all three symbol reels have snapped.
@@ -1099,7 +1102,7 @@ function _resolveSymbolPayout(){
     var canvas=document.getElementById('shop-canvas');
     if(!canvas){_resetSymbolReels();return;}
     _openSlotTray(function(){_showPillowPrizes(ids,canvas);});
-  },850);
+  },AT(850));
 }
 
 // Return the reels to the idle cosmetic strip after a no-prize symbol payout.
@@ -1143,7 +1146,7 @@ function openShopBagUI(){
     var tilesDiv=document.getElementById('sbovr-tiles');
     _renderBagFloatTiles(tilesDiv,S.bag,73);
     tilesDiv.style.animation='none';void tilesDiv.offsetHeight;
-    tilesDiv.style.animation='bagTunnelZoom 0.52s ease-out both';
+    tilesDiv.style.animation='bagTunnelZoom '+(AT(520)/1000)+'s ease-out both';
   });
 }
 

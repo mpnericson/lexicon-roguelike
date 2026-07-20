@@ -305,7 +305,7 @@ function _restoreBoardCell(f,sqIdx){
 //   angle decreases via θ = arcsin(1/(8·p·√2)). Peeled segment grows, angle flattens.
 // Jiggle: full sticker lifted at ~5°, decaying oscillation before snap.
 function _runPeel(f){
-  var PEEL_MS=600,FLATTEN_MS=180;
+  var PEEL_MS=AT(600),FLATTEN_MS=AT(180);
   var t0=null,flatT0=null;
 
   // Clip-path for the top-left (peeled) region given fold-line parameter p ∈ [0,1].
@@ -442,19 +442,19 @@ function _activateStickerFloat(sqIdx){
     f.phase='descend';
     f.peeledEl.style.transition='none';
     f.peeledEl.style.transform='';
-    f.peeledEl.style.animation='_sf-shrink 0.75s ease-out forwards';
+    f.peeledEl.style.animation='_sf-shrink '+(AT(750)/1000)+'s ease-out forwards';
     f.peeledEl.style.filter='none';
     f.glowEl.style.transition='opacity 0.2s ease-out';
     f.glowEl.style.opacity='0';
     f.el.style.transition='none';
-    f.el.style.animation='_sf-drift 0.85s ease-out forwards';
+    f.el.style.animation='_sf-drift '+(AT(850)/1000)+'s ease-out forwards';
     f.t2=setTimeout(function(){
       if(!_stickerFloats[sqIdx]||_stickerFloats[sqIdx]!==f)return;
       if(f.el.parentNode)f.el.parentNode.removeChild(f.el);
       if(f.glowEl.parentNode)f.glowEl.parentNode.removeChild(f.glowEl);
       delete _stickerFloats[sqIdx];
-    },900);
-  },500);
+    },AT(900));
+  },AT(500));
 }
 
 // ---- Animation ----
@@ -462,8 +462,9 @@ function _activateStickerFloat(sqIdx){
 function showScorePop(text,x,y,bg,fg){
   var el=document.createElement('div');el.className='score-pop';
   el.style.cssText='left:'+Math.round(x)+'px;top:'+Math.round(y)+'px;background:'+bg+';color:'+fg;
+  el.style.animationDuration=(AT(650)/1000)+'s';
   el.textContent=text;document.body.appendChild(el);
-  setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},700);
+  setTimeout(function(){if(el.parentNode)el.parentNode.removeChild(el);},AT(700));
 }
 function bumpSA(id){var el=document.getElementById(id);if(!el)return;el.classList.remove('ls-bump');void el.offsetWidth;el.classList.add('ls-bump');}
 function scoreDelay(ms){return new Promise(function(r){setTimeout(r,ms);});}
@@ -495,7 +496,7 @@ async function animGoldTick(delta,bounceFn){
   var dir=delta<0?-1:1,steps=Math.abs(delta);
   // Total payout duration (larger swings stay capped so big payouts don't drag);
   // coins land on an ease-in curve so the count starts slow and accelerates.
-  var DUR=steps<=6?steps*90:Math.max(540,45*steps);
+  var DUR=AT(steps<=6?steps*90:Math.max(540,45*steps));
   var prevT=0;
   for(var i=0;i<steps;i++){
     cur+=dir;el.textContent='$'+cur;bumpSA('hud-gold');
@@ -662,7 +663,7 @@ async function runScoreAnim(events,total){
   saL.style.color='';
   if(lsTileDelta){lsTileDelta.textContent='';lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');}
 
-  var delay=1000,minDelay=100,delayStep=50;
+  var delay=AT(1000),minDelay=AT(100),delayStep=AT(50);
   var animPlusSum=0,animXprod=1;_scoreDingN=0;
   var _saLSynced=0; // tracks last value written to saL, to skip redundant isSilent updates
   var _deltaActive=false,_deltaTileBase=0;
@@ -694,7 +695,7 @@ async function runScoreAnim(events,total){
       function _tk(now){
         if(_tickVer!==ver)return;
         if(_last===null)_last=now;
-        var dt=(now-_last)/1000;_last=now;
+        var dt=(now-_last)/1000*ASPD();_last=now;
         // Rate grows with how much THIS tile has added so far (resets each tile):
         // every tile starts at the base rate, then ramps up exponentially.
         v+=(_TICK_BASE_RATE+(v-fV)*_TICK_GROWTH)*dt;
@@ -800,7 +801,7 @@ async function runScoreAnim(events,total){
 
   // Pre-schedule every sticker peel 1 second before its own ding, regardless of word length.
   // Simulates cumulative event timing (ding fires before its own delay, after all prior delays).
-  var _PEEL_LEAD=1000,_simD=delay,_simT=0;
+  var _PEEL_LEAD=AT(1000),_simD=delay,_simT=0;
   for(var _si=0;_si<events.length;_si++){
     var _sev=events[_si];
     if(_sev._consumed)continue; // merged onto a head event's beat — no beat of its own
@@ -833,7 +834,7 @@ async function runScoreAnim(events,total){
               lsTileDelta.style.transition='opacity 0.15s ease';
               void lsTileDelta.offsetWidth;
               lsTileDelta.style.opacity='0';
-              await scoreDelay(150);
+              await scoreDelay(AT(150));
             }
             _firePendingTick(true);
             _deltaActive=true;
@@ -970,7 +971,7 @@ async function runScoreAnim(events,total){
       if(ev.palMult&&ev.palMult>1&&!ev._skip){animXprod*=ev.palMult;refreshMult();}
       var br4=row.getBoundingClientRect();
       showScorePop(ev.label,br4.left+60,br4.top-48,'#0a2a2a','#60ffff');
-      if(curDelay!=null)await scoreDelay(Math.max(200,curDelay));
+      if(curDelay!=null)await scoreDelay(Math.max(AT(200),curDelay));
 
     }else if(ev.type==='final'){
       _firePendingTick(false);
@@ -981,7 +982,7 @@ async function runScoreAnim(events,total){
     }
   }
 
-  await scoreDelay(600);
+  await scoreDelay(AT(600));
 
   // Animate score into progress bar
   var _oldScore=S.score,_tgt=tgt();
@@ -1002,7 +1003,7 @@ async function runScoreAnim(events,total){
     var _last=null,_added=0;
     function _tick(now){
       if(_last===null)_last=now;
-      var dt=(now-_last)/1000;_last=now;
+      var dt=(now-_last)/1000*ASPD();_last=now;
       _added+=(_FILL_BASE+_added*_FILL_GROWTH)*dt;
       var done=_added>=total;if(done)_added=total;
       saS.textContent=Math.round(total-_added).toLocaleString();
