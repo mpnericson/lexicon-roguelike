@@ -69,16 +69,14 @@ SQ.push({id:'bourgeois',name:'The Bourgeois',
   onEndBoard:function(placed){
     var count=0;
     for(var _bi2=0;_bi2<B*B;_bi2++){if(S.board[_bi2])count++;}
-    if(count>0){S.gold+=count;renderHUD();}
+    goldGain('The Bourgeois',count);
     var proCount=0;
     for(var _pi=0;_pi<S.placed.length;_pi++)if(S.placed[_pi].id==='proletariat')proCount++;
     if(proCount>=20){
       var _ri=S.placed.indexOf(placed);
       if(_ri>=0){S.board[placed.sqIdx]=null;S.placed.splice(_ri,1);renderBoard();}
       else{var _ti=S.stamps.indexOf(placed);if(_ti>=0)S.stamps.splice(_ti,1);}
-      toast('Bourgeois: +$'+count+'. Revolution! Overthrown by '+proCount+' Proletariats!');
-    }else{
-      if(count>0)toast('Bourgeois collects +$'+count+'!');
+      toast('Bourgeois: Revolution! Overthrown by '+proCount+' Proletariats!');
     }
   }});
 
@@ -179,8 +177,7 @@ SQ.push({id:'delayed_gratification',name:'Delayed Gratification',
   rarity:'common',cost:3,bg:'#0a1a20',fg:'#60b0e0',icon:'DG',type:'stamp',
   liveDesc:function(p){var n=S.disc||0;return n+' discard'+(n!==1?'s':'')+' left → <span style="color:#f0e040">$'+(n*2)+'</span> at end of round.';},
   onEndRound:function(){
-    var g=(S.disc||0)*2;
-    if(g>0){S.gold+=g;renderHUD();toast('Delayed Gratification: +$'+g+'!');}
+    goldGain('Delayed Gratification',(S.disc||0)*2);
   }});
 
 // ── EGG ───────────────────────────────────────────────────────────────────────
@@ -227,5 +224,5 @@ SQ.push({id:'insurance',name:'Insurance',
   liveDesc:function(p){var n=(S.pool||[]).filter(function(t){return t&&!t.isBlank&&t.letter==='L';}).length;return n+' L tile'+(n!==1?'s':'')+' owned → <span style="color:#f0e040">$'+n+'</span> at end of board.';},
   onEndBoard:function(){
     var n=(S.pool||[]).filter(function(t){return t&&!t.isBlank&&t.letter==='L';}).length;
-    if(n>0){S.gold+=n;renderHUD();toast('Insurance: +$'+n+' for '+n+' L'+(n!==1?'\'s':'')+'!');}
+    goldGain('Insurance',n);
   }});

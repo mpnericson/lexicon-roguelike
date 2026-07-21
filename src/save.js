@@ -75,9 +75,9 @@ function loadGame() {
         if (!t) return null;
         return Object.assign({sel:false,onBoard:false,_boardSq:undefined,state:'hand'}, t);
       }),
-      board: d.board || Array(B * B).fill(null),
-      bt:    d.bt    || Array(B * B).fill(null),
-      btTop: Array(B * B).fill(null),
+      board: d.board || Array(BN).fill(null),
+      bt:    d.bt    || Array(BN).fill(null),
+      btTop: Array(BN).fill(null),
       ai: d.ai || 0, bi: d.bi || 0,
       score: d.score || 0, gold: d.gold || 0,
       plays: d.plays || 4,  disc: d.disc || 3,

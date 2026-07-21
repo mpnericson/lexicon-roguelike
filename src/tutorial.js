@@ -375,7 +375,7 @@ function _tutAuthorBag(draws){
   function use(l){used[l]=(used[l]||0)+1;}
   draws.split('').forEach(use);
   (S.hand||[]).forEach(function(t){if(t&&!t.isBlank)use(t.letter);});
-  for(var i=0;i<B*B;i++){
+  for(var i=0;i<BN;i++){
     if(S.bt[i]&&!S.bt[i].isBlank)use(S.bt[i].letter);
     if(S.btTop&&S.btTop[i]&&!S.btTop[i].isBlank)use(S.btTop[i].letter);
   }
@@ -389,7 +389,7 @@ function _tutAuthorBag(draws){
   S.bag=filler.concat(draws.split('').map(_tutTile).reverse());
   var pool=S.bag.slice();
   (S.hand||[]).forEach(function(t){if(t)pool.push(t);});
-  for(var i=0;i<B*B;i++){
+  for(var i=0;i<BN;i++){
     if(S.bt[i])pool.push(S.bt[i]);
     if(S.btTop&&S.btTop[i])pool.push(S.btTop[i]);
   }
@@ -397,20 +397,20 @@ function _tutAuthorBag(draws){
 }
 function _tutScroll(theme,ws){return{theme:theme,words:ws.map(function(w){return{word:w,reward:_bountyWordReward(w)};})};}
 
-// Authored board geometry (B=15):
-//  CRANE  across row 7, cols 5–9 (A on the centre star at 112)
-//  PLANET down col 8, rows 4–9 — reuses CRANE's committed N at 113
-//  TONES  across row 9, cols 8–12 — reuses PLANET's T at 143
-//  AMAZON down col 7, rows 7–12 — reuses CRANE's A at 112; forms crosswords
-//         ME (127+128) and ATONES (142+row 9)
-//  PYLON  across row 4, cols 8–12 — reuses PLANET's P at 68; the Y lands on
-//         the player's TL at 69
-var _TUT_CRANE={110:'C',111:'R',112:'A',113:'N',114:'E'};
-var _TUT_PLANET={68:'P',83:'L',98:'A',128:'E',143:'T'};
-var _TUT_TONES={144:'O',145:'N',146:'E',147:'S'};
-var _TUT_AMAZON={127:'M',142:'A',157:'Z',172:'O',187:'N'};
-var _TUT_PYLON={69:'Y',70:'L',71:'O',72:'N'};
-var _TUT_TL_SQ=69;
+// Authored board geometry (B=15 wide, BH=12 tall — centre row is 6):
+//  CRANE  across row 6, cols 5–9 (A on the centre star at 97)
+//  PLANET down col 8, rows 3–8 — reuses CRANE's committed N at 98
+//  TONES  across row 8, cols 8–12 — reuses PLANET's T at 128
+//  AMAZON down col 7, rows 6–11 — reuses CRANE's A at 97; forms crosswords
+//         ME (112+113) and ATONES (127+row 8)
+//  PYLON  across row 3, cols 8–12 — reuses PLANET's P at 53; the Y lands on
+//         the player's TL at 54
+var _TUT_CRANE={95:'C',96:'R',97:'A',98:'N',99:'E'};
+var _TUT_PLANET={53:'P',68:'L',83:'A',113:'E',128:'T'};
+var _TUT_TONES={129:'O',130:'N',131:'E',132:'S'};
+var _TUT_AMAZON={112:'M',127:'A',142:'Z',157:'O',172:'N'};
+var _TUT_PYLON={54:'Y',55:'L',56:'O',57:'N'};
+var _TUT_TL_SQ=54;
 
 function startTutorial(){
   var dd=document.getElementById('menu-dropdown');if(dd)dd.style.display='none';

@@ -86,15 +86,15 @@ function startGame(seed){
   var _cids=['c_long','c_pal','c_longer','c_letters','c_hand','c_draw3','c_nodisc','c_oneplay','c_stickers'];
   var _co=_cids.slice();
   for(var _ci=_co.length-1;_ci>0;_ci--){var _cj=Math.floor(_rng()*(_ci+1));var _ct=_co[_ci];_co[_ci]=_co[_cj];_co[_cj]=_ct;}
-  S={bag:_bag,hand:[],board:Array(B*B).fill(null),bt:Array(B*B).fill(null),btTop:Array(B*B).fill(null),
+  S={bag:_bag,hand:[],board:Array(BN).fill(null),bt:Array(BN).fill(null),btTop:Array(BN).fill(null),
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,discardsThisRound:0,palUnlocked:false,devMode:false,
      phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,bhMult:1,palMult:1,playerMult:1,cartographerMult:1,palWords:[],
-     lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,
+     lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,roundWords:[],
      constraintOrder:_co.slice(0,BOARDS.length),usedLetters:new Set(),stickersSoldThisBoard:0,crossroadsCount:0,ouroborosBonus:0,gamblerSpins:0,
      stamps:[],bagBlueAnchors:{},pool:_bag.slice(),
      consumables:[],lastTicket:null,
      bounties:_generateBounties(3,[])};
-  window._easyHint=null;
+  window._easyHint=null;bagVacuumReset();
   shopPool={sq:[],packs:[],bounties:[]};activeDrag=null;
   document.getElementById('shop-screen').style.display='none';
   document.getElementById('play-controls').style.display='flex';
@@ -131,7 +131,7 @@ function transformTile(tileId,opts){
     if(S.pool)S.pool=S.pool.filter(function(pt){return pt.id!==tileId;});
     for(var _i=S.bag.length-1;_i>=0;_i--){if(S.bag[_i]&&S.bag[_i].id===tileId){S.bag.splice(_i,1);break;}}
     for(var _i=S.hand.length-1;_i>=0;_i--){if(S.hand[_i]&&S.hand[_i].id===tileId){S.hand.splice(_i,1);break;}}
-    for(var _i=0;_i<B*B;_i++){
+    for(var _i=0;_i<BN;_i++){
       if(S.bt[_i]&&S.bt[_i].id===tileId)S.bt[_i]=null;
       if(S.btTop&&S.btTop[_i]&&S.btTop[_i].id===tileId)S.btTop[_i]=null;
     }
@@ -144,7 +144,7 @@ function transformTile(tileId,opts){
   _ap(_pe);
   for(var _i=0;_i<S.bag.length;_i++){if(S.bag[_i]&&S.bag[_i].id===tileId&&S.bag[_i]!==_pe){_ap(S.bag[_i]);break;}}
   for(var _i=0;_i<S.hand.length;_i++){if(S.hand[_i]&&S.hand[_i].id===tileId){_ap(S.hand[_i]);break;}}
-  for(var _i=0;_i<B*B;_i++){
+  for(var _i=0;_i<BN;_i++){
     if(S.bt[_i]&&S.bt[_i].id===tileId)_ap(S.bt[_i]);
     if(S.btTop&&S.btTop[_i]&&S.btTop[_i].id===tileId)_ap(S.btTop[_i]);
   }
@@ -222,10 +222,29 @@ function endlessTgt(eb,er){
 }
 function tgt(){var base=cb()[2];if(S.bi===2&&currentConstraint()==='c_oneplay')return Math.ceil(base/3/10)*10;return base;}
 
+// Central end-of-round gold award. Adds to S.gold and refreshes the HUD, then
+// either records the gain as a line in the active gold ledger (window._goldLedger,
+// set up by roundComplete for the animated breakdown) or, outside that window,
+// falls back to a toast. End-hook gold (Delayed Gratification, Bourgeois,
+// Insurance…) routes through here so every source shows up in the breakdown.
+function goldGain(label,amount){
+  amount=Math.floor(amount)||0;
+  if(amount<=0)return;
+  S.gold+=amount;renderHUD();
+  if(window._goldLedger)window._goldLedger.push({label:label,amount:amount});
+  else toast(label+': +$'+amount+'!');
+}
+
 function roundComplete(){
-  var reward=2+S.bi*2+(S.ai*2);
-  var playsBonus=S.plays>0?S.plays:0;
-  S.gold+=reward+playsBonus;
+  var won=!S.endless&&S.ai===BOARDS.length-1&&S.bi===2;
+  var endOfBoard=(S.bi===2); // completing round 3 → advanceRound will start a new board
+  // Collect every gold source into the ledger so the round-complete modal can
+  // itemise and animate it. goldGain pushes here while it's active.
+  var ledger=[];
+  window._goldLedger=ledger;
+
+  goldGain('Round reward',2+S.bi*2+(S.ai*2));
+  goldGain('Remaining hands',S.plays>0?S.plays:0);
   var hasSheriff=hasStamp('sheriffs_office');
   var sheriffWord='';
   if(hasSheriff){
@@ -235,29 +254,262 @@ function roundComplete(){
   // End-of-round sticker/stamp effects (Delayed Gratification, Egg) — fired
   // while S.disc still holds this round's leftovers (reset in _doBoardAnimation).
   _fireAllHooks('onEndRound',[]);
-  var msg='You scored '+S.score.toLocaleString()+', beating '+tgt().toLocaleString()+'.';
-  if(playsBonus>0)msg+=' +$'+playsBonus+' efficiency bonus!';
-  if(sheriffWord)msg+=' Sheriff: free bounty "'+sheriffWord+'"!';
+  // End-of-board effects (Bourgeois, Insurance) run here too so their gold joins
+  // the breakdown; advanceRound skips re-firing them (window._endBoardDone).
+  if(endOfBoard){window._endBoardDone=true;_fireAllHooks('onEndBoard',[]);}
+
+  window._goldLedger=null;
+  var total=0;for(var _li=0;_li<ledger.length;_li++)total+=ledger[_li].amount;
+
+  if(sheriffWord)toast('Sheriff: free bounty "'+sheriffWord+'"!');
   S.roundsCompleted=(S.roundsCompleted||0)+1;
   try{var _pb=parseInt(localStorage.getItem('lexicon_best_rounds')||'0');if(S.roundsCompleted>_pb)localStorage.setItem('lexicon_best_rounds',S.roundsCompleted);}catch(e){}
-  var won=!S.endless&&S.ai===BOARDS.length-1&&S.bi===2;
   if(won){
-    document.getElementById('win-msg').textContent='All '+BOARDS.length+' boards cleared! '+msg;
-    document.getElementById('win-reward').textContent='+$'+(reward+playsBonus)+' gold';
+    document.getElementById('win-msg').textContent='All '+BOARDS.length+' boards cleared! You scored '+fmtNum(S.score)+', beating '+fmtNum(tgt())+'.';
+    document.getElementById('win-reward').textContent='+$'+total+' gold';
     document.getElementById('win-modal').style.display='flex';
     // Tracker frame 25 = every board window filled.
     var _wSpr=document.getElementById('progress-tracker-sprite');
     if(_wSpr)_wSpr.src='Assets/animations/progress tracker/progress_tracker25.png';
+    bagVacuumReset(); // no vacuum follows a full-run win — release the bag
     achvCheck('win');
   }else{
-    document.getElementById('round-title').textContent=(cb()[0]?cb()[0]+' cleared!':'Round complete!');
-    document.getElementById('round-msg').textContent=msg;
-    document.getElementById('round-reward').textContent='+$'+(reward+playsBonus)+' gold';
-    document.getElementById('round-modal').style.display='flex';
+    // Hoover the played tiles off the board first, then rise the popup.
+    animHooverTiles(function(){
+      document.getElementById('round-modal').style.display='flex';
+      animateRoundDisplay({words:(S.roundWords||[]).slice(),total:S.score,target:tgt(),ledger:ledger});
+      if(window.TUT&&TUT.active)tutEvent('round-complete');
+    });
   }
   saveGame();
   achvCheck('round_complete');
-  if(window.TUT&&TUT.active)tutEvent('round-complete');
+  if(won&&window.TUT&&TUT.active)tutEvent('round-complete');
+}
+
+// Drives the whole end-of-round display, used for both a cleared round (win)
+// and a failed one (lose). In sequence: the panel art (Assets/sprites/
+// endRoundDisplay, 18 frames) pulls up from the bottom of the screen; each word
+// the player scored this round spells itself out tile by tile, then " — N pts";
+// then a "Total X · Beating/Failing Y" line (green when won, red when lost);
+// then either the gold-reward rows (win — dollar signs popping one at a time
+// while the +$ counts up) or the top winning plays you could have made (lose);
+// finally the action button. Everything reveals one beat at a time — clicking
+// the modal skips to the end. Timing scales with the anim-speed setting.
+// Rows are appended to the DOM only as their beat fires, so the content grows
+// from the top instead of pre-spacing.
+var _rgTimers=[];
+var _rgSkip=null;
+var _RD_FRAMES=18;
+function _rdFrameURL(n){return 'Assets/sprites/endRoundDisplay/end_round_display'+n+'.png';}
+function _rdFrameSrc(n){return (window._rdFrames&&window._rdFrames[n-1])?window._rdFrames[n-1].src:_rdFrameURL(n);}
+// Build the rise frames as stacked <img> layers once and cache them. All 18
+// frames stay in the DOM (loaded + decoded); the rise just toggles which one is
+// visible via opacity — no src swap mid-animation, so there's no decode flash /
+// board-behind flicker between frames.
+function _rdBuildFrames(){
+  var host=document.getElementById('round-display-frames');
+  if(!host||host.children.length===_RD_FRAMES)return;
+  host.innerHTML='';
+  for(var i=1;i<=_RD_FRAMES;i++){var im=document.createElement('img');im.className='rd-frame';im.alt='';im.src=_rdFrameSrc(i);host.appendChild(im);}
+}
+function _rdShowFrame(n){
+  var host=document.getElementById('round-display-frames');if(!host)return;
+  var kids=host.children;
+  for(var i=0;i<kids.length;i++){var on=(i===n-1);if(on!==kids[i].classList.contains('on'))kids[i].classList.toggle('on',on);}
+}
+function _rgClear(){for(var i=0;i<_rgTimers.length;i++)clearTimeout(_rgTimers[i]);_rgTimers=[];}
+function animateEndDisplay(opts){
+  _rgClear();_rgSkip=null;
+  var seq=document.getElementById('round-seq-list');
+  var btn=document.getElementById('round-continue-btn');
+  var modal=document.getElementById('round-modal');
+  var content=document.getElementById('round-panel-content');
+  _rdBuildFrames();_rdShowFrame(1);
+  content.classList.remove('rg-content-show');
+  btn.classList.remove('rg-show');
+  btn.className='btn '+(opts.buttonClass||'btn-green');
+  btn.textContent=opts.buttonText||'Continue';
+  btn.onclick=opts.onButton||function(){};
+  seq.innerHTML='';
+
+  var words=opts.words||[], ledger=opts.ledger||[], wins=opts.wins||[];
+  var lose=(opts.mode==='lose');
+  // Letter-tile size: as large as fits the centred word column (col1 of the
+  // word | hyphen | score grid — roughly half the content width) for the longest
+  // word actually present, capped at 42 so it stays in step with the row text.
+  // Long words shrink to fit; short-word rounds keep big tiles.
+  var _maxLen=1;
+  for(var _wl=0;_wl<words.length;_wl++){
+    _maxLen=Math.max(_maxLen,(words[_wl].word||'').length);
+    var _wc=words[_wl].cross||[];
+    for(var _wcl=0;_wcl<_wc.length;_wcl++)_maxLen=Math.max(_maxLen,(_wc[_wcl]||'').length);
+  }
+  var _seqW=seq.getBoundingClientRect().width||(0.43*window.innerWidth);
+  var _col1=(_seqW-72)/2; // word column: content minus the centred hyphen column + its gaps
+  var TSZ=Math.max(16,Math.min(42,Math.floor((_col1-3*(_maxLen-1))/_maxLen)));
+  var steps=[];
+  function addRow(el){seq.appendChild(el);seq.scrollTop=seq.scrollHeight;}
+
+  // 1) Panel pulls up from the bottom of the screen (opacity-toggled frames).
+  for(var fr=1;fr<=_RD_FRAMES;fr++){
+    (function(n){steps.push({after:AT(24),fn:function(){_rdShowFrame(n);}});})(fr);
+  }
+  // 2) Content fades in on the risen panel.
+  steps.push({after:AT(220),fn:function(){content.classList.add('rg-content-show');}});
+
+  // 3) Each play: its cross words first (word only, no score), then the main
+  //    word with the play's score. Rows are a 3-column grid — word (right of the
+  //    hyphen column), centred hyphen, score — so every hyphen lines up down the
+  //    middle with words trailing left and scores trailing right. Cross words
+  //    carry an invisible hyphen so their tiles align to the same centre axis.
+  // Build a tile-word row and queue its per-letter reveal; returns the row so
+  // the caller can append the "— N pts".
+  function _rdTileRow(wordStr){
+    var row=document.createElement('div');row.className='rd-word-row';
+    var tiles=document.createElement('span');tiles.className='rd-tiles';
+    row.appendChild(tiles);
+    var letters=(wordStr||'').toUpperCase().split('');
+    steps.push({after:AT(70),fn:function(){addRow(row);}});
+    for(var li=0;li<letters.length;li++){
+      (function(ch){
+        steps.push({after:AT(85),fn:function(inst){
+          var t=document.createElement('span');t.className='rd-tile';
+          t.style.cssText='width:'+TSZ+'px;height:'+TSZ+'px;'+tileSpr(ch,false,null,TSZ);
+          tiles.appendChild(t);seq.scrollTop=seq.scrollHeight;
+          if(!inst)_playScoreDing();
+        }});
+      })(letters[li]);
+    }
+    return row;
+  }
+  for(var wi=0;wi<words.length;wi++){
+    (function(w){
+      var cross=w.cross||[];
+      for(var ci=0;ci<cross.length;ci++){
+        // Reserve the hyphen column (never revealed) so cross words align to the
+        // same centre axis as the main word.
+        var crow=_rdTileRow(cross[ci]);
+        var cdash=document.createElement('span');cdash.className='rd-dash';cdash.textContent='—';
+        crow.appendChild(cdash);
+      }
+      var row=_rdTileRow(w.word);
+      var dash=document.createElement('span');dash.className='rd-dash';dash.textContent='—';
+      var pts=document.createElement('span');pts.className='rd-pts';pts.textContent=fmtNum(w.pts||0)+' pts';
+      row.appendChild(dash);row.appendChild(pts);
+      steps.push({after:AT(130),fn:function(){dash.classList.add('rg-show');}});
+      steps.push({after:AT(240),fn:function(inst){pts.classList.add('rg-show');if(!inst)_playScoreDing();}});
+    })(words[wi]);
+  }
+
+  // 4) Total line — "Beating Y" (green) on a win, "Failing Y" (red) on a loss.
+  (function(){
+    var row=document.createElement('div');row.className='rd-total-row';
+    var seg1=document.createElement('span');seg1.className='rd-seg';
+    seg1.innerHTML='Total <span class="rd-total-val">'+fmtNum(opts.total||0)+'</span>';
+    var seg2=document.createElement('span');seg2.className='rd-seg '+(lose?'rd-fail':'rd-beat');
+    seg2.textContent=(lose?'Failing ':'Beating ')+fmtNum(opts.target||0);
+    row.appendChild(seg1);row.appendChild(seg2);
+    steps.push({after:AT(160),fn:function(){addRow(row);}});
+    steps.push({after:AT(300),fn:function(inst){seg1.classList.add('rg-show');if(!inst)_playScoreDing();}});
+    steps.push({after:AT(320),fn:function(inst){seg2.classList.add('rg-show');if(!inst)_playScoreDing();}});
+  })();
+
+  if(lose){
+    // 5b) The top plays that would have won, if any were found.
+    if(wins.length){
+      var head=document.createElement('div');head.className='rd-win-head';
+      head.textContent=wins.length>1?"These plays would've won:":"This play would've won:";
+      steps.push({after:AT(260),fn:function(){addRow(head);head.classList.add('rg-show');}});
+      for(var i=0;i<wins.length;i++){
+        (function(w){
+          var row=document.createElement('div');row.className='rd-win-row';
+          var word=document.createElement('span');word.className='rd-win-word';word.textContent=w.word;
+          var sc=document.createElement('span');sc.className='rd-win-score';sc.textContent=fmtNum(w.score||0)+' pts';
+          row.appendChild(word);row.appendChild(sc);
+          steps.push({after:AT(200),fn:function(inst){addRow(row);row.classList.add('rg-show');if(!inst)_playScoreDing();}});
+        })(wins[i]);
+      }
+    }
+  }else{
+    // 5a) Gold-reward rows: dollar signs one at a time while the +$ counts up.
+    var MAXSIGNS=14;
+    for(var gi2=0;gi2<ledger.length;gi2++){
+      (function(e){
+        var row=document.createElement('div');row.className='gold-row';
+        var lab=document.createElement('span');lab.className='gold-row-label';lab.textContent=e.label;
+        var signs=document.createElement('span');signs.className='gold-row-signs';
+        var amt=document.createElement('span');amt.className='gold-row-amt';amt.textContent='';
+        row.appendChild(lab);row.appendChild(signs);row.appendChild(amt);
+        var need=Math.min(e.amount,MAXSIGNS);
+        steps.push({after:AT(150),fn:function(){addRow(row);row.classList.add('rg-show');}});
+        for(var g=0;g<need;g++){
+          (function(gi){
+            steps.push({after:AT(105),fn:function(inst){
+              var s=document.createElement('span');s.className='gold-sign';s.textContent='$';signs.appendChild(s);
+              if(!inst)_playCoinClink(false);
+              amt.textContent='+$'+Math.round((gi+1)/need*e.amount);
+            }});
+          })(g);
+        }
+        steps.push({after:AT(240),fn:function(){amt.textContent='+$'+e.amount;}});
+      })(ledger[gi2]);
+    }
+  }
+
+  // 6) Action button pops in.
+  steps.push({after:0,fn:function(){btn.classList.add('rg-show');}});
+
+  var idx=0;
+  function next(){
+    if(idx>=steps.length){_rgSkip=null;modal.onclick=null;return;}
+    var step=steps[idx++];step.fn(false);
+    _rgTimers.push(setTimeout(next,Math.max(0,step.after)));
+  }
+  _rgSkip=function(){
+    _rgClear();
+    while(idx<steps.length)steps[idx++].fn(true);
+    _rgSkip=null;modal.onclick=null;
+  };
+  modal.onclick=function(){if(_rgSkip)_rgSkip();};
+  next();
+}
+
+// Show the rising-panel display for a cleared round (gold breakdown). The button
+// shows the gold earned this round (the sum of the ledger rows), not the running
+// total the player already had.
+function animateRoundDisplay(data){
+  var _earned=0,_lg=data.ledger||[];for(var _ei=0;_ei<_lg.length;_ei++)_earned+=_lg[_ei].amount;
+  animateEndDisplay({mode:'win',words:data.words,total:data.total,target:data.target,
+    ledger:data.ledger,buttonText:'Take $'+_earned+' to the shop',onButton:advanceRound});
+}
+// Show the rising-panel display for a failed round: words + "Failing Y" + the
+// top plays that would have won. Tiles are hoovered off the board first.
+function showLossDisplay(data){
+  animHooverTiles(function(){
+    document.getElementById('round-modal').style.display='flex';
+    animateEndDisplay({mode:'lose',words:data.words,total:data.total,target:data.target,
+      wins:data.wins||[],buttonText:'New game',buttonClass:'btn-red',onButton:_newGameFromLoss});
+  });
+}
+function _newGameFromLoss(){_blinkPanelThenDescend(function(){startGame();});}
+
+// Leaving the end-of-round panel: blink the contents off, then lower the panel
+// back down off the screen (the rise frames played in reverse). Runs onDone once
+// the panel is fully gone and the board is visible again.
+function _blinkPanelThenDescend(onDone){
+  _rgClear();_rgSkip=null;
+  var modal=document.getElementById('round-modal');modal.onclick=null;
+  var content=document.getElementById('round-panel-content');
+  content.classList.add('rd-blink-out');
+  _rgTimers.push(setTimeout(function(){
+    content.classList.remove('rg-content-show');content.classList.remove('rd-blink-out');
+    var n=_RD_FRAMES;
+    (function down(){
+      _rdShowFrame(n);
+      if(n<=1){_rgTimers.push(setTimeout(function(){modal.style.display='none';if(onDone)onDone();},AT(60)));return;}
+      n--;_rgTimers.push(setTimeout(down,AT(24)));
+    })();
+  },AT(300)));
 }
 
 function winContinueEndless(){
@@ -270,7 +522,12 @@ function winNewRun(){
 }
 
 function advanceRound(){
-  document.getElementById('round-modal').style.display='none';
+  _rgClear();_rgSkip=null;
+  var modal=document.getElementById('round-modal');modal.onclick=null;
+  // When the end-of-round popup is up, its tiles were already hoovered off the
+  // board (roundComplete). When it isn't (Safety Net, endless win-modal), the
+  // board still holds tiles and we do the full vacuum+fold.
+  var popupShown=(modal.style.display==='flex');
   S.bi++;
   var newBoard=S.bi>=3;
   if(newBoard){S.ai++;S.bi=0;if(S.ai>=BOARDS.length)S.endless=true;}
@@ -280,37 +537,56 @@ function advanceRound(){
   if(newBoard){
     // Paint bucket: blank the tile that was committed on its square (transforms pool entry in place)
     for(var _pbi=0;_pbi<S.placed.length;_pbi++){var _pb=S.placed[_pbi];if(_pb.id==='paint_bucket'&&_pb.sqIdx!=null&&S.bt[_pb.sqIdx]&&S.bt[_pb.sqIdx].id){_pbBlanks++;transformTile(S.bt[_pb.sqIdx].id,{isBlank:true});}}
-    // End-of-board sticker/stamp effects (Bourgeois, etc.)
-    _fireAllHooks('onEndBoard',[]);
+    // End-of-board sticker/stamp effects (Bourgeois, etc.). roundComplete
+    // already fired these on a normal clear (window._endBoardDone) so the gold
+    // could join the breakdown; fire here only when it hasn't (e.g. Safety Net).
+    if(!window._endBoardDone)_fireAllHooks('onEndBoard',[]);
   }
+  window._endBoardDone=false;
 
   if(typeof _resetZoom==='function')_resetZoom();
   var _bgo=document.getElementById('bag-ui-overlay');
   if(_bgo&&_bgo.style.display!=='none'){_bgo.style.display='none';delete _bgo.dataset.opening;delete _bgo.dataset.closing;}
   var _bgs=document.getElementById('bag-sprite');if(_bgs)_bgs.style.visibility='';
 
-  _doBoardAnimation(newBoard,_pbBlanks);
+  if(popupShown){
+    // Blink the panel off, lower it back down, then — once the empty board is
+    // fully visible again — fold it into the shop.
+    _blinkPanelThenDescend(function(){
+      _rgTimers.push(setTimeout(function(){
+        _closeBoard(function(){_boardToShopReset(newBoard,_pbBlanks);});
+      },AT(120)));
+    });
+  }else{
+    modal.style.display='none';
+    _doBoardAnimation(newBoard,_pbBlanks);
+  }
 }
 
+// Full board→shop transition (vacuum the tiles into the bag, then fold). Used
+// when there's no popup up (Safety Net, endless win-modal, dev test).
 function _doBoardAnimation(newBoard,pbBlanks){
-  animBoardToShop(function(){
-    if(newBoard){
-      clearBoardLetters();
-      var _handIds=new Set((S.hand||[]).map(function(t){return t&&t.id;}).filter(Boolean));
-      var _reBag=(S.pool||[]).filter(function(pt){return !_handIds.has(pt.id);});
-      _reBag.forEach(function(pt){setTileState(pt,'stored',{storedIn:'bag'});});
-      S.bag=shuffle(_reBag);
-      var _pbMsg=pbBlanks?' Paint Bucket: '+pbBlanks+' tile'+(pbBlanks!==1?'s':'')+' blanked.':'';
-      toast(S.endless?'Endless mode! Targets keep rising.':'New board — tiles cleared!'+_pbMsg);
-    }
-    S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.discardsThisRound=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
-    S.usedLetters=new Set();S.stickersSoldThisBoard=0;
-    var _rc=currentConstraint();if(_rc==='c_oneplay')S.plays=1;if(_rc==='c_nodisc')S.disc=0;
-    var _insatN=countStamp('insatiable');
-    if(_insatN)S.disc+=_insatN;
-    S.sqHand=[];S.sqStaged={};
-    recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],packs:[],bounties:[]};enterShopPhase();
-  });
+  animBoardToShop(function(){_boardToShopReset(newBoard,pbBlanks);});
+}
+// Reset run state for the new round and enter the shop. Runs after the board has
+// folded away (behind the fold overlay), whichever path got us there.
+function _boardToShopReset(newBoard,pbBlanks){
+  if(newBoard){
+    clearBoardLetters();
+    var _handIds=new Set((S.hand||[]).map(function(t){return t&&t.id;}).filter(Boolean));
+    var _reBag=(S.pool||[]).filter(function(pt){return !_handIds.has(pt.id);});
+    _reBag.forEach(function(pt){setTileState(pt,'stored',{storedIn:'bag'});});
+    S.bag=shuffle(_reBag);
+    var _pbMsg=pbBlanks?' Paint Bucket: '+pbBlanks+' tile'+(pbBlanks!==1?'s':'')+' blanked.':'';
+    toast(S.endless?'Endless mode! Targets keep rising.':'New board — tiles cleared!'+_pbMsg);
+  }
+  S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.discardsThisRound=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
+  S.usedLetters=new Set();S.stickersSoldThisBoard=0;S.roundWords=[];
+  var _rc=currentConstraint();if(_rc==='c_oneplay')S.plays=1;if(_rc==='c_nodisc')S.disc=0;
+  var _insatN=countStamp('insatiable');
+  if(_insatN)S.disc+=_insatN;
+  S.sqHand=[];S.sqStaged={};
+  recallAll();HP.x=[];HP.vx=[];drawFull();renderAll();shopPool={sq:[],packs:[],bounties:[]};enterShopPhase();
 }
 
 function showGO(msg){
@@ -328,6 +604,7 @@ function showGO(msg){
 }
 
 function closeAllModals(){
+  _rgClear();_rgSkip=null;window._endBoardDone=false;var _rm=document.getElementById('round-modal');if(_rm)_rm.onclick=null;
   ['pack-modal','sq-modal','bag-ui-overlay','shop-bag-overlay','blank-modal','round-modal','win-modal','gameover-modal','board-preview-modal','collection-modal','achv-modal','wordbook-modal','seed-modal','tk-overlay'].forEach(function(id){var el=document.getElementById(id);if(el){el.style.display='none';delete el.dataset.closing;}});
   if(typeof _tkCloseOverlay==='function'&&window._tkOv){_tkOv=null;_tkBusy=false;}
   document.getElementById('shop-screen').style.display='none';
@@ -343,6 +620,7 @@ function attachBagHover(btn,spr,onFrame){
   var frame=0,dir=0,timer=null,MAX=4,MS=70;
   function tick(){
     timer=null;
+    if(window._bagVacuuming)return; // the vacuum owns the bag — don't fight it
     frame=Math.max(0,Math.min(MAX,frame+dir));
     if(onFrame)onFrame(frame);
     spr.src='Assets/animations/bag/bag-hl-frame'+frame+'.png';
@@ -351,12 +629,14 @@ function attachBagHover(btn,spr,onFrame){
     else if(dir===-1&&frame===0)spr.src='Assets/animations/bag/bag-frame0.png';
   }
   btn.addEventListener('mouseenter',function(){
+    if(window._bagVacuuming)return;
     if(timer){clearTimeout(timer);timer=null;}
     dir=1;
     spr.src='Assets/animations/bag/bag-hl-frame'+frame+'.png';
     if(frame<MAX)timer=setTimeout(tick,MS);
   });
   btn.addEventListener('mouseleave',function(){
+    if(window._bagVacuuming)return;
     if(timer){clearTimeout(timer);timer=null;}
     dir=-1;
     if(frame>0)timer=setTimeout(tick,MS);
@@ -378,6 +658,39 @@ function _animBagFrames(imgEl,fromFrame,toFrame,ms,onDone,prefix){
     cur+=step;imgEl.src=pre+cur+'.png';
     if(cur===toFrame){clearInterval(timer);if(onDone)onDone();}
   },ms);
+}
+
+var BAG_SHAKE_FRAMES=[6,7,8,9]; // the "flapping" rattle loop
+// Round-clear anticipation: the moment a scoring play crosses the round target,
+// crack the play-phase bag open (0→5) and leave it rattling in place until the
+// end-of-round vacuum takes over. Hover is suppressed while _bagVacuuming is
+// armed (see attachBagHover) so the rattle survives the rest of scoring, and
+// animHooverTiles hands the shake straight over to its overlay (no re-open).
+function bagVacuumStart(){
+  if(window._bagVacuuming)return;
+  var spr=document.getElementById('bag-sprite');
+  if(!spr)return;
+  window._bagVacuuming=true;
+  _animBagFrames(spr,0,5,AT(80),function(){
+    if(!window._bagVacuuming)return; // reset before the open finished
+    var fi=0;
+    window._bagPlayShake=setInterval(function(){
+      spr.src='Assets/animations/bag/bag-frame'+BAG_SHAKE_FRAMES[fi%BAG_SHAKE_FRAMES.length]+'.png';
+      fi++;
+    },AT(100));
+  });
+}
+// Stop the play-sprite rattle loop (the overlay's own shake continues it).
+function bagVacuumStopPlayShake(){
+  if(window._bagPlayShake){clearInterval(window._bagPlayShake);window._bagPlayShake=null;}
+}
+// Disarm the vacuum and drop the bag back to its closed frame — used on the win
+// path (no vacuum follows) and defensively at run start.
+function bagVacuumReset(){
+  bagVacuumStopPlayShake();
+  window._bagVacuuming=false;
+  var spr=document.getElementById('bag-sprite');
+  if(spr)spr.src='Assets/animations/bag/bag-frame0.png';
 }
 
 function _renderBagFloatTiles(cont,tiles,sz){

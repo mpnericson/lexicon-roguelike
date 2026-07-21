@@ -40,6 +40,12 @@ function attachHandTileDrag(face,oi,vi,tile){
     if(ev.button!==0)return;
     ev.preventDefault();ev.stopPropagation();
     if(activeDrag)return;
+    // Block through the whole play→refill window, not just the score animation:
+    // the 'scoring' class clears when runScoreAnim ends, but window._scoring stays
+    // true until the burst refill resolves. Grabbing a tile mid-refill overlaps
+    // with the burst's renderHand/onDone and corrupts HP/tile state (matches the
+    // glass-retrieve guard at attachGlassRetrieve).
+    if(window._scoring)return;
     if(document.getElementById('live-score-row').classList.contains('scoring'))return;
     var _selGroup=[];
     if(tile.sel){for(var _msi=0;_msi<S.hand.length;_msi++){if(S.hand[_msi]&&S.hand[_msi].sel&&S.hand[_msi].state==='hand')_selGroup.push({t:S.hand[_msi],oi:_msi});}}
@@ -74,6 +80,7 @@ function reorderHand(fromOi,insertAt,vis,dropX){
 function attachBoardTileDrag(face,sqIdx,sz,isTop){
   face.addEventListener('pointerdown',function(ev){
     ev.preventDefault();ev.stopPropagation();if(activeDrag)return;
+    if(window._scoring)return; // block during play→refill window (see attachHandTileDrag)
     if(document.getElementById('live-score-row').classList.contains('scoring'))return;
     var sr=face.getBoundingClientRect();var sx=ev.clientX,sy=ev.clientY;var moved=false;
     var _tsz=sz;
@@ -134,7 +141,7 @@ function attachBoardTileDrag(face,sqIdx,sz,isTop){
             if(isTop){if(S.btTop)S.btTop[sqIdx]=null;}else{S.bt[sqIdx]=null;}
             setTileState(src,'board',{boardSq:over,isNew:true});
             if(_jengaCanStack(over)){
-              if(!S.btTop)S.btTop=Array(B*B).fill(null);
+              if(!S.btTop)S.btTop=Array(BN).fill(null);
               S.btTop[over]=src;
             } else {
               S.bt[over]=src;
@@ -413,7 +420,7 @@ function _startMultiDrag(ev,dragOi,dragVi,selTiles){
   function _computeFree(startSq){
     var r=Math.floor(startSq/B),c=startSq%B,free=[],n=selTiles.length;
     if(dir==='h'){for(var cc=c;cc<B&&free.length<n;cc++){var idx=r*B+cc;if(!S.bt[idx])free.push(idx);}}
-    else{for(var rr=r;rr<B&&free.length<n;rr++){var idx=rr*B+c;if(!S.bt[idx])free.push(idx);}}
+    else{for(var rr=r;rr<BH&&free.length<n;rr++){var idx=rr*B+c;if(!S.bt[idx])free.push(idx);}}
     return free.length>=n?free:null;
   }
   function _updateHL(anchorSq){
@@ -1010,7 +1017,7 @@ function placeTile(t,sqIdx){
   if(t)S.hand=S.hand.filter(function(x){return x!==t;});
   setTileState(t,'board',{boardSq:sqIdx,isNew:true});
   if(S.bt[sqIdx]&&!S.bt[sqIdx].isNew&&!S.bt[sqIdx]._stackLevel&&!(S.btTop&&S.btTop[sqIdx])){
-    if(!S.btTop)S.btTop=Array(B*B).fill(null);
+    if(!S.btTop)S.btTop=Array(BN).fill(null);
     S.btTop[sqIdx]=t;
   } else {
     S.bt[sqIdx]=t;
@@ -1474,8 +1481,8 @@ function _glassRetCancel(){
 }
 
 function recallAll(){
-  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){setTileState(S.btTop[i],'hand');if(S.hand.indexOf(S.btTop[i])<0)S.hand.push(S.btTop[i]);S.btTop[i]=null;}}}
-  for(var i=0;i<B*B;i++){var bt=S.bt[i];if(bt&&bt.isNew){setTileState(bt,'hand');if(S.hand.indexOf(bt)<0)S.hand.push(bt);S.bt[i]=null;}}
+  if(S.btTop){for(var i=0;i<BN;i++){if(S.btTop[i]&&S.btTop[i].isNew){setTileState(S.btTop[i],'hand');if(S.hand.indexOf(S.btTop[i])<0)S.hand.push(S.btTop[i]);S.btTop[i]=null;}}}
+  for(var i=0;i<BN;i++){var bt=S.bt[i];if(bt&&bt.isNew){setTileState(bt,'hand');if(S.hand.indexOf(bt)<0)S.hand.push(bt);S.bt[i]=null;}}
 }
 
 // Animated recallAll: recalled tiles arc in staggered from left to right.
@@ -1484,7 +1491,7 @@ function _recallAllAnimated(){
   var _recallAllS=S;
   var tEls=[],tRects=[],tTiles=[];
   if(S.btTop){
-    for(var i=0;i<B*B;i++){
+    for(var i=0;i<BN;i++){
       if(S.btTop[i]&&S.btTop[i].isNew){
         var sqEl2=document.querySelector('[data-sq-idx="'+i+'"]');
         var tEl2=sqEl2?sqEl2.querySelector('.board-tile.is-new'):null;
@@ -1495,7 +1502,7 @@ function _recallAllAnimated(){
       }
     }
   }
-  for(var i=0;i<B*B;i++){
+  for(var i=0;i<BN;i++){
     var bt=S.bt[i];
     if(bt&&bt.isNew){
       var sqEl=document.querySelector('[data-sq-idx="'+i+'"]');
@@ -1609,12 +1616,12 @@ function _burstNewTilesFromBag(nKept,nTotal,bagEl,onDone){
 }
 
 function clearBoardLetters(){
-  for(var i=0;i<B*B;i++){
+  for(var i=0;i<BN;i++){
     if(S.bt[i])setTileState(S.bt[i],'stored',{storedIn:'bag'});
     if(S.btTop&&S.btTop[i])setTileState(S.btTop[i],'stored',{storedIn:'bag'});
   }
-  S.bt=Array(B*B).fill(null);
-  if(S.btTop)S.btTop=Array(B*B).fill(null);
+  S.bt=Array(BN).fill(null);
+  if(S.btTop)S.btTop=Array(BN).fill(null);
 }
 
 function toggleSel(idx){if(Date.now()-_dragEndTime<300)return;if(S.hand[idx]){if(!S.hand[idx].sel&&window.TUT&&TUT.active&&!_tutSelTileOK())return;S.hand[idx].sel=!S.hand[idx].sel;_playTileClick('select');renderHand();}}
@@ -1629,6 +1636,7 @@ document.addEventListener('pointerdown',function(ev){
   if(!ev.shiftKey||ev.button!==0)return;
   if(typeof S==='undefined'||S.phase!=='play')return;
   if(activeDrag)return;
+  if(window._scoring)return; // block during play→refill window (see attachHandTileDrag)
   if(document.getElementById('live-score-row').classList.contains('scoring'))return;
   var _t=ev.target;while(_t&&_t!==document){var _tn=_t.tagName;if(_tn==='BUTTON'||_tn==='INPUT'||_tn==='SELECT'||_tn==='A'||_tn==='TEXTAREA'){return;}_t=_t.parentElement;}
   ev.preventDefault();ev.stopPropagation();
@@ -1781,7 +1789,7 @@ function multiPlaceSelected(selOis,startSq,dir){
   var r=Math.floor(startSq/B),c=startSq%B;
   var free=[];
   if(dir==='h'){for(var cc=c;cc<B;cc++){var idx2=r*B+cc;if(!S.bt[idx2])free.push(idx2);}}
-  else{for(var rr=r;rr<B;rr++){var idx2=rr*B+c;if(!S.bt[idx2])free.push(idx2);}}
+  else{for(var rr=r;rr<BH;rr++){var idx2=rr*B+c;if(!S.bt[idx2])free.push(idx2);}}
   // Resolve tile refs before any splice — placement removes tiles from S.hand, shifting indices
   var tiles=selOis.map(function(oi){return S.hand[oi];});
   if(free.length<tiles.length)return;

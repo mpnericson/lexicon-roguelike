@@ -64,16 +64,20 @@ function animBountySlideOut(chipIndex) {
 }
 
 function _bagSpriteShow(bagEl) {
-  var DISPLAY_SZ = 230;
-  var bagR = bagEl.getBoundingClientRect();
+  // Match the animated overlay to the resting bag sprite's exact rect (size + position)
+  // so it doesn't visibly scale or lift when the animation takes over.
+  var sprEl = bagEl.querySelector('img') || bagEl;
+  var sprR = sprEl.getBoundingClientRect();
   var overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;z-index:820;pointer-events:none;'
-    + 'left:' + (bagR.left + bagR.width / 2 - DISPLAY_SZ / 2) + 'px;'
-    + 'top:' + (bagR.top + bagR.height / 2 - DISPLAY_SZ / 2) + 'px;'
-    + 'width:' + DISPLAY_SZ + 'px;height:' + DISPLAY_SZ + 'px;';
+    + 'left:' + sprR.left + 'px;'
+    + 'top:' + sprR.top + 'px;'
+    + 'width:' + sprR.width + 'px;height:' + sprR.height + 'px;';
   var img = document.createElement('img');
   img.style.cssText = 'width:100%;height:100%;image-rendering:pixelated;display:block;';
-  img.src = 'Assets/animations/bag/bag-frame0.png';
+  // Match whatever pose the real bag is holding: mid-rattle (frame 6) if it's
+  // already been vacuuming since scoring, otherwise the closed frame 0.
+  img.src = window._bagVacuuming ? 'Assets/animations/bag/bag-frame6.png' : 'Assets/animations/bag/bag-frame0.png';
   overlay.appendChild(img);
   document.body.appendChild(overlay);
   bagEl.style.visibility = 'hidden';
@@ -95,10 +99,12 @@ function _bagSpriteIntro(state, onDone) {
 function _bagSpriteShakeStart(state) {
   var frames = [6,7,8,9];
   var fi = 0;
-  state.shakeInterval = setInterval(function() {
+  function step() {
     state.img.src = 'Assets/animations/bag/bag-frame' + frames[fi % frames.length] + '.png';
     fi++;
-  }, AT(100));
+  }
+  step(); // render the first rattle frame now so a hand-off from the real sprite doesn't hitch
+  state.shakeInterval = setInterval(step, AT(100));
 }
 
 function _bagSpriteOutro(state, bagEl, onDone) {
@@ -114,7 +120,10 @@ function _bagSpriteOutro(state, bagEl, onDone) {
   next();
 }
 
-function animBoardToShop(onDone) {
+// Vacuum every board tile — plus whatever's left in the hand — up into the bag,
+// no board fold. Used on its own to clear the board before the end-of-round
+// panel rises, and as the first half of animBoardToShop.
+function animHooverTiles(onDone) {
   var layer = document.getElementById('anim-layer');
   layer.innerHTML = '';
 
@@ -125,6 +134,13 @@ function animBoardToShop(onDone) {
     var r = els[i].getBoundingClientRect();
     if (r.width > 0 && r.height > 0) tiles.push({el: els[i], r: r});
   }
+  // Suck the leftover hand tiles in too — they'd otherwise just blink out when
+  // the board resets for the shop.
+  var handEls = document.querySelectorAll('#hand-area .hand-tile');
+  for (var hi = 0; hi < handEls.length; hi++) {
+    var hr = handEls[hi].getBoundingClientRect();
+    if (hr.width > 0 && hr.height > 0) tiles.push({el: handEls[hi], r: hr});
+  }
 
   var bagEl = document.getElementById('bag-btn');
   var bagR = bagEl.getBoundingClientRect();
@@ -134,11 +150,19 @@ function animBoardToShop(onDone) {
   var shuffled = shuffle(tiles.slice());
   var N = shuffled.length;
 
-  if (N === 0) { _closeBoard(onDone); return; }
+  if (N === 0) { if (onDone) onDone(); return; }
 
   var bagState = _bagSpriteShow(bagEl);
-  // Play intro, then start shake loop
-  _bagSpriteIntro(bagState, function() { _bagSpriteShakeStart(bagState); });
+  // If the bag has been rattling since scoring crossed the round target, hand the
+  // shake straight over from the (now hidden) real sprite to the overlay. Else
+  // play the open intro (frames 0→5) first, then start the shake loop.
+  if (window._bagVacuuming) {
+    window._bagVacuuming = false;
+    bagVacuumStopPlayShake();
+    _bagSpriteShakeStart(bagState);
+  } else {
+    _bagSpriteIntro(bagState, function() { _bagSpriteShakeStart(bagState); });
+  }
 
   var T = AT(1500);
   var done = 0;
@@ -152,13 +176,18 @@ function animBoardToShop(onDone) {
           done++;
           if (done === N) {
             _bagSpriteOutro(bagState, bagEl, function() {
-              setTimeout(function() { _closeBoard(onDone); }, AT(80));
+              setTimeout(function() { if (onDone) onDone(); }, AT(80));
             });
           }
         });
       }, delay);
     })(shuffled[i], i);
   }
+}
+// Full board→shop transition: hoover the tiles into the bag, then fold the board
+// away. (The end-of-round popup path splits these two halves apart.)
+function animBoardToShop(onDone) {
+  animHooverTiles(function() { _closeBoard(onDone); });
 }
 
 function _liftAndFly(tile, layer, tx, ty, flightDur, onDone) {

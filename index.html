@@ -17,7 +17,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 #right-panel{display:flex;flex-direction:column;gap:8px;width:25vw;flex-shrink:0;position:relative}
 #bounty-section{flex:1;min-height:0;max-height:80vh;overflow-y:auto}
 #board-area{flex:1;display:flex;justify-content:center;align-items:center;overflow:hidden;min-height:0;position:relative}
-#hand-wrap{display:flex;align-items:center;gap:10px;height:80px;flex-shrink:0}
+#hand-wrap{position:relative;display:flex;align-items:center;gap:10px;height:80px;flex-shrink:0}
 #hand-area{position:relative;flex:1;height:68px;overflow:visible}
 #shop-screen{position:fixed;top:0;left:0;width:100%;height:100%;background:#06060e;z-index:200;display:none;align-items:center;justify-content:center}
 #shop-canvas{position:relative;width:min(100vw,calc(100vh * 16 / 10));aspect-ratio:256/160;flex-shrink:0;overflow:hidden}
@@ -139,7 +139,7 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 .sq-staged-cell{box-shadow:inset 0 0 0 2px rgba(255,255,255,0.55)!important;cursor:pointer!important}
 #play-controls{display:flex;flex-direction:column;gap:0;position:absolute;bottom:0;left:0;right:0}
 #placing-controls{display:none;flex-direction:column;gap:6px;position:absolute;bottom:0;left:0;right:0}
-#shuffle-btn{width:38px;height:68px;background:#2a3a2a;border:2px solid #4a6a4a;border-radius:8px;color:#80c080;font-size:22px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.1s,transform 0.1s}
+#shuffle-btn{position:absolute;left:0;top:6px;z-index:2;width:38px;height:68px;background:#2a3a2a;border:2px solid #4a6a4a;border-radius:8px;color:#80c080;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.1s,transform 0.1s}
 .zoom-btn{width:38px;height:31px;background:#12122a;border:2px solid #3a3a5a;border-radius:6px;color:#a0a0c0;font-size:32px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:background 0.1s,border-color 0.1s}
 .zoom-btn:hover{background:#1e1e3a;border-color:#f0e080;color:#f0e080}
 .zoom-btn:active{transform:scale(0.92)}
@@ -230,6 +230,64 @@ body.focus-exiting #focus-bg{opacity:0}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:200}
 .modal{background:#12122a;border:1px solid #5a5a8a;border-radius:12px;padding:24px;max-width:680px;width:95%;max-height:90vh;overflow-y:auto}
 .modal h2{color:#f0e080;font-size:22px;margin-bottom:4px}
+/* End-of-round display panel: rises from the bottom of the screen, centred
+   between the indigo board borders. Positioned at background scale — the
+   mainui bg is 256x160 stretched to 100vw x 100vh, and the panel art is
+   128x142, so it maps to 50vw wide (left 25vw) and 88.75vh tall. */
+#round-modal{background:none}
+#round-display-panel{position:fixed;left:25vw;bottom:0;width:50vw;height:88.75vh;
+  background:none;
+  border:none;border-radius:0;padding:0;margin:0;max-width:none;max-height:none;overflow:visible;box-shadow:none}
+/* Panel art as 18 stacked <img> layers instead of a swapped src/background: all
+   frames stay loaded + decoded in the DOM, and the rise just toggles which one is
+   visible (opacity). Nothing is fetched or re-decoded mid-animation, so there is
+   never a transparent gap flashing through to the board behind — a single <img>
+   whose src is swapped still shows a decode flash, worst at high anim-speed. */
+#round-display-frames{position:absolute;inset:0;pointer-events:none;z-index:0}
+.rd-frame{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;display:block;opacity:0}
+.rd-frame.on{opacity:1}
+#round-panel-content{z-index:1}
+#round-panel-content{position:absolute;left:7%;right:7%;top:9%;bottom:6%;
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  opacity:0;transition:opacity .3s ease}
+#round-panel-content.rg-content-show{opacity:1}
+/* "Blink off" the panel contents when leaving for the shop / new game. */
+#round-panel-content.rd-blink-out{animation:rdBlinkOut .3s linear forwards}
+@keyframes rdBlinkOut{0%{opacity:1}25%{opacity:0}50%{opacity:1}75%{opacity:0}100%{opacity:0}}
+/* The animated sequence: words-as-tiles, the total/beating line, then the
+   gold-reward rows — each element revealed one beat at a time. */
+#round-seq-list{width:100%;display:flex;flex-direction:column;align-items:stretch;gap:10px;flex:1 1 auto;overflow-y:auto;overflow-x:hidden}
+/* Word rows: a 3-column grid — word | hyphen | score — so every hyphen lines up
+   down the centre, words trail out to the left, scores out to the right. */
+.rd-word-row{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;column-gap:10px;color:#ffe6c8;font-size:40px;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.rd-tiles{display:flex;align-items:center;gap:3px;justify-self:end}
+.rd-tile{display:inline-block;flex-shrink:0;border-radius:4px;box-shadow:0 2px 3px rgba(0,0,0,.4);transform-origin:center bottom;animation:goldSignPop .3s cubic-bezier(.34,1.7,.5,1) both}
+.rd-dash,.rd-pts{opacity:0;transform:translateY(6px);transition:opacity .2s ease,transform .2s ease}
+.rd-pts{color:#ffd24a;white-space:nowrap;justify-self:start;text-shadow:0 0 7px rgba(255,190,0,.55),0 1px 2px rgba(0,0,0,.5)}
+.rd-dash.rg-show,.rd-pts.rg-show{opacity:1;transform:none}
+/* Total / Beating line. */
+.rd-total-row{display:flex;align-items:baseline;justify-content:center;gap:14px;flex-wrap:wrap;font-size:46px;color:#fff0c8;text-shadow:0 2px 3px rgba(0,0,0,.55);margin:6px 0}
+.rd-total-row .rd-seg{opacity:0;transform:scale(.7);transition:opacity .22s ease,transform .28s cubic-bezier(.34,1.56,.64,1)}
+.rd-total-row .rd-seg.rg-show{opacity:1;transform:none}
+.rd-total-row .rd-total-val{color:#ffe07a}
+.rd-total-row .rd-beat{color:#a8f0a0;font-size:38px}
+.rd-total-row .rd-fail{color:#ff7a7a;font-size:38px}
+/* Loss: the top plays that would have won. */
+.rd-win-head{width:100%;text-align:center;color:#c8c0e0;font-size:30px;text-transform:uppercase;letter-spacing:1px;margin-top:6px;text-shadow:0 1px 2px rgba(0,0,0,.5);opacity:0;transform:translateY(10px);transition:opacity .22s ease,transform .22s ease}
+.rd-win-row{display:flex;align-items:baseline;justify-content:center;gap:16px;font-size:38px;opacity:0;transform:translateY(10px);transition:opacity .22s ease,transform .22s ease}
+.rd-win-head.rg-show,.rd-win-row.rg-show{opacity:1;transform:none}
+.rd-win-word{color:#ffe07a;letter-spacing:4px;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.rd-win-score{color:#a8f0a0;text-shadow:0 0 7px rgba(120,255,120,.45),0 1px 2px rgba(0,0,0,.5)}
+/* Gold-reward rows, dollar signs one at a time. */
+.gold-row{display:flex;align-items:center;gap:14px;font-size:42px;color:#ffe6c8;text-shadow:0 1px 2px rgba(0,0,0,.5);opacity:0;transform:translateY(10px);transition:opacity .22s ease,transform .22s ease}
+.gold-row.rg-show{opacity:1;transform:none}
+.gold-row-label{flex:0 0 auto;white-space:nowrap}
+.gold-row-signs{flex:1 1 auto;display:flex;flex-wrap:wrap;align-items:center;gap:1px;min-height:1em}
+.gold-row-amt{flex:0 0 auto;color:#ffd24a;font-size:44px;text-shadow:0 0 8px rgba(255,190,0,.6),0 1px 2px rgba(0,0,0,.5)}
+.gold-sign{display:inline-block;color:#ffd648;font-size:44px;text-shadow:0 0 9px rgba(255,190,0,.75),0 1px 2px rgba(0,0,0,.5);transform-origin:center bottom;animation:goldSignPop .34s cubic-bezier(.34,1.7,.5,1) both}
+@keyframes goldSignPop{0%{transform:scale(0) translateY(6px)}55%{transform:scale(1.4) translateY(-5px)}78%{transform:scale(.9) translateY(1px)}100%{transform:scale(1) translateY(0)}}
+#round-continue-btn{font-size:40px;opacity:0;transform:scale(.8);transition:opacity .25s ease,transform .32s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+#round-continue-btn.rg-show{opacity:1;transform:none;pointer-events:auto}
 .msub{color:#8880a8;font-size:30px;margin-bottom:16px}
 .set-row{margin-bottom:20px}
 .set-row:last-child{margin-bottom:6px}
@@ -455,7 +513,7 @@ body.focus-exiting #focus-bg{opacity:0}
   <div id="left-panel">
     <div id="stat-panel">
       <div id="stat-word-score-box"><div id="ls-letters-wrap"><div id="ls-letters">0</div><div id="ls-tile-delta"></div></div></div>
-      <div id="stat-progress-box"><div id="ls-mult">1</div></div>
+      <div id="stat-progress-box"><div id="ls-mult">0</div></div>
       <div id="ls-op" style="display:none">×</div>
       <div id="live-score-row">
         <div id="stat-letters-box"><div id="ls-score">0</div></div>
@@ -741,10 +799,12 @@ body.focus-exiting #focus-bg{opacity:0}
 </div>
 <div id="anim-layer"></div>
 <div id="round-modal" class="modal-overlay" style="display:none">
-  <div class="modal" style="text-align:center"><h2 id="round-title"></h2>
-    <p style="color:#a0a0c0;font-size:32px;margin-bottom:8px" id="round-msg"></p>
-    <div id="round-reward" style="font-size:32px;color:#f0c060;margin-bottom:14px"></div>
-    <button class="btn btn-green" style="width:auto;padding:9px 24px" onclick="advanceRound()">Continue</button>
+  <div id="round-display-panel" class="modal">
+    <div id="round-display-frames"></div>
+    <div id="round-panel-content">
+      <div id="round-seq-list"></div>
+      <button id="round-continue-btn" class="btn btn-green" style="width:auto;padding:9px 24px;margin:8px auto 0">Continue</button>
+    </div>
   </div>
 </div>
 <div id="win-modal" class="modal-overlay" style="display:none">

@@ -70,6 +70,18 @@ document.addEventListener('keydown',function(e){
   var imgs=[],imgsV=[];
   for(var i=1;i<=FRAMES;i++){var img=new Image();img.src='Assets/sprites/mainui/mainui'+i+'.png';imgs.push(img);}
   for(var i=1;i<=FRAMES_V;i++){var img=new Image();img.src='Assets/sprites/mainui_volatile/mainui_volatile'+i+'.png';imgsV.push(img);}
+  // Preload the frame-swap sprite animations so they play without flicker.
+  // Retaining the Image objects (window scope) is what matters: an unheld Image
+  // can be GC'd and its decoded bitmap evicted, so the first swap onto it shows a
+  // flash while it re-decodes — worst at high anim-speed, where frames swap every
+  // few ms. decode() forces the bitmap ready before first use. (imgs/imgsV above
+  // are held for the same reason.)
+  window._rdFrames=[];
+  for(var i=1;i<=(typeof _RD_FRAMES!=='undefined'?_RD_FRAMES:18);i++){var _rdi=new Image();_rdi.src='Assets/sprites/endRoundDisplay/end_round_display'+i+'.png';if(_rdi.decode)_rdi.decode().catch(function(){});window._rdFrames.push(_rdi);}
+  // Bag animation frames (0-13) — the board→shop shake/intro/outro swaps these on
+  // an <img> fast; hold them warm so they don't flicker when animations are sped up.
+  window._bagFrames=[];
+  for(var i=0;i<=13;i++){var _bgi=new Image();_bgi.src='Assets/animations/bag/bag-frame'+i+'.png';if(_bgi.decode)_bgi.decode().catch(function(){});window._bagFrames.push(_bgi);}
   var app=document.getElementById('app');
   var lastVolatile=false;
   function tick(){

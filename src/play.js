@@ -12,7 +12,7 @@ async function playWord(){
   // rack available before this play — otherwise the game-over reveal scores
   // alternatives with too few tiles (e.g. 5-letter words falsely bingo).
   var _snapBack=[];
-  for(var _sbi=0;_sbi<B*B;_sbi++){
+  for(var _sbi=0;_sbi<BN;_sbi++){
     var _sbt=(S.btTop&&S.btTop[_sbi]&&S.btTop[_sbi].isNew)?S.btTop[_sbi]:(S.bt[_sbi]&&S.bt[_sbi].isNew?S.bt[_sbi]:null);
     if(_sbt)_snapBack.push(Object.assign({},_sbt,{onBoard:false,_boardSq:undefined,boardSq:undefined,blankAs:null}));
   }
@@ -29,14 +29,14 @@ async function playWord(){
   var dir=wordDir(nt);if(!dir){toast('Tiles must be in a straight line!');return;}
   var a=nt[0];var main=extractAt(a.row,a.col,dir);
   if(!main){toast('Word has a gap!');return;}if(main.word.length<2){toast('Word must be at least 2 letters!');return;}
-  var comm=[];for(var i=0;i<B*B;i++)if(S.bt[i]&&!S.bt[i].isNew)comm.push(i);
+  var comm=[];for(var i=0;i<BN;i++)if(S.bt[i]&&!S.bt[i].isNew)comm.push(i);
   if(comm.length>0){
     var conn=false;
     outer:for(var ni=0;ni<nt.length;ni++){
       // Jenga: tile stacked directly on a committed tile is automatically connected
       if(S.bt[nt[ni].idx]&&!S.bt[nt[ni].idx].isNew){conn=true;break outer;}
       var r=nt[ni].row,c=nt[ni].col;var nb=[[r-1,c],[r+1,c],[r,c-1],[r,c+1]];
-      for(var nb2=0;nb2<nb.length;nb2++){var nr=nb[nb2][0],nc=nb[nb2][1];if(nr<0||nr>=B||nc<0||nc>=B)continue;var nbt=S.bt[nr*B+nc];if(nbt&&!nbt.isNew){conn=true;break outer;}}
+      for(var nb2=0;nb2<nb.length;nb2++){var nr=nb[nb2][0],nc=nb[nb2][1];if(nr<0||nr>=BH||nc<0||nc>=B)continue;var nbt=S.bt[nr*B+nc];if(nbt&&!nbt.isNew){conn=true;break outer;}}
     }
     if(!conn){toast('Word must connect to an existing word!');return;}
   }
@@ -206,7 +206,7 @@ async function playWord(){
   for(var _wami=0;_wami<_wamConsumed.length;_wami++){
     var _wamOr=Math.floor(_wamConsumed[_wami]/B),_wamOc=_wamConsumed[_wami]%B;
     var _wamC=[];
-    for(var _wamI=0;_wamI<B*B;_wamI++){
+    for(var _wamI=0;_wamI<BN;_wamI++){
       var _wr=Math.floor(_wamI/B),_wc=_wamI%B;
       if(Math.abs(_wr-_wamOr)+Math.abs(_wc-_wamOc)<=5&&_wamI!==_wamConsumed[_wami]&&!S.board[_wamI]&&!S.bt[_wamI])_wamC.push(_wamI);
     }
@@ -222,7 +222,7 @@ async function playWord(){
   // collide.
   for(var _vi=0;_vi<_virusConsumed.length;_vi++){
     var _vOr=_virusConsumed[_vi],_vor=Math.floor(_vOr/B),_voc=_vOr%B,_vCand=[];
-    for(var _vI=0;_vI<B*B;_vI++){
+    for(var _vI=0;_vI<BN;_vI++){
       if(_vI===_vOr||S.board[_vI]||S.bt[_vI])continue;
       _vCand.push({idx:_vI,d:Math.abs(Math.floor(_vI/B)-_vor)+Math.abs((_vI%B)-_voc)});
     }
@@ -253,6 +253,10 @@ async function playWord(){
   S.wtr=(S.wtr||0)+1;S.discPressure=0;
   if(_con==='c_letters'){var _mts=main.tiles;for(var _li2=0;_li2<_mts.length;_li2++){if(!_mts[_li2].isBlank&&_mts[_li2].letter)(S.usedLetters=S.usedLetters||new Set()).add(_mts[_li2].letter);}}
   S.lastWordLen=main.word.length;
+  // Log this play's main word, cross words + points for the end-of-round display
+  // sequence (reset each round in _doBoardAnimation).
+  var _rwCross=[];for(var _cwi=0;_cwi<_words.length;_cwi++){if(!_words[_cwi].main)_rwCross.push(_words[_cwi].word);}
+  (S.roundWords=S.roundWords||[]).push({word:main.word,pts:(res?res.total:0),cross:_rwCross});
   // Purple tiles: the ×2 already scored; every scored purple now rolls its
   // 1-in-4 vanish (rolled here at commit with _rng, never in preview/solver).
   if(res&&res.purpleScored&&res.purpleScored.length){
@@ -282,7 +286,7 @@ async function playWord(){
       var _whT=_whTop?S.btTop[_whIdx]:S.bt[_whIdx];
       if(!_whT||!_whT.isNew)continue;
       var _whC=[];
-      for(var _wc=0;_wc<B*B;_wc++){
+      for(var _wc=0;_wc<BN;_wc++){
         if(_wc===_whIdx||S.bt[_wc]||(S.btTop&&S.btTop[_wc])||S.board[_wc])continue;
         _whC.push(_wc);
       }
@@ -300,11 +304,11 @@ async function playWord(){
       toast('Worm hole! '+tileDisplayLetter(_whT)+' teleported to '+rcl(_whDest)+'.');
     }
   }
-  for(var i=0;i<B*B;i++){if(S.bt[i]&&S.bt[i].isNew){setTileState(S.bt[i],'board',{boardSq:i,isNew:false});}}
+  for(var i=0;i<BN;i++){if(S.bt[i]&&S.bt[i].isNew){setTileState(S.bt[i],'board',{boardSq:i,isNew:false});}}
   // Commit Jenga stacked tiles: btTop replaces bt at that square, but the buried
   // tile's scoring/render info is preserved on _buried so it keeps scoring in
   // future words that pass through this square (and can still be revealed).
-  if(S.btTop){for(var i=0;i<B*B;i++){if(S.btTop[i]&&S.btTop[i].isNew){var _btt=S.btTop[i];var _bur=S.bt[i];setTileState(_btt,'board',{boardSq:i,isNew:false});_btt._stackLevel=(_bur&&_bur._stackLevel?_bur._stackLevel:0)+1;if(_bur)_btt._buried={letter:_bur.letter,isBlank:!!_bur.isBlank,blankAs:_bur.blankAs||null,variant:_bur.variant||null,material:_bur.material||null,_alchSc:_bur._alchSc||0};S.bt[i]=_btt;S.btTop[i]=null;}}}
+  if(S.btTop){for(var i=0;i<BN;i++){if(S.btTop[i]&&S.btTop[i].isNew){var _btt=S.btTop[i];var _bur=S.bt[i];setTileState(_btt,'board',{boardSq:i,isNew:false});_btt._stackLevel=(_bur&&_bur._stackLevel?_bur._stackLevel:0)+1;if(_bur)_btt._buried={letter:_bur.letter,isBlank:!!_bur.isBlank,blankAs:_bur.blankAs||null,variant:_bur.variant||null,material:_bur.material||null,_alchSc:_bur._alchSc||0};S.bt[i]=_btt;S.btTop[i]=null;}}}
   // Save positions of kept tiles before filtering
   var pwKept={};var _pwvi=0;for(var _pwki=0;_pwki<S.hand.length;_pwki++){var _pwt=S.hand[_pwki];if(_pwt){if(HP.x[_pwvi]!==undefined)pwKept[_pwt.id]=HP.x[_pwvi];_pwvi++;}}
   S.hand=S.hand.filter(function(t){return!t._done;});
@@ -314,7 +318,12 @@ async function playWord(){
   // Predict final hand size so Phase 1 slides tiles to their true final positions.
   var _hm=handMax();var _drawCap=(_con==='c_draw3')?3:_hm;var _pwDrawN=S.devMode?Math.min(_hm-S.hand.length,_drawCap):Math.min(Math.min(_hm-S.hand.length,_drawCap),S.bag.length);
   var _pwTotalN=pwKeptN+Math.max(0,_pwDrawN);
-  await _animateDrawPhase(pwKept,pwKeptN,_pwTotalN);
+  // On a round-clearing play, don't refill the hand — the fresh hand is drawn
+  // after the shop (_boardToShopReset → _burstHandTiles). Refilling now would
+  // just spit tiles out of the bag a beat before the board vacuums them back in.
+  // Reflow the leftover tiles under the rising popup instead.
+  if(S.score>=tgt())renderAll();
+  else await _animateDrawPhase(pwKept,pwKeptN,_pwTotalN);
   window._scoring=false;
   if(_playBtn)_playBtn.disabled=false;
   saveGame();
@@ -330,35 +339,24 @@ async function playWord(){
       setTimeout(advanceRound,1200);
       return;
     }
-    showGO('Scored '+S.score.toLocaleString()+' / '+tgt().toLocaleString()+'.');
-    if(window._lastPlaySnap&&DICT){
-      // Judge alternatives from the position BEFORE the final word: the
-      // points it needed are measured against the pre-play score.
-      var needed=tgt()-window._lastPlaySnap.score;
-      var _showWins=function(top){
-        var wins=[];
-        for(var _wi=0;_wi<(top||[]).length&&wins.length<5;_wi++){if(top[_wi].score>=needed)wins.push(top[_wi]);}
-        if(!wins.length)return;
-        var el=document.getElementById('gameover-best-play');if(!el)return;
-        var html='<div style="font-size:28px;color:#8880a8;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">'
-          +(wins.length>1?'These plays would\'ve won:':'This play would\'ve won:')+'</div>';
-        for(var _hi=0;_hi<wins.length;_hi++){
-          var _w=wins[_hi],_pos=rcl(_w.r*B+_w.c)+(_w.isH?'→':'↓');
-          html+='<div style="display:flex;align-items:baseline;gap:10px;margin:3px 0">'
-            +'<span style="font-size:28px;color:#f0e080;letter-spacing:4px">'+_w.word+'</span>'
-            +'<span style="font-size:24px;color:#7070a0">'+_pos+'</span>'
-            +'<span style="font-size:26px;color:#80ff80;margin-left:auto">'+_w.score.toLocaleString()+' pts</span>'
-            +'</div>';
-        }
-        el.innerHTML=html;
-        el.style.display='block';
-      };
-      // The background rank solver already evaluated this exact position (full
-      // pre-play hand, committed board) — reuse its top 10 rather than re-solve.
-      // Fall back to a fresh solve only if it hadn't finished before this play.
-      if(_capturedRankTop10&&_capturedRankTop10.length)_showWins(_capturedRankTop10);
-      else findBestMoveBackground(window._lastPlaySnap,_showWins);
-    }
+    // Failed the round — show the rising-panel loss display: the words scored
+    // this round, "Failing <target>", then the top plays that would have won.
+    var _lossData={words:(S.roundWords||[]).slice(),total:S.score,target:tgt()};
+    // Judge alternatives from the position BEFORE the final word: the points
+    // needed are measured against the pre-play score.
+    var _needed=window._lastPlaySnap?tgt()-window._lastPlaySnap.score:tgt();
+    var _finishLoss=function(top){
+      var wins=[];
+      for(var _wi=0;_wi<(top||[]).length&&wins.length<3;_wi++){if(top[_wi].score>=_needed)wins.push(top[_wi]);}
+      _lossData.wins=wins;
+      showLossDisplay(_lossData);
+    };
+    // The background rank solver already evaluated this exact position (full
+    // pre-play hand, committed board) — reuse its top 10 rather than re-solve.
+    // Fall back to a fresh solve only if it hadn't finished before this play.
+    if(!window._lastPlaySnap||!DICT)_finishLoss(null);
+    else if(_capturedRankTop10&&_capturedRankTop10.length)_finishLoss(_capturedRankTop10);
+    else findBestMoveBackground(window._lastPlaySnap,_finishLoss);
   },700);
 }
 
@@ -463,7 +461,8 @@ function _shufAbort(){
 
 // Axis-aligned flight legs from (x0,y0) to (x1,0): up to travel height,
 // across, drop in. Leg durations share one acceleration (time ∝ √distance);
-// each leg eases in from rest, so every direction change starts at 0 speed.
+// each leg eases in-and-out (ease-in-out), so the tile comes to rest at every
+// corner and accelerates away from 0 — no velocity snap at direction changes.
 function _shufLegs(x0,y0,x1,total){
   var H=-SHUF_LIFT,legs=[];
   if(y0-H>0.5)legs.push({axis:'y',from:y0,to:H});
@@ -484,20 +483,24 @@ function _shufStartNext(){
   var el=area?area.querySelector('[data-tile-id="'+t.id+'"]'):null;
   if(!el){_shufStartNext();return;} // no element (mid-burst etc.) — leave it be
   var r=el.getBoundingClientRect(),hr=area.getBoundingClientRect();
+  // Record the tile's current vis slot BEFORE liftoff so we can hold the hole
+  // there (rack looks unchanged) until the flier clears the hand vertically.
+  var oldIdx=_shufFreeTiles().indexOf(t);
   var clone=el.cloneNode(true);
   clone.classList.remove('selected');
   clone.style.cssText+=';position:fixed;left:'+r.left+'px;top:'+r.top+'px;z-index:9999;margin:0;pointer-events:none;transition:none;transform:scale(1.06)';
   document.body.appendChild(clone);
   setTileState(t,'moving',{movingFrom:'hand',movingTo:'hand'});
   renderHand();
-  // Reserve the landing slot as a hole immediately: the rack keeps its full
-  // width (no re-centering), and only the tiles between the flier's old and
-  // new slot slide over to make room.
-  var idx=_shufInsertIdx(t);
-  HP.shufHoleIdx=idx;
-  var x0=r.left+34,y0=r.top-hr.top,destX=_shufDestX(idx);
+  var destIdx=_shufInsertIdx(t);
+  var destX=_shufDestX(destIdx);
+  // Hold hole at the OLD slot — no rack tile moves yet.
+  // The tick will transfer the hole to destIdx once the flier is fully above the hand.
+  HP.shufHoleIdx=(oldIdx>=0?oldIdx:0);
+  var x0=r.left+34,y0=r.top-hr.top;
   _shuf.flight={t:t,el:clone,cx:x0,cy:y0,x1:destX,baseTop:hr.top,
-    legs:_shufLegs(x0,y0,destX,_shuf.per),li:0,segStart:performance.now()};
+    legs:_shufLegs(x0,y0,destX,_shuf.per),li:0,segStart:performance.now(),
+    destIdx:destIdx,holeTransferred:false};
   requestAnimationFrame(_shufTick);
 }
 
@@ -505,13 +508,23 @@ function _shufTick(){
   if(!_shuf||!_shuf.flight)return;
   if(S!==_shuf.S){_shufAbort();return;}
   var f=_shuf.flight,now=performance.now();
+  // Transfer hole from the old slot to the landing slot the moment the flier's
+  // bottom edge clears the top of the hand area (cy = top offset relative to
+  // hand-area; tile is 68px tall, so bottom = cy+68; clear when cy <= -68).
+  if(!f.holeTransferred&&f.cy<=-68){
+    HP.shufHoleIdx=f.destIdx;f.holeTransferred=true;
+    // Kill residual rack velocity so the make-room tiles slide cleanly from
+    // rest to their new slot (the spring is overdamped → monotonic, no
+    // overshoot even when a tile reverses direction between successive movers).
+    for(var _i=0;_i<HP.vx.length;_i++)HP.vx[_i]=0;
+  }
   while(f.li<f.legs.length){
     var L=f.legs[f.li],p=(now-f.segStart)/L.dur;
     if(p>=1){ // leg done — snap to its end, carry leftover time into the next
       if(L.axis==='x')f.cx=L.to;else f.cy=L.to;
       f.segStart+=L.dur;f.li++;continue;
     }
-    var v=L.from+(L.to-L.from)*p*p; // ease-in: accelerate from rest
+    var v=L.from+(L.to-L.from)*(p*p*(3-2*p)); // ease-in-out: rest at both leg ends
     if(L.axis==='x')f.cx=v;else f.cy=v;
     break;
   }
@@ -561,14 +574,17 @@ function shuffleHand(){
   var plan=_shufPlan(rack,order);
   var k=plan.queue.length+(flight?1:0);
   if(!k){_shuf=null;return;}
-  var per=Math.max(AT(400),Math.min(AT(3500)/k,AT(1000)));
+  // Shuffle timing is intentionally NOT scaled by the animation-speed slider.
+  var per=Math.max(100,Math.min(875/k,250));
   _shuf={S:S,pos:plan.pos,settled:plan.settled,queue:plan.queue,per:per,flight:flight};
   if(flight){
-    // Redirect the airborne tile toward its slot in the rerolled order —
-    // fresh legs from where it is now, hole moved to the new landing slot;
-    // the rest of the plan runs after it lands.
+    // Redirect the airborne tile toward its slot in the rerolled order.
+    // If it has already cleared the hand, move the hole to the new destination
+    // immediately. If it's still lifting, just update destIdx — the tick will
+    // transfer the hole once the tile clears.
     var fIdx=_shufInsertIdx(flight.t);
-    HP.shufHoleIdx=fIdx;
+    if(flight.holeTransferred)HP.shufHoleIdx=fIdx;
+    flight.destIdx=fIdx;
     flight.x1=_shufDestX(fIdx);
     flight.legs=_shufLegs(flight.cx,flight.cy,flight.x1,per);
     flight.li=0;flight.segStart=performance.now();

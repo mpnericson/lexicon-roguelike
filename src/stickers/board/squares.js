@@ -62,7 +62,7 @@ SQ.push({id:'echo',name:'Red Sticker',desc:'Letter here scores twice.',
 // PRE bracket (onPreScore): turns the tile on this square gold before any
 // scoring happens, so the gold-tile $1 board sweep counts it this play.
 SQ.push({id:'gilded',name:'Gilded',desc:'Transforms tile to gold before scoring (gold tiles pay $1 every play while on the board).',
-  rarity:'common',cost:3,qty:3,bg:'#3a2a00',fg:'#f0c060',icon:'GL',type:'local',perishable:true,
+  rarity:'common',cost:3,qty:2,bg:'#3a2a00',fg:'#f0c060',icon:'GL',type:'local',perishable:true,
   onPreScore:function(tile,ctx,sqIdx){
     if(tile.variant==='gold')return;
     tile.variant='gold';

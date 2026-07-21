@@ -27,7 +27,7 @@ function _tkRoom(st){return TK_MAX-(S.consumables||[]).length+((st&&st.source===
 function _tkMutateTile(tileId,fn){
   function w(t){if(t&&t.id===tileId)fn(t);}
   (S.pool||[]).forEach(w);(S.bag||[]).forEach(w);(S.hand||[]).forEach(w);
-  for(var i=0;i<B*B;i++){w(S.bt[i]);if(S.btTop)w(S.btTop[i]);}
+  for(var i=0;i<BN;i++){w(S.bt[i]);if(S.btTop)w(S.btTop[i]);}
   if(typeof _rankObserve==='function')_rankObserve();
 }
 

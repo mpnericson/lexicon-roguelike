@@ -16,7 +16,7 @@
 
 function newTiles(){
   var r=[];
-  for(var i=0;i<B*B;i++){
+  for(var i=0;i<BN;i++){
     // Jenga: btTop tile overrides the committed tile below for this position
     var tt=S.btTop&&S.btTop[i];
     if(tt&&tt.isNew){r.push({idx:i,row:Math.floor(i/B),col:i%B,letter:tileDisplayLetter(tt),isBlank:!!tt.isBlank,sc:tt.isBlank?(tt._alchSc||0):(LS[tt.letter]||0),variant:tt.variant||null,isNew:true});continue;}
@@ -62,18 +62,35 @@ function getAllWords(nt,dir){
   return words;
 }
 
+// Live scoreboard preview shown while placing tiles. At rest it reads 0 × 0;
+// once the placed (isNew) tiles sit in a straight line it previews the
+// tile-count mult only — ×1 for 1-3 tiles, then +1 mult per tile beyond 3
+// (matches the engine PRE bracket). If the tiles aren't in a legal line the
+// mult drops back to 0. Word/letter validity is deliberately NOT evaluated
+// here (it waits for scoring, so an illegal word isn't given away early).
+function updateLivePreview(){
+  var row=document.getElementById('live-score-row');
+  if(!row||row.classList.contains('scoring'))return;
+  var lsC=document.getElementById('ls-letters'),lsM=document.getElementById('ls-mult'),lsS=document.getElementById('ls-score');
+  var nt=newTiles(),mult=0;
+  if(nt.length&&wordDir(nt))mult=1+Math.max(0,nt.length-3);
+  if(lsC)lsC.textContent='0';
+  if(lsM){var was=lsM.textContent;lsM.textContent=mult;if(String(mult)!==was)bumpSA('ls-mult');}
+  if(lsS)lsS.textContent='0';
+}
+
 // ---- Engine adapters — build runScoreEngine input from live game state ----
 
 // Full-board tile view with Jenga tops merged over the tiles they cover.
 function _liveTiles(){
-  var tiles=new Array(B*B),jengaTops=new Set(),jengaUnder=null;
+  var tiles=new Array(BN),jengaTops=new Set(),jengaUnder=null;
   function addUnder(idx,src){
     if(!jengaUnder)jengaUnder={};
     jengaUnder[idx]={letter:tileDisplayLetter(src),isBlank:!!src.isBlank,
       sc:src.isBlank?(src._alchSc||0):(LS[src.letter]||0),variant:src.variant||null,
       material:src.material||null};
   }
-  for(var i=0;i<B*B;i++){
+  for(var i=0;i<BN;i++){
     var tt=S.btTop&&S.btTop[i];
     if(tt&&tt.isNew){
       // Fresh stack this turn: the committed tile beneath is the buried tile.
@@ -566,7 +583,7 @@ function _jengaAxisXform(axis,sign){return axis==='h'?'translateX('+(sign*100)+'
 // both slide"); otherwise toward any occupied square, else positive.
 function _jengaSlideSign(sqIdx,axis){
   var r=Math.floor(sqIdx/B),c=sqIdx%B;
-  var pos=axis==='h'?(c<B-1?sqIdx+1:-1):(r<B-1?sqIdx+B:-1);
+  var pos=axis==='h'?(c<B-1?sqIdx+1:-1):(r<BH-1?sqIdx+B:-1);
   var neg=axis==='h'?(c>0?sqIdx-1:-1):(r>0?sqIdx-B:-1);
   if(pos>=0&&_jengaTopEl(pos))return 1;
   if(neg>=0&&_jengaTopEl(neg))return -1;
@@ -588,7 +605,7 @@ function _jengaSlideOut(sqIdx,axis){
     top.style.zIndex='6';
     slid.push(top);
     var r=Math.floor(idx/B),c=idx%B;
-    var next=axis==='h'?(sign>0?(c<B-1?idx+1:-1):(c>0?idx-1:-1)):(sign>0?(r<B-1?idx+B:-1):(r>0?idx-B:-1));
+    var next=axis==='h'?(sign>0?(c<B-1?idx+1:-1):(c>0?idx-1:-1)):(sign>0?(r<BH-1?idx+B:-1):(r>0?idx-B:-1));
     if(next<0||!_jengaTopEl(next))break;
     idx=next;
   }
@@ -672,6 +689,22 @@ async function runScoreAnim(events,total){
   var _jengaSlid=null,_jengaSlidSq=-1; // Jenga: top face(s) currently slid aside
   S._crossroadsLiveCount=S.crossroadsCount||0; // baseline for live tooltip ticks this play
 
+  // Round-clear anticipation: the instant the running Letters × Mult would carry
+  // S.score over the target, start the bag vacuuming — it rattles in place for
+  // the rest of scoring, then the end-of-round hoover takes the shake over (see
+  // bagVacuumStart). S.score isn't committed until after this animation, so it
+  // still holds the pre-play total here. _willClear gates the whole thing (only
+  // arm when this play actually clears); the running-product crossing picks the
+  // moment, and the 'final' event is a backstop in case rounding lands the exact
+  // clear only after the last tile.
+  var _preScore=S.score,_clearTgt=tgt(),_willClear=(_preScore+total>=_clearTgt);
+  var _bagVacuumFired=false,_runLetters=0;
+  function _bagVacuumCheck(){
+    if(!_willClear||_bagVacuumFired)return;
+    var m=(1+animPlusSum)*animXprod;
+    if(_preScore+_runLetters*m>=_clearTgt){_bagVacuumFired=true;bagVacuumStart();}
+  }
+
   // Slide the revealed Jenga top(s) back onto the stack once the buried tile is done.
   function _jengaRestore(){if(_jengaSlid){_jengaSlideBack(_jengaSlid);_jengaSlid=null;_jengaSlidSq=-1;}}
 
@@ -684,13 +717,13 @@ async function runScoreAnim(events,total){
     var p=_pendingTick;_pendingTick=null;
     ++_tickVer;
     if(!animated){
-      saL.textContent=p.tV;_saLSynced=p.tV;
+      saL.textContent=fmtNum(p.tV,true);_saLSynced=p.tV;
       if(lsTileDelta){lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');setTimeout(function(){lsTileDelta.textContent='';},200);}
       return;
     }
     var myV=_tickVer;
     (function(fV,tV,ver){
-      if(tV<=fV){saL.textContent=tV;return;}
+      if(tV<=fV){saL.textContent=fmtNum(tV,true);return;}
       var _last=null,v=fV;
       function _tk(now){
         if(_tickVer!==ver)return;
@@ -699,8 +732,8 @@ async function runScoreAnim(events,total){
         // Rate grows with how much THIS tile has added so far (resets each tile):
         // every tile starts at the base rate, then ramps up exponentially.
         v+=(_TICK_BASE_RATE+(v-fV)*_TICK_GROWTH)*dt;
-        if(v>=tV){saL.textContent=tV;}
-        else{saL.textContent=Math.round(v);requestAnimationFrame(_tk);}
+        if(v>=tV){saL.textContent=fmtNum(tV,true);}
+        else{saL.textContent=fmtNum(v,true);requestAnimationFrame(_tk);}
       }
       requestAnimationFrame(_tk);
     })(p.fV,p.tV,myV);
@@ -710,6 +743,7 @@ async function runScoreAnim(events,total){
     var m=(1+animPlusSum)*animXprod;
     saM.textContent=fmtMult(m);
     bumpSA('ls-mult');
+    _bagVacuumCheck();
   }
 
   // Apply one merged sibling effect (see grouping below) into the SAME frame as
@@ -728,6 +762,7 @@ async function runScoreAnim(events,total){
       animXprod*=co.factor;refreshMult();
     }else if(co.type==='letter'){
       saL.textContent=co.lettersAfter;bumpSA('ls-letters');_saLSynced=co.lettersAfter;
+      _runLetters=co.lettersAfter;_bagVacuumCheck();
     }
   }
   function _applyCoApply(ev){
@@ -823,6 +858,7 @@ async function runScoreAnim(events,total){
     if(ev.type==='letter'){
       if(ev.isSilent){
         if(ev.lettersAfter!==_saLSynced){saL.textContent=ev.lettersAfter;bumpSA('ls-letters');_saLSynced=ev.lettersAfter;}
+        _runLetters=ev.lettersAfter;_bagVacuumCheck();
       }else if(ev.isTileLocal){
         // Per-tile bracket event: show running tile score as "+X" delta beside the letter total.
         // The total only ticks up when the NEXT tile starts (it "pushes" the previous score in).
@@ -888,6 +924,7 @@ async function runScoreAnim(events,total){
             _saLSynced=ev._globalLetters;
             _deltaActive=false;
             _pendingTick={fV:_deltaTileBase,tV:ev._globalLetters};
+            _runLetters=ev._globalLetters;_bagVacuumCheck();
           }
           if(!ev.suppressVisual)await scoreDelay(curDelay);
           else await scoreDelay(1);
@@ -901,6 +938,7 @@ async function runScoreAnim(events,total){
         if(!ev._skip)_binkEl(_evTileEl(ev));
         if(ev.bingo)saL.style.color='#2e9d72'; // jade — bingo bonus landed
         saL.textContent=ev.lettersAfter;bumpSA('ls-letters');_saLSynced=ev.lettersAfter;
+        _runLetters=ev.lettersAfter;_bagVacuumCheck();
         _applyCoApply(ev);
         if(curDelay!=null)await scoreDelay(curDelay);
       }
@@ -976,9 +1014,12 @@ async function runScoreAnim(events,total){
     }else if(ev.type==='final'){
       _firePendingTick(false);
       _jengaRestore();
-      saL.textContent=ev.letters;
+      saL.textContent=fmtNum(ev.letters,true);
       saM.textContent=fmtMult(ev.displayMult||ev.mult);
-      saS.textContent=total.toLocaleString();bumpSA('ls-score');
+      saS.textContent=fmtNum(total);bumpSA('ls-score');
+      // Backstop: if the round clears but the running product never quite crossed
+      // (rounding), start the vacuum now, before the score ticks down.
+      if(_willClear&&!_bagVacuumFired){_bagVacuumFired=true;bagVacuumStart();}
     }
   }
 
@@ -1006,15 +1047,15 @@ async function runScoreAnim(events,total){
       var dt=(now-_last)/1000*ASPD();_last=now;
       _added+=(_FILL_BASE+_added*_FILL_GROWTH)*dt;
       var done=_added>=total;if(done)_added=total;
-      saS.textContent=Math.round(total-_added).toLocaleString();
+      saS.textContent=fmtNum(total-_added);
       if(_bar)_bar.style.height=Math.min(100,(_oldScore+_added)/_tgt*100)+'%';
-      if(_runP)_runP.textContent=Math.round(_oldScore+_added).toLocaleString()+' / '+_tgt.toLocaleString();
+      if(_runP)_runP.textContent=fmtNum(_oldScore+_added)+' / '+fmtNum(_tgt);
       if(!done){requestAnimationFrame(_tick);}else{saS.textContent='0';res2();}
     }
     requestAnimationFrame(_tick);
   });
   if(_bar)_bar.style.transition='height .6s cubic-bezier(.22,1,.36,1)';
-  saL.textContent='0';saM.textContent='1';saL.style.color='';
+  saL.textContent='0';saM.textContent='0';saL.style.color='';
   if(lsTileDelta){lsTileDelta.textContent='';lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');}
   row.classList.remove('scoring');
 }

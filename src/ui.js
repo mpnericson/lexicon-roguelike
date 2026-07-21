@@ -171,10 +171,10 @@ function openBoardPreview(){
 
 function renderBoardPreview(){
   var wrap=document.getElementById('board-preview-wrap');
-  var sz=Math.max(18,Math.min(32,Math.floor(Math.min(window.innerWidth-120,window.innerHeight-160)/B)));
+  var sz=Math.max(18,Math.min(32,Math.floor(Math.min((window.innerWidth-120)/B,(window.innerHeight-160)/BH))));
   wrap.style.gridTemplateColumns='repeat('+B+','+sz+'px)';wrap.innerHTML='';
-  var center=Math.floor(B/2)*B+Math.floor(B/2);
-  for(var i=0;i<B*B;i++){
+  var center=Math.floor(BH/2)*B+Math.floor(B/2);
+  for(var i=0;i<BN;i++){
     var sq=document.createElement('div');sq.className='sq';sq.style.width=sz+'px';sq.style.height=sz+'px';
     var sid=S.board[i];var ss=sqStyle(sid);sq.style.background=ss.bg;sq.style.color=ss.fg;
     var bt=S.bt[i];

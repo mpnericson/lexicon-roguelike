@@ -16,6 +16,17 @@ var _rngState=0;
 function _rngSeed(s){_rngState=s>>>0;}
 function _rng(){_rngState=(_rngState+0x6D2B79F5)|0;var t=Math.imul(_rngState^_rngState>>>15,1|_rngState);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}
 function shuffle(a){var b=a.slice();for(var i=b.length-1;i>0;i--){var j=Math.floor(_rng()*(i+1));var t=b[i];b[i]=b[j];b[j]=t;}return b;}
+// Display formatter. Numbers with MORE than 9 digits (|n|>=1e9) switch to
+// scientific notation (e.g. 1.23e9). Smaller numbers keep their existing
+// look: thousands separators, or a bare integer when plain:true.
+function fmtNum(n,plain){
+  n=Math.round(n);
+  if(isFinite(n)&&Math.abs(n)>=1e9){
+    var pr=n.toExponential(2).split('e');
+    return pr[0]+'e'+parseInt(pr[1],10);
+  }
+  return plain?String(n):n.toLocaleString();
+}
 // SQ_MAP is built by buildSQMap() in init.js after all sticker files load.
 var SQ_MAP = {};
 function buildSQMap(){SQ_MAP={};for(var i=0;i<SQ.length;i++)SQ_MAP[SQ[i].id]=SQ[i];}
@@ -44,7 +55,9 @@ function tileSpr(letter,isBlank,variant,sz){var col,row;if(isBlank||!letter){col
 function wordAsTilesHTML(word,sz,variant){sz=sz||24;var h='<span style="display:flex;gap:2px;flex-wrap:nowrap;flex-shrink:1;min-width:0;align-items:center">';for(var i=0;i<word.length;i++){var spr=tileSpr(word[i],false,variant||null,sz);h+='<span style="display:inline-block;width:'+sz+'px;height:'+sz+'px;flex-shrink:0;'+spr+'"></span>';}return h+'</span>';}
 function rcl(i){return String.fromCharCode(65+i%B)+(Math.floor(i/B)+1);}
 
-var B=15;
+var B=15;    // board WIDTH (columns) — also the row stride for flat indices (idx = row*B + col)
+var BH=12;   // board HEIGHT (rows)
+var BN=B*BH; // total cells
 
 // ── Settings — persist across runs (separate localStorage key from the run save) ──
 // volume: 0..1 master SFX gain. animSpeed: coefficient every scaled animation
@@ -65,7 +78,7 @@ loadSettings();
 function ASPD(){return SETTINGS.animSpeed||1;}
 function AT(ms){return ms/ASPD();}
 
-var LS={A:2,B:8,C:4,D:4,E:2,F:8,G:4,H:4,I:2,J:16,K:8,L:2,M:4,N:2,O:2,P:4,Q:16,R:2,S:2,T:2,U:4,V:16,W:8,X:8,Y:8,Z:8};
+var LS={A:2,B:6,C:4,D:4,E:2,F:8,G:6,H:6,I:2,J:14,K:8,L:4,M:6,N:2,O:2,P:6,Q:16,R:2,S:2,T:2,U:4,V:12,W:8,X:8,Y:8,Z:10};
 var DIST={A:5,B:1,C:2,D:2,E:6,F:1,G:2,H:2,I:4,J:1,K:1,L:3,M:2,N:3,O:4,P:2,Q:1,R:4,S:3,T:4,U:2,V:1,W:1,X:1,Y:1,Z:1};
 // Bounty reward config — change type/value here to rebalance
 // type: 'x-mult' | 'plus-mult' | 'letters' | 'gold'

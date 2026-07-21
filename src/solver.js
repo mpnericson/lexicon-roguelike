@@ -42,18 +42,18 @@ function _svHasStamp(sv, id) {
 // Precompute cross-word fragments for each empty cell.
 // Avoids re-scanning neighbors on every placement attempt.
 function _solverPrecompute(bt) {
-  var cvAbove = new Array(B * B).fill(''); // for H placement: letters above cell, top-to-bottom
-  var cvBelow = new Array(B * B).fill(''); // for H placement: letters below cell
-  var chLeft = new Array(B * B).fill(''); // for V placement: letters left of cell, left-to-right
-  var chRight = new Array(B * B).fill(''); // for V placement: letters right of cell
-  for (var i = 0; i < B * B; i++) {
+  var cvAbove = new Array(BN).fill(''); // for H placement: letters above cell, top-to-bottom
+  var cvBelow = new Array(BN).fill(''); // for H placement: letters below cell
+  var chLeft = new Array(BN).fill(''); // for V placement: letters left of cell, left-to-right
+  var chRight = new Array(BN).fill(''); // for V placement: letters right of cell
+  for (var i = 0; i < BN; i++) {
     if (bt[i]) continue; // only precompute for empty cells
     var r = Math.floor(i / B), c = i % B, rr, cc, s;
     rr = r - 1; s = '';
     while (rr >= 0 && bt[rr * B + c]) { s = bt[rr * B + c].letter + s; rr--; }
     cvAbove[i] = s;
     rr = r + 1; s = '';
-    while (rr < B && bt[rr * B + c]) { s += bt[rr * B + c].letter; rr++; }
+    while (rr < BH && bt[rr * B + c]) { s += bt[rr * B + c].letter; rr++; }
     cvBelow[i] = s;
     cc = c - 1; s = '';
     while (cc >= 0 && bt[r * B + cc]) { s = bt[r * B + cc].letter + s; cc--; }
@@ -70,8 +70,8 @@ function _solverPrecompute(bt) {
 // h = masks for horizontal placements (vertical cross-words), v = vice versa.
 var GD_ALLMASK = (1 << 26) - 1;
 function _solverCrossMasks(bt, pre) {
-  var mh = new Array(B * B), mv = new Array(B * B);
-  for (var i = 0; i < B * B; i++) {
+  var mh = new Array(BN), mv = new Array(BN);
+  for (var i = 0; i < BN; i++) {
     if (bt[i]) { mh[i] = 0; mv[i] = 0; continue; }
     var ab = pre.cvAbove[i], be = pre.cvBelow[i], lf = pre.chLeft[i], rt = pre.chRight[i];
     if (!ab && !be) mh[i] = GD_ALLMASK;
@@ -87,21 +87,21 @@ function _solverCrossMasks(bt, pre) {
 // Jenga: stackable (occupied) squares join the anchor set — pure-stack moves
 // place on no empty square, so they must be generated from the stack square.
 function _solverAnchors(bt, stackable) {
-  var list = [], is = new Uint8Array(B * B), hasTiles = false;
-  for (var i = 0; i < B * B; i++) {
+  var list = [], is = new Uint8Array(BN), hasTiles = false;
+  for (var i = 0; i < BN; i++) {
     if (!bt[i]) continue;
     hasTiles = true;
     var r = Math.floor(i / B), c = i % B;
     var nb = [[r - 1, c], [r + 1, c], [r, c - 1], [r, c + 1]];
     for (var k = 0; k < 4; k++) {
       var nr = nb[k][0], nc = nb[k][1];
-      if (nr < 0 || nr >= B || nc < 0 || nc >= B) continue;
+      if (nr < 0 || nr >= BH || nc < 0 || nc >= B) continue;
       var ni = nr * B + nc;
       if (!bt[ni] && !is[ni]) { is[ni] = 1; list.push(ni); }
     }
   }
-  if (!hasTiles) { var mid = Math.floor(B / 2) * B + Math.floor(B / 2); is[mid] = 1; list.push(mid); }
-  if (stackable) for (var si = 0; si < B * B; si++) { if (stackable[si] && !is[si]) { is[si] = 1; list.push(si); } }
+  if (!hasTiles) { var mid = Math.floor(BH / 2) * B + Math.floor(B / 2); is[mid] = 1; list.push(mid); }
+  if (stackable) for (var si = 0; si < BN; si++) { if (stackable[si] && !is[si]) { is[si] = 1; list.push(si); } }
   return { list: list, is: is };
 }
 
@@ -125,8 +125,8 @@ function _solverGenMoves(sv, handCounts, blankCount, jengaActive) {
   // ---- Jenga hook — everything below is classic Gordon when this is null.
   var stackable = null;
   if (jengaActive) {
-    stackable = new Uint8Array(B * B);
-    for (var sqi = 0; sqi < B * B; sqi++) {
+    stackable = new Uint8Array(BN);
+    for (var sqi = 0; sqi < BN; sqi++) {
       if (svBt[sqi] && !svBt[sqi].isNew && !svBt[sqi]._stackLevel && !(sv.btTop && sv.btTop[sqi])) stackable[sqi] = 1;
     }
   }
@@ -151,7 +151,7 @@ function _solverGenMoves(sv, handCounts, blankCount, jengaActive) {
     if (pl.length === 1 && pl[0].isTop) {
       var pi = pl[0].idx, pr = Math.floor(pi / B), pc = pi % B;
       var hasH = !!((pc > 0 && svBt[pi - 1]) || (pc < B - 1 && svBt[pi + 1]));
-      var hasV = !!((pr > 0 && svBt[pi - B]) || (pr < B - 1 && svBt[pi + B]));
+      var hasV = !!((pr > 0 && svBt[pi - B]) || (pr < BH - 1 && svBt[pi + B]));
       var engH = !(hasV && !hasH);
       if (engH !== isH) return;
     }
@@ -206,20 +206,21 @@ function _solverGenMoves(sv, handCounts, blankCount, jengaActive) {
   }
 
   function afterLeft(aIdx, aCo, off, node, isH, stride, mask) {
+    var dim = isH ? B : BH; // cells along the walk direction (cols for H, rows for V)
     var co = aCo + off, cur = aIdx + off * stride;
     var leftOpen = co === 0 || !svBt[cur - stride];
-    var aRightOpen = aCo === B - 1 || !svBt[aIdx + stride];
+    var aRightOpen = aCo === dim - 1 || !svBt[aIdx + stride];
     // Word ends at the anchor (no rightward part)
     if (leftOpen && aRightOpen && pendN > 0 && gdEnd(node)) record(cur, aIdx, stride, isH);
     if (co > 0) genLeft(aIdx, aCo, off - 1, node, isH, stride, mask);
     // '>' switches to rightward extension — only when the prefix is maximal
     var sw = gdChild(node, GD_SW);
-    if (sw && leftOpen && aCo < B - 1) genRight(aIdx, aCo, 1, sw, cur, isH, stride, mask);
+    if (sw && leftOpen && aCo < dim - 1) genRight(aIdx, aCo, 1, sw, cur, isH, stride, mask);
   }
 
   function genRight(aIdx, aCo, off, node, loIdx, isH, stride, mask) {
     var co = aCo + off;
-    if (co >= B) return;
+    if (co >= (isH ? B : BH)) return;
     var cur = aIdx + off * stride, bt = svBt[cur];
     if (bt) {
       var nx = gdChild(node, tileDisplayLetter(bt).charCodeAt(0));
@@ -233,10 +234,11 @@ function _solverGenMoves(sv, handCounts, blankCount, jengaActive) {
   }
 
   function afterRight(aIdx, aCo, off, node, loIdx, isH, stride, mask) {
+    var dim = isH ? B : BH; // cells along the walk direction (cols for H, rows for V)
     var co = aCo + off, cur = aIdx + off * stride;
-    var rightOpen = co === B - 1 || !svBt[cur + stride];
+    var rightOpen = co === dim - 1 || !svBt[cur + stride];
     if (rightOpen && pendN > 0 && gdEnd(node)) record(loIdx, cur, stride, isH);
-    if (co < B - 1) genRight(aIdx, aCo, off + 1, node, loIdx, isH, stride, mask);
+    if (co < dim - 1) genRight(aIdx, aCo, off + 1, node, loIdx, isH, stride, mask);
   }
 
   for (var d = 0; d < 2; d++) {
@@ -274,7 +276,7 @@ function _solverScoreMove(sv, mv, hm) {
   var jengaTops = null, jengaUnder = null;
   // Committed stacks from previous plays keep a buried tile that still scores in
   // any word the move forms through them.
-  for (var _ci = 0; _ci < B * B; _ci++) {
+  for (var _ci = 0; _ci < BN; _ci++) {
     var _cb = sv.bt[_ci];
     if (_cb && _cb._buried) {
       if (!jengaUnder) jengaUnder = {};
@@ -393,7 +395,7 @@ function _solverFormsPal(sv, mv) {
     var r = Math.floor(p.idx / B), c = p.idx % B, word = '';
     if (mv.isH) { // main word horizontal → cross word runs vertically
       var y0 = r; while (y0 > 0 && letAt((y0 - 1) * B + c) != null) y0--;
-      for (var y = y0; y < B && letAt(y * B + c) != null; y++) word += letAt(y * B + c);
+      for (var y = y0; y < BH && letAt(y * B + c) != null; y++) word += letAt(y * B + c);
     } else {
       var x0 = c; while (x0 > 0 && letAt(r * B + (x0 - 1)) != null) x0--;
       for (var x = x0; x < B && letAt(r * B + x) != null; x++) word += letAt(r * B + x);
@@ -466,12 +468,12 @@ var RANK_SOLVE_DELAY = 600; // defers the CPU burn past the draw animation — t
 function _rankCapturePosition() {
   var hand = [];
   for (var i = 0; i < S.hand.length; i++) if (S.hand[i]) hand.push(S.hand[i]);
-  var bt = new Array(B * B).fill(null), btTop = null;
-  for (var j = 0; j < B * B; j++) {
+  var bt = new Array(BN).fill(null), btTop = null;
+  for (var j = 0; j < BN; j++) {
     var t = S.bt[j];
     if (t) { if (t.isNew) hand.push(t); else bt[j] = t; }
     var tt = S.btTop && S.btTop[j];
-    if (tt) { if (tt.isNew) hand.push(tt); else { if (!btTop) btTop = new Array(B * B).fill(null); btTop[j] = tt; } }
+    if (tt) { if (tt.isNew) hand.push(tt); else { if (!btTop) btTop = new Array(BN).fill(null); btTop[j] = tt; } }
   }
   return {
     hand: hand, bt: bt, btTop: btTop,

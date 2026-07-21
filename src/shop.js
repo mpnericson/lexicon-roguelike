@@ -1301,7 +1301,7 @@ function spinSlots(){
       r.accelT0=_now;
       r.flickHeld=false;
       r.state='accelerating';
-      r.resultId=null;r.resultIdx=-1;
+      r.resultId=null;r.resultIdx=-1;r.snapPopped=false;
     }
   }
   // Stagger: 400ms apart. Decel (800ms) + crawl (2000ms) are identical for all reels,
@@ -1352,7 +1352,7 @@ function spinSymbolSlots(machine){
       r.accelT0=_now;
       r.flickHeld=false;
       r.state='accelerating';
-      r.resultId=null;r.resultIdx=-1;
+      r.resultId=null;r.resultIdx=-1;r.snapPopped=false;
     }
   }
   var thirdDelay=(dress[0]===dress[1])?3400:2200; // near-miss stretch on a pair

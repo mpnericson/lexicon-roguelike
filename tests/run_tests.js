@@ -199,7 +199,7 @@ function moveKeys(moves) {
   const moves = sandbox._solverGenMoves(sv, { C: 1, A: 1, T: 1 }, 0);
   // CAT: 3 starts × 2 dirs; AT/TA: 2 starts × 2 dirs each = 6+4+4
   eq('empty board move count', moves.length, 14);
-  eq('empty board contains CAT@7,7h', moves.some(m => m.word === 'CAT' && m.r === 7 && m.c === 7 && m.isH), true);
+  eq('empty board contains CAT@6,7h', moves.some(m => m.word === 'CAT' && m.r === 6 && m.c === 7 && m.isH), true);
 }
 
 // ── 11. Extending an existing word: CAT on board + S in hand → only CATS ────

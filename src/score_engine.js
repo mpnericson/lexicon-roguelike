@@ -8,7 +8,7 @@
 // controls the ORDER in which effects fire.
 //
 // input = {
-//   tiles          B*B array of tile objects — the full board, committed
+//   tiles          BN array of tile objects — the full board, committed
 //                  tiles with isNew:false, this play's tiles isNew:true.
 //                  Jenga tops must be pre-merged over the tiles they cover.
 //   newIdxs        optional array of indices of the new tiles (skips scan)
@@ -23,7 +23,7 @@
 //                  caller, which owns the dictionary); only those jenga tops
 //                  form a scoring cross word. The buried tile scores its value
 //                  inside every word its square is part of.
-//   boardStickers  B*B array of board-sticker ids (S.board equivalent)
+//   boardStickers  BN array of board-sticker ids (S.board equivalent)
 //   placed         board-sticker instances [{id, sqIdx, …}]
 //   stamps         stamp instances, bar order (left → right)
 //   bounties       active bounty list (available to sticker/stamp hooks)
@@ -112,10 +112,11 @@ function _engCopy(cache, tiles, idx, jengaTops) {
 // Returns {word, tiles} or null if the run is a single tile.
 function _engExtract(tiles, cache, jengaTops, ar, ac, dir) {
   var pos = dir === 'h' ? ac : ar, p;
+  var lim = dir === 'h' ? B : BH; // cells along the run direction (cols for H, rows for V)
   while (pos > 0) { p = dir === 'h' ? ar * B + (pos - 1) : (pos - 1) * B + ac; if (tiles[p]) pos--; else break; }
   var start = pos;
   pos = dir === 'h' ? ac : ar;
-  while (pos < B - 1) { p = dir === 'h' ? ar * B + (pos + 1) : (pos + 1) * B + ac; if (tiles[p]) pos++; else break; }
+  while (pos < lim - 1) { p = dir === 'h' ? ar * B + (pos + 1) : (pos + 1) * B + ac; if (tiles[p]) pos++; else break; }
   var end = pos;
   if (start === end) return null;
   var wt = [];
@@ -132,7 +133,7 @@ function _engWordDir(tiles, nt) {
   if (!nt.length) return null;
   if (nt.length === 1) {
     var r = nt[0].row, c = nt[0].col;
-    var hasV = !!((r > 0 && tiles[(r - 1) * B + c]) || (r < B - 1 && tiles[(r + 1) * B + c]));
+    var hasV = !!((r > 0 && tiles[(r - 1) * B + c]) || (r < BH - 1 && tiles[(r + 1) * B + c]));
     var hasH = !!((c > 0 && tiles[r * B + (c - 1)]) || (c < B - 1 && tiles[r * B + (c + 1)]));
     if (hasV && !hasH) return 'v';
     return 'h';
@@ -435,7 +436,7 @@ function runScoreEngine(input) {
   var ntIdxs = input.newIdxs;
   if (!ntIdxs) {
     ntIdxs = [];
-    for (var si = 0; si < B * B; si++) if (tiles[si] && tiles[si].isNew) ntIdxs.push(si);
+    for (var si = 0; si < BN; si++) if (tiles[si] && tiles[si].isNew) ntIdxs.push(si);
   }
   if (!ntIdxs.length) return null;
   var nt = [];

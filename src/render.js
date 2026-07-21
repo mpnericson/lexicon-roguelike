@@ -148,10 +148,10 @@ function renderHUD(){
   var b=cb();
   var _bn=document.getElementById('round-name');if(_bn)_bn.textContent=b[0];
   var _bs=document.getElementById('round-sub');if(_bs)_bs.textContent=b[1];
-  var _rp=document.getElementById('run-progress');if(_rp)_rp.textContent=S.score.toLocaleString()+' / '+tgt().toLocaleString();
+  var _rp=document.getElementById('run-progress');if(_rp)_rp.textContent=fmtNum(S.score)+' / '+fmtNum(tgt());
   var pct=Math.min(100,S.score/tgt()*100);
   document.getElementById('score-bar').style.height=pct+'%';
-  document.getElementById('score-txt').textContent=S.score.toLocaleString()+' / '+tgt().toLocaleString();
+  document.getElementById('score-txt').textContent=fmtNum(S.score)+' / '+fmtNum(tgt());
   var brow=document.getElementById('bounty-row');if(brow){brow.innerHTML='';var blist=S.bounties||[];for(var bi=0;bi<blist.length;bi++)brow.appendChild(_makeBountyScroll(blist[bi]));}
   // Tracker frames 1-24 = the 24 rounds; frame 25 = all boards complete.
   // Endless loops back through the tracker from board 1 (frame 1), one
@@ -176,13 +176,13 @@ function sqStyle(id){
 function renderBoard(){
   if(typeof _clearStickerFloats==='function')_clearStickerFloats();
   var wrap=document.getElementById('board-wrap');
-  var sz=Math.max(30,Math.min(64,Math.floor(Math.min(window.innerWidth*0.52-80,window.innerHeight-250)/B)))+2;
+  var sz=Math.max(30,Math.min(64,Math.floor(Math.min((window.innerWidth*0.52-80)/B,(window.innerHeight-250)/BH))))+2;
   wrap.style.gridTemplateColumns='repeat('+B+','+sz+'px)';wrap.innerHTML='';
-  var center=Math.floor(B/2)*B+Math.floor(B/2);
+  var center=Math.floor(BH/2)*B+Math.floor(B/2);
   var _bcon=currentConstraint();
   var _stickerLocked=_bcon==='c_stickers'&&!(S.stickersSoldThisBoard>0);
   var _lettersUsed=_bcon==='c_letters'&&S.usedLetters&&S.usedLetters.size>0;
-  for(var i=0;i<B*B;i++){
+  for(var i=0;i<BN;i++){
     var sq=document.createElement('div');sq.className='sq';sq.dataset.sqIdx=i;
     sq.style.width=sz+'px';sq.style.height=sz+'px';
     // Focus mode: strip all sticker art — bare board grid + tiles only.
@@ -296,7 +296,7 @@ function renderBoard(){
     }
     wrap.appendChild(sq);
   }
-  if(S.phase==='play'){var _row=document.getElementById('live-score-row');if(_row&&!_row.classList.contains('scoring')){var _lsC=document.getElementById('ls-letters'),_lsM=document.getElementById('ls-mult'),_lsS=document.getElementById('ls-score');if(_lsC)_lsC.textContent='0';if(_lsM)_lsM.textContent='1';if(_lsS)_lsS.textContent='0';}}
+  if(S.phase==='play')updateLivePreview();
 }
 
 function _sqDescHTML(id,p){

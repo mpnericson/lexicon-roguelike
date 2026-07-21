@@ -19,7 +19,7 @@ Open `index.html` directly in a browser also works.
 |------|------|
 | `index.html` | All CSS + HTML structure. Loads every JS file via `<script>` tags. |
 | `src/version.js` | `GAME_VERSION` shown at the bottom of the dropdown menu. Base is hand-edited; build number auto-bumped every commit by `scripts/git-hooks/pre-commit` (enabled via `git config core.hooksPath scripts/git-hooks`). |
-| `src/data.js` | Constants: `B=15` (board size), `LS` (letter scores), `DIST` (tile counts), `BOARDS`/`CONSTRAINTS` (progression), `setTileState` (tile state machine), utility fns (`uid`, `_rng`, `shuffle`, `sqd`). `SQ` sticker defs live in `src/stickers/`. |
+| `src/data.js` | Constants: `B=15` (board WIDTH / row stride), `BH=12` (board HEIGHT), `BN=B*BH` (total cells — flat board arrays are length `BN`, `idx = row*B + col`), `LS` (letter scores), `DIST` (tile counts), `BOARDS`/`CONSTRAINTS` (progression), `setTileState` (tile state machine), utility fns (`uid`, `_rng`, `shuffle`, `sqd`). `SQ` sticker defs live in `src/stickers/`. |
 | `src/game.js` | Global state `S`, `startGame`, `roundComplete`/`advanceRound`, `showGO`, `toast`, modals, bag modal + letter expand/collapse, WebAudio SFX, `transformTile`, `openBlankChooser`, `hasStamp`/`countStamp`. |
 | `src/save.js` | localStorage run persistence: `saveGame`, `loadGame`, `resumeGame`, `clearSave`. |
 | `src/achievements.js` | Achievement defs, `achvInit`/`achvCheck`/`achvUnlock`, achievements modal. |
@@ -44,8 +44,8 @@ All mutable game state lives in `S` (declared in `game.js`):
 
 ```js
 S = {
-  bag, hand, board,   // board: B*B array of sticker IDs (or null)
-  bt,                 // bt: B*B array of placed tile objects (or null)
+  bag, hand, board,   // board: BN (B*BH) array of sticker IDs (or null)
+  bt,                 // bt: BN array of placed tile objects (or null)
   ai, bi,             // board index, round index into BOARDS
   score, gold, plays, disc,
   phase,              // 'play' | 'placing' | 'shop'
@@ -82,7 +82,8 @@ S = {
 
 Board cell size formula (in `renderBoard`):
 ```js
-var sz = Math.max(30, Math.min(64, Math.floor(Math.min(window.innerWidth - 225, window.innerHeight - 172) / B)));
+// width budget ÷ B columns, height budget ÷ BH rows — take the smaller
+var sz = Math.max(30, Math.min(64, Math.floor(Math.min((window.innerWidth*0.52-80)/B, (window.innerHeight-250)/BH)))) + 2;
 ```
 
 ## Tile sizing constants
@@ -165,7 +166,7 @@ Corollaries enforced in the codebase:
 
 - **No bundler**: everything is vanilla JS in global scope. `<script>` load order matters — `data.js` first, `init.js` last.
 - **DOM IDs**: JS accesses elements exclusively via `getElementById` / `querySelector('[data-sq-idx]')`. Never restructure HTML in a way that breaks existing IDs.
-- **`S.board` vs `S.bt`**: `S.board[i]` holds the sticker ID (e.g. `'dl'`, `'echo'`). `S.bt[i]` holds the tile object placed on that square. Both are `B*B` arrays.
+- **`S.board` vs `S.bt`**: `S.board[i]` holds the sticker ID (e.g. `'dl'`, `'echo'`). `S.bt[i]` holds the tile object placed on that square. Both are `BN` (`B*BH`) arrays.
 - **`isNew` flag**: `S.bt[i].isNew = true` means the tile was placed this turn and can be recalled. Committed tiles have `isNew = false`.
 - **Bounties persist** across rounds — `advanceRound` does NOT reset `S.bounties`.
 - **No `console.log` spam**: use `toast(msg)` for user-facing feedback.
