@@ -236,6 +236,8 @@ function goldGain(label,amount){
 }
 
 function roundComplete(){
+  // Record a completed constraint (round 3 boss blind) for the Collection.
+  var _cc=currentConstraint();if(_cc&&typeof discMarkConstraint==='function')discMarkConstraint(_cc);
   var won=!S.endless&&S.ai===BOARDS.length-1&&S.bi===2;
   var endOfBoard=(S.bi===2); // completing round 3 → advanceRound will start a new board
   // Collect every gold source into the ledger so the round-complete modal can
@@ -243,7 +245,9 @@ function roundComplete(){
   var ledger=[];
   window._goldLedger=ledger;
 
-  goldGain('Round reward',2+S.bi*2+(S.ai*2));
+  // Round reward is flat across the whole run — the same per-round payout you
+  // earn on board 1 (rounds 1/2/3 → $2/$4/$6), no board-index scaling.
+  goldGain('Round reward',2+S.bi*2);
   goldGain('Remaining hands',S.plays>0?S.plays:0);
   var hasSheriff=hasStamp('sheriffs_office');
   var sheriffWord='';
@@ -265,14 +269,19 @@ function roundComplete(){
   S.roundsCompleted=(S.roundsCompleted||0)+1;
   try{var _pb=parseInt(localStorage.getItem('lexicon_best_rounds')||'0');if(S.roundsCompleted>_pb)localStorage.setItem('lexicon_best_rounds',S.roundsCompleted);}catch(e){}
   if(won){
-    document.getElementById('win-msg').textContent='All '+BOARDS.length+' boards cleared! You scored '+fmtNum(S.score)+', beating '+fmtNum(tgt())+'.';
-    document.getElementById('win-reward').textContent='+$'+total+' gold';
-    document.getElementById('win-modal').style.display='flex';
     // Tracker frame 25 = every board window filled.
     var _wSpr=document.getElementById('progress-tracker-sprite');
     if(_wSpr)_wSpr.src='Assets/animations/progress tracker/progress_tracker25.png';
-    bagVacuumReset(); // no vacuum follows a full-run win — release the bag
     achvCheck('win');
+    // Same rising-panel treatment as a round clear, ending on a "You win!"
+    // finale with Endless-mode / New-run buttons.
+    animHooverTiles(function(){
+      document.getElementById('round-modal').style.display='flex';
+      animateEndDisplay({mode:'win',won:true,words:(S.roundWords||[]).slice(),total:S.score,target:tgt(),ledger:ledger,
+        winSub:'All '+BOARDS.length+' boards cleared!',
+        buttonText:'Endless mode →',buttonClass:'btn-green',onButton:advanceRound,
+        button2Text:'New run',button2Class:'btn-red',onButton2:_panelNewGame});
+    });
   }else{
     // Hoover the played tiles off the board first, then rise the popup.
     animHooverTiles(function(){
@@ -322,6 +331,7 @@ function animateEndDisplay(opts){
   _rgClear();_rgSkip=null;
   var seq=document.getElementById('round-seq-list');
   var btn=document.getElementById('round-continue-btn');
+  var btn2=document.getElementById('round-continue-btn2');
   var modal=document.getElementById('round-modal');
   var content=document.getElementById('round-panel-content');
   _rdBuildFrames();_rdShowFrame(1);
@@ -330,6 +340,12 @@ function animateEndDisplay(opts){
   btn.className='btn '+(opts.buttonClass||'btn-green');
   btn.textContent=opts.buttonText||'Continue';
   btn.onclick=opts.onButton||function(){};
+  // Optional second button (full-run win: Endless mode / New run).
+  btn2.classList.remove('rg-show');
+  if(opts.button2Text){
+    btn2.style.display='';btn2.className='btn '+(opts.button2Class||'btn-red');
+    btn2.textContent=opts.button2Text;btn2.onclick=opts.onButton2||function(){};
+  }else{btn2.style.display='none';}
   seq.innerHTML='';
 
   var words=opts.words||[], ledger=opts.ledger||[], wins=opts.wins||[];
@@ -454,10 +470,16 @@ function animateEndDisplay(opts){
         steps.push({after:AT(240),fn:function(){amt.textContent='+$'+e.amount;}});
       })(ledger[gi2]);
     }
+    // 5c) Full-run win: a big "You win!" finale after the gold.
+    if(opts.won){
+      var banner=document.createElement('div');banner.className='rd-win-banner';
+      banner.innerHTML='<div class="rd-win-big">You win!</div>'+(opts.winSub?'<div class="rd-win-sub">'+opts.winSub+'</div>':'');
+      steps.push({after:AT(450),fn:function(inst){addRow(banner);banner.classList.add('rg-show');if(!inst){_playScoreDing();_playCoinClink(false);}}});
+    }
   }
 
-  // 6) Action button pops in.
-  steps.push({after:0,fn:function(){btn.classList.add('rg-show');}});
+  // 6) Action button(s) pop in.
+  steps.push({after:0,fn:function(){btn.classList.add('rg-show');if(opts.button2Text)btn2.classList.add('rg-show');}});
 
   var idx=0;
   function next(){
@@ -488,10 +510,11 @@ function showLossDisplay(data){
   animHooverTiles(function(){
     document.getElementById('round-modal').style.display='flex';
     animateEndDisplay({mode:'lose',words:data.words,total:data.total,target:data.target,
-      wins:data.wins||[],buttonText:'New game',buttonClass:'btn-red',onButton:_newGameFromLoss});
+      wins:data.wins||[],buttonText:'New game',buttonClass:'btn-red',onButton:_panelNewGame});
   });
 }
-function _newGameFromLoss(){_blinkPanelThenDescend(function(){startGame();});}
+// Leave the panel and start a fresh run (loss "New game" / win "New run").
+function _panelNewGame(){_blinkPanelThenDescend(function(){startGame();});}
 
 // Leaving the end-of-round panel: blink the contents off, then lower the panel
 // back down off the screen (the rise frames played in reverse). Runs onDone once
@@ -573,12 +596,17 @@ function _doBoardAnimation(newBoard,pbBlanks){
 function _boardToShopReset(newBoard,pbBlanks){
   if(newBoard){
     clearBoardLetters();
-    var _handIds=new Set((S.hand||[]).map(function(t){return t&&t.id;}).filter(Boolean));
-    var _reBag=(S.pool||[]).filter(function(pt){return !_handIds.has(pt.id);});
+    // A new board always follows a constraint round (round 3), so the player
+    // gets a brand new random hand: the ENTIRE pool — including whatever's still
+    // in hand — goes back into the bag and the hand is cleared, then drawFull()
+    // below deals a fresh random hand off the reshuffled bag.
+    (S.hand||[]).forEach(function(t){if(t)setTileState(t,'stored',{storedIn:'bag'});});
+    S.hand=[];
+    var _reBag=(S.pool||[]).slice();
     _reBag.forEach(function(pt){setTileState(pt,'stored',{storedIn:'bag'});});
     S.bag=shuffle(_reBag);
     var _pbMsg=pbBlanks?' Paint Bucket: '+pbBlanks+' tile'+(pbBlanks!==1?'s':'')+' blanked.':'';
-    toast(S.endless?'Endless mode! Targets keep rising.':'New board — tiles cleared!'+_pbMsg);
+    toast(S.endless?'Endless mode! Targets keep rising.':'New board — fresh hand!'+_pbMsg);
   }
   S.score=0;S.plays=4;S.disc=3;S.wtr=0;S.ts=0;S.discPressure=0;S.discardsThisRound=0;S.palUnlocked=false;S.lastWordLen=0;S.magicStreak=0;
   S.usedLetters=new Set();S.stickersSoldThisBoard=0;S.roundWords=[];
@@ -671,13 +699,16 @@ function bagVacuumStart(){
   var spr=document.getElementById('bag-sprite');
   if(!spr)return;
   window._bagVacuuming=true;
-  _animBagFrames(spr,0,5,AT(80),function(){
+  // The bag's own frame animation (open + rattle loop) always plays at its
+  // natural speed — the anim-speed setting only makes the TILES fly off faster,
+  // not the loop the bag runs through. So these use raw ms, not AT().
+  _animBagFrames(spr,0,5,80,function(){
     if(!window._bagVacuuming)return; // reset before the open finished
     var fi=0;
     window._bagPlayShake=setInterval(function(){
       spr.src='Assets/animations/bag/bag-frame'+BAG_SHAKE_FRAMES[fi%BAG_SHAKE_FRAMES.length]+'.png';
       fi++;
-    },AT(100));
+    },100);
   });
 }
 // Stop the play-sprite rattle loop (the overlay's own shake continues it).

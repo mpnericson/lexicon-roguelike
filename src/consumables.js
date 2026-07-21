@@ -413,6 +413,7 @@ function _tkUseFromHand(invIndex,def){
   S.consumables.splice(invIndex,1);
   renderConsumables();
   _tkBusy=true;
+  if(typeof discMarkTk==='function')discMarkTk(def);
   var dur=def.use(sel,st)||600;
   if(def.kind==='ticket'&&def.id!=='tk_encore')S.lastTicket=def.id;
   setTimeout(function(){
@@ -587,6 +588,7 @@ function _tkTryUse(){
     _tkOv.invConsumed=true;
   }
   _tkBusy=true;
+  if(typeof discMarkTk==='function')discMarkTk(def);
   var dur=def.use(sel,_tkOv)||600;
   if(def.kind==='ticket'&&def.id!=='tk_encore')S.lastTicket=def.id;
   setTimeout(function(){_tkAfterUse(ce);},dur);
@@ -791,13 +793,7 @@ function _tkHoverTip(el,name,desc,fg){
     document.getElementById('shoptt-desc').textContent=desc;
     tt.style.display='block';tt.style.opacity='0';
     requestAnimationFrame(function(){
-      var w=tt.offsetWidth,h=tt.offsetHeight;
-      var tr=el.getBoundingClientRect();
-      var left=(tr.left+tr.right)/2-w/2;
-      left=Math.max(8,Math.min(left,window.innerWidth-w-8));
-      var top=tr.top-h-8;
-      if(top<8)top=tr.bottom+8;
-      tt.style.left=left+'px';tt.style.top=top+'px';
+      positionDescTip(tt,el); // float to the LEFT of the item, vertically centred
       tt.style.opacity='1';
     });
   };

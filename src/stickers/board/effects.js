@@ -87,6 +87,9 @@ SQ.push({id:'photocopier',name:'Photocopier',
   desc:'Tile played here: a copy of it is added to your hand. Retriggers copy again (max 4 per play). Stays on the board.',
   rarity:'rare',cost:8,qty:1,bg:'#1c1c22',fg:'#d0d0d8',icon:'PC',type:'board',
   onTileAdd:function(tile,ctx,ts,baseSc,sqIdx){
+    // Only root tiles copy — a Jenga top stacked onto this square never spawns a
+    // copy (the buried tile below it already fired the square when it was played).
+    if(tile.jengaTop)return ts;
     if(!ctx.photocopies)ctx.photocopies=[];
     var n=0;
     for(var i=0;i<ctx.photocopies.length;i++)if(ctx.photocopies[i].sqIdx===sqIdx)n++;

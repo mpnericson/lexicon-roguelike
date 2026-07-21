@@ -65,8 +65,18 @@
 // for their tile. The engine's gold payout uses it directly; stamps (Yuan)
 // call boardSweep(ctx, match, fire) from onPostWord so the sweep runs in
 // stamp-bar order.
-//   FINAL     total = round(letters × (1 + Σ plusMults) × Π xmults),
-//             then ctx.finalTransforms apply in order (Palindrome Engine)
+//   FINAL     total = round(letters × mult), then ctx.finalTransforms apply in
+//             order (Palindrome Engine).
+//
+// The word MULT is folded SEQUENTIALLY, in the order effects fire (ctx.mult,
+// starts at 1): a +mult adds to the running mult, a ×mult multiplies it. Order
+// therefore matters — a +mult applied AFTER a ×mult (e.g. a post-word +mult
+// stamp firing after the per-tile chess/DW ×mults) is added on top and is NOT
+// retroactively multiplied by the earlier ×mults. This is implemented by
+// intercepting ctx.plusMults.push / ctx.xmults.push (every mult source routes
+// through them), so the sticker/stamp defs are untouched. plusMults[]/xmults[]
+// are still returned as informational bucket totals but no longer combine as
+// (1 + Σ plusMults) × Π xmults.
 //
 // ctx surface available to sticker/stamp hooks:
 //   letters, plusMults[], xmults[], tgold, events[], scoredTiles[],
@@ -483,6 +493,18 @@ function runScoreEngine(input) {
     stickerLocked: state.constraint === 'c_stickers' && !state.stickersSold // disables stickers AND stamps
   };
 
+  // Sequential mult fold. The word multiplier is a single running value that
+  // starts at 1 and is updated IN THE ORDER effects fire: a +mult adds, a ×mult
+  // multiplies. Crucially, a +mult applied AFTER a ×mult (e.g. a post-word stamp
+  // like Sesquipedalian firing after the chess ×4s) is added on top — it is NOT
+  // retroactively multiplied by the earlier ×mults. Every mult source in the
+  // game routes through these two arrays' push, so intercepting push here makes
+  // the whole engine order-dependent without touching any sticker/stamp def.
+  // (plusMults/xmults still collect their raw values for the return payload.)
+  ctx.mult = 1;
+  ctx.plusMults.push = function(d){ ctx.mult += d; return Array.prototype.push.call(this, d); };
+  ctx.xmults.push = function(f){ ctx.mult *= f; return Array.prototype.push.call(this, f); };
+
   // onBuildCtx — board stickers register auras/flags, then stamps
   if (!ctx.stickerLocked) {
     for (var bci = 0; bci < ctx.placed.length; bci++) {
@@ -610,9 +632,12 @@ function runScoreEngine(input) {
   }
 
   // ---- FINAL ----
+  // mult was already folded sequentially as each effect fired (ctx.mult). plusSum
+  // / xprod are retained only as informational bucket totals for the payload — in
+  // the sequential model they no longer combine as (1+plusSum)×xprod.
   var plusSum = 0; for (var psi = 0; psi < ctx.plusMults.length; psi++) plusSum += ctx.plusMults[psi];
   var xprod = 1; for (var xpi = 0; xpi < ctx.xmults.length; xpi++) xprod *= ctx.xmults[xpi];
-  var mult = (1 + plusSum) * xprod;
+  var mult = ctx.mult;
   var total = Math.round(ctx.letters * mult);
   var displayMult = mult;
   for (var fti = 0; fti < ctx.finalTransforms.length; fti++) {

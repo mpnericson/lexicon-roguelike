@@ -689,6 +689,48 @@ function moveKeys(moves) {
   kboard[7 * B + 7] = 'photocopier';
   eq('photocopier ignores committed tiles',
     score({ tiles: ktiles, newIdxs: [7 * B + 8, 7 * B + 9], boardStickers: kboard }).photocopies.length, 0);
+
+  // Only ROOT tiles copy — a Jenga top stacked onto the photocopier square does
+  // NOT spawn a copy (buried tile below already fired the square when played).
+  const jIdx = 7 * B + 8;
+  const jtiles = emptyBoard();
+  place(jtiles, 7, 7, 'h', 'C', false);      // committed C
+  jtiles[jIdx] = { letter: 'A', isNew: true }; // stacked top A → word CAT
+  place(jtiles, 7, 9, 'h', 'T', false);      // committed T
+  const jTops = new Set([jIdx]);
+  const jUnder = {}; jUnder[jIdx] = { letter: 'E', isBlank: false, sc: 1, variant: null };
+  const jphotoBoard = emptyBoard(); jphotoBoard[jIdx] = 'photocopier';
+  eq('photocopier ignores Jenga tops',
+    (score({ tiles: jtiles, dir: 'h', newIdxs: [jIdx], jengaTops: jTops, jengaUnder: jUnder, boardStickers: jphotoBoard }).photocopies || []).length, 0);
+}
+
+// ── Sequential mult: a +mult applied AFTER a ×mult is added on top, NOT ───────
+// retroactively multiplied by it. Word PLANET (6 tiles, letter sum 8) on a
+// Quadruple Word (×4) with Sesquipedalian (+12 for a 6-letter word):
+//   mult = 1 →(+3 tile-count)→ 4 →(×4 word)→ 16 →(+12 Sesqui)→ 28
+// The old bucketed model gave (1+3+12)×4 = 64 — this pins the new behaviour.
+{
+  const tiles = emptyBoard();
+  place(tiles, 7, 4, 'h', 'PLANET');
+  const board = emptyBoard();
+  board[7 * B + 4] = 'tw'; // Quadruple Word under the P
+  const res = score({ tiles, boardStickers: board, stamps: [{ id: 'sesquipedalian' }] });
+  eq('sequential mult: + after × not remultiplied', res.mult, 28);
+  eq('sequential total', res.total, 8 * 28);
+
+  // Order matters the other way too: a +mult firing BEFORE the ×mult IS
+  // multiplied by it. Void (+2 mult, additive) on the P scores before the
+  // Quadruple Word (×4) on the L (which scores after P, left→right):
+  //   1 →(+3 tile-count)→ 4 →(+2 Void)→ 6 →(×4)→ 24
+  const vtiles = emptyBoard();
+  place(vtiles, 7, 4, 'h', 'PLANET');
+  const vboard = emptyBoard();
+  vboard[7 * B + 4] = 'void'; // Void on the P (zeroes its 3 pts, +2 mult)
+  vboard[7 * B + 5] = 'tw';   // Quadruple Word on the L (scores after P)
+  const vres = score({ tiles: vtiles, boardStickers: vboard });
+  // letters: P0 (Void) + L1 + ANET(1+1+1+1) = 5
+  eq('sequential mult: + before × IS multiplied', vres.mult, 24);
+  eq('sequential Void total', vres.total, 5 * 24);
 }
 
 console.log(failed ? '\n' + failed + ' test(s) FAILED' : '\nAll tests passed');

@@ -681,7 +681,10 @@ async function runScoreAnim(events,total){
   if(lsTileDelta){lsTileDelta.textContent='';lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');}
 
   var delay=AT(1000),minDelay=AT(100),delayStep=AT(50);
-  var animPlusSum=0,animXprod=1;_scoreDingN=0;
+  // Running word mult, folded sequentially in event order to mirror the engine:
+  // a +mult adds to it, a ×mult multiplies it (a +mult after a ×mult is NOT
+  // retroactively multiplied). Starts at 1.
+  var animMult=1;_scoreDingN=0;
   var _saLSynced=0; // tracks last value written to saL, to skip redundant isSilent updates
   var _deltaActive=false,_deltaTileBase=0;
   var _pendingTick=null; // {fV,tV} — last tile's score waiting to be ticked up
@@ -701,7 +704,7 @@ async function runScoreAnim(events,total){
   var _bagVacuumFired=false,_runLetters=0;
   function _bagVacuumCheck(){
     if(!_willClear||_bagVacuumFired)return;
-    var m=(1+animPlusSum)*animXprod;
+    var m=animMult;
     if(_preScore+_runLetters*m>=_clearTgt){_bagVacuumFired=true;bagVacuumStart();}
   }
 
@@ -740,7 +743,7 @@ async function runScoreAnim(events,total){
   }
 
   function refreshMult(){
-    var m=(1+animPlusSum)*animXprod;
+    var m=animMult;
     saM.textContent=fmtMult(m);
     bumpSA('ls-mult');
     _bagVacuumCheck();
@@ -754,12 +757,12 @@ async function runScoreAnim(events,total){
     if(co.type==='plus-mult'){
       var brp=row.getBoundingClientRect();
       showScorePop('+'+co.delta+' mult',brp.left+100,brp.top-32,'#500808','#ff8080');
-      animPlusSum+=co.delta;refreshMult();
+      animMult+=co.delta;refreshMult();
     }else if(co.type==='x-mult'){
       var telx=_evTileEl(co),rx=telx?telx.getBoundingClientRect():null;
       if(rx)showScorePop(co.factor,rx.left+rx.width/2-20,rx.top-4,'#500808','#ff6060');
       else{var brx=row.getBoundingClientRect();showScorePop(co.factor+' mult',brx.left+100,brx.top-32,'#500808','#ff6060');}
-      animXprod*=co.factor;refreshMult();
+      animMult*=co.factor;refreshMult();
     }else if(co.type==='letter'){
       saL.textContent=co.lettersAfter;bumpSA('ls-letters');_saLSynced=co.lettersAfter;
       _runLetters=co.lettersAfter;_bagVacuumCheck();
@@ -949,7 +952,7 @@ async function runScoreAnim(events,total){
       var br=row.getBoundingClientRect();
       showScorePop('+'+ev.delta+' mult',br.left+100,br.top-32,'#500808','#ff8080');
       if(!ev._skip)_binkEl(tileElP);
-      animPlusSum+=ev.delta;
+      animMult+=ev.delta;
       refreshMult();
       _applyCoApply(ev);
       if(curDelay!=null)await scoreDelay(curDelay);
@@ -972,7 +975,7 @@ async function runScoreAnim(events,total){
       if(r2)showScorePop(ev.factor,r2.left+r2.width/2-20,r2.top-4,'#500808','#ff6060');
       else{var br2=row.getBoundingClientRect();showScorePop(ev.factor+' mult',br2.left+100,br2.top-32,'#500808','#ff6060');}
       if(!ev._skip)_binkEl(tileEl2);
-      animXprod*=ev.factor;
+      animMult*=ev.factor;
       refreshMult();
       _applyCoApply(ev);
       if(curDelay!=null)await scoreDelay(curDelay);
@@ -1006,7 +1009,7 @@ async function runScoreAnim(events,total){
 
     }else if(ev.type==='final-transform'){
       var curDelay=await _evBeatStart(ev);
-      if(ev.palMult&&ev.palMult>1&&!ev._skip){animXprod*=ev.palMult;refreshMult();}
+      if(ev.palMult&&ev.palMult>1&&!ev._skip){animMult*=ev.palMult;refreshMult();}
       var br4=row.getBoundingClientRect();
       showScorePop(ev.label,br4.left+60,br4.top-48,'#0a2a2a','#60ffff');
       if(curDelay!=null)await scoreDelay(Math.max(AT(200),curDelay));

@@ -189,76 +189,171 @@ function renderBoardPreview(){
 }
 
 
-function _refreshCollectionContent(){
-  var g=document.getElementById('collection-content');
-  var prevScroll=g.scrollTop;
-  g.innerHTML='';
-  var types=[
-    {key:'stickers',label:'Stickers',test:function(d){return !!d.bm||d.type==='board'||d.type==='local'||!!d.apply;}},
-    {key:'stamps',label:'Stamps',test:function(d){return !d.bm&&d.type!=='board'&&d.type!=='local'&&!d.apply;}}
+// ── Collection hub ───────────────────────────────────────────────────────────
+// A landing hub of rectangular section buttons; each opens a grid of that
+// section's entries. Unlocked entries show their icon + hover description
+// (floated to the left via the shared positioner); locked entries show a "?"
+// placeholder. Everything is unlocked in dev mode. All visual chrome here is a
+// functional placeholder — swap in PNG backgrounds/sprites later.
+//
+// The Dictionary is reached from this hub too, launching the existing wordbook
+// modal (words you have not played are intentionally not shown as placeholders).
+
+// Lazily built so it reads the live SQ/TK/CONSTRAINTS/BOUNTY_THEMES arrays.
+function _collSections(){
+  return [
+    {key:'stamps',      label:'Stamps',        cat:'stamps',
+      items:function(){return SQ.filter(_isStampDef);}, id:function(d){return d.id;},
+      icon:function(d,sz){return _collSqIcon(d,sz);}},
+    {key:'stickers',    label:'Stickers',      cat:'stickers',
+      items:function(){return SQ.filter(_isStickerDef);}, id:function(d){return d.id;},
+      icon:function(d,sz){return _collSqIcon(d,sz);}},
+    {key:'tickets',     label:'Tickets',       cat:'tickets',
+      items:function(){return (typeof TK!=='undefined'?TK:[]).filter(function(d){return d.kind==='ticket';});},
+      id:function(d){return d.id;}, icon:function(d,sz){return _collTkIcon(d,sz);}},
+    {key:'materials',   label:'Materials',     cat:'materials',
+      items:function(){return COLL_MATERIALS;}, id:function(d){return d.id;},
+      icon:function(d,sz){return _collSwatchIcon(d,sz);}},
+    {key:'colors',      label:'Coloured Tiles',cat:'colors',
+      items:function(){return COLL_COLORS;}, id:function(d){return d.id;},
+      icon:function(d,sz){return _collSwatchIcon(d,sz);}},
+    {key:'keys',        label:'Keys',          cat:'keys',
+      items:function(){return (typeof TK!=='undefined'?TK:[]).filter(function(d){return d.kind==='key';});},
+      id:function(d){return d.id;}, icon:function(d,sz){return _collTkIcon(d,sz);}},
+    {key:'constraints', label:'Constraints',   cat:'constraints',
+      items:function(){return typeof CONSTRAINTS!=='undefined'?CONSTRAINTS:[];}, id:function(d){return d.id;},
+      icon:function(d,sz){return _collConstraintIcon(d,sz);}},
+    {key:'bounties',    label:'Bounties',      cat:'bounties',
+      items:function(){return (typeof BOUNTY_THEMES!=='undefined'&&BOUNTY_THEMES?BOUNTY_THEMES:[]).map(_collBountyItem);},
+      id:function(d){return d.id;}, icon:function(d,sz){return _collBountyIcon(d,sz);}},
+    {key:'dictionary',  label:'Dictionary',    special:'dictionary'}
   ];
-  var rarities=[
-    {key:'common',label:'Common',color:'#b8b8b8'},
-    {key:'uncommon',label:'Uncommon',color:'#60c060'},
-    {key:'rare',label:'Rare',color:'#c060ff'},
-    {key:'legendary',label:'Legendary',color:'#ffd700'}
-  ];
-  for(var ti=0;ti<types.length;ti++){
-    var tf=types[ti].test;var items=SQ.filter(function(d){return tf(d);});if(!items.length)continue;
-    var sec=document.createElement('div');sec.style.marginBottom='16px';
-    var title=document.createElement('div');title.className='shop-sec-title';title.textContent=types[ti].label;sec.appendChild(title);
-    for(var ri=0;ri<rarities.length;ri++){
-    var rar=rarities[ri];
-    var rItems=items.filter(function(d){return (d.rarity||'common')===rar.key;});if(!rItems.length)continue;
-    var sub=document.createElement('div');sub.className='coll-rarity-title';sub.style.color=rar.color;sub.textContent=rar.label;sec.appendChild(sub);
-    var row=document.createElement('div');row.className='shop-row';
-    for(var j=0;j<rItems.length;j++){(function(d){
-      var isPlaced=false;for(var k=0;k<S.placed.length;k++)if(S.placed[k].id===d.id){isPlaced=true;break;}
-      var isStamp=d.type==='stamp';
-      var invCount=0;
-      if(isStamp){for(var k=0;k<S.stamps.length;k++)if(S.stamps[k].id===d.id)invCount++;}
-      else{for(var k=0;k<S.stickerInventory.length;k++)if(S.stickerInventory[k].id===d.id)invCount++;}
-      var card=document.createElement('div');card.className='coll-card';
-      card.innerHTML='<div class="coll-icon-wrap r-'+(d.rarity||'common')+(isPlaced?' coll-placed':'')+'"><span style="font-size:52px;line-height:1;color:'+d.fg+'">'+sqIconHTML(d,72)+'</span></div>'
-        +'<div class="coll-name">'+d.name+'</div>'
-        +(isPlaced?'<div class="coll-sub">✓ On your board</div>':'');
-      var descEl=document.createElement('div');descEl.className='coll-desc';descEl.innerHTML=d.desc;
-      card.appendChild(descEl);
-      card.onclick=function(){descEl.style.display=descEl.style.display==='none'||!descEl.style.display?'block':'none';};
-      if(S.devMode){
-        var ctrl=document.createElement('div');ctrl.style.cssText='display:flex;align-items:center;gap:5px;margin-top:5px';
-        var minusBtn=document.createElement('button');minusBtn.className='btn btn-gray';minusBtn.style.cssText='padding:1px 8px;font-size:30px;min-width:28px;line-height:1';minusBtn.textContent='−';
-        if(invCount===0)minusBtn.disabled=true;
-        minusBtn.onclick=(function(dd,isStamp){return function(e){
-          e.stopPropagation();
-          if(isStamp){for(var _i=0;_i<S.stamps.length;_i++){if(S.stamps[_i].id===dd.id){S.stamps.splice(_i,1);break;}}renderStampBar();}
-          else{for(var _i=0;_i<S.stickerInventory.length;_i++){if(S.stickerInventory[_i].id===dd.id){S.stickerInventory.splice(_i,1);break;}}}
-          renderHUD();_refreshCollectionContent();
-        };})(d,isStamp);
-        var countEl=document.createElement('span');countEl.style.cssText='font-size:30px;color:#d0d0f0;min-width:18px;text-align:center;font-weight:normal';countEl.textContent=invCount;
-        var plusBtn=document.createElement('button');plusBtn.className='btn btn-gold';plusBtn.style.cssText='padding:1px 8px;font-size:30px;min-width:28px;line-height:1';plusBtn.textContent='+';
-        plusBtn.onclick=(function(dd,isStamp){return function(e){
-          e.stopPropagation();
-          if(isStamp){S.stamps.push({id:dd.id});renderStampBar();}
-          else{S.stickerInventory.push({id:dd.id});}
-          renderHUD();_refreshCollectionContent();
-        };})(d,isStamp);
-        ctrl.appendChild(minusBtn);ctrl.appendChild(countEl);ctrl.appendChild(plusBtn);
-        card.appendChild(ctrl);
-      }
-      row.appendChild(card);
-    })(rItems[j]);}
-    sec.appendChild(row);
-    }
-    g.appendChild(sec);
-  }
-  g.scrollTop=prevScroll;
 }
 
+// A bounty theme → a collection item (id = theme name, desc = its word list).
+function _collBountyItem(t){
+  var words=(t.words||[]).join(', ');
+  return {id:t.theme, name:t.theme, desc:'Words: '+words, fg:'#e0c070'};
+}
+
+// ── Icon renderers (all return an HTML string for the cell's icon area) ──
+function _collSqIcon(d,sz){
+  if(d.iconPng)return '<img src="'+d.iconPng+'" style="width:'+sz+'px;height:'+sz+'px;image-rendering:pixelated">';
+  return '<span style="font-size:'+Math.round(sz*0.7)+'px;line-height:1;color:'+(d.fg||'#c8c8d8')+'">'+(d.icon||'?')+'</span>';
+}
+function _collTkIcon(d,sz){
+  if(d.iconPng)return '<img src="'+d.iconPng+'" style="width:'+sz+'px;height:'+sz+'px;image-rendering:pixelated">';
+  return '<span style="font-size:'+Math.round(sz*0.7)+'px;line-height:1">'+(d.icon||'?')+'</span>';
+}
+function _collSwatchIcon(d,sz){
+  if(d.iconPng)return '<img src="'+d.iconPng+'" style="width:'+sz+'px;height:'+sz+'px;image-rendering:pixelated">';
+  // Placeholder swatch: a rounded tile filled with the entry's representative colour.
+  return '<div style="width:'+sz+'px;height:'+sz+'px;border-radius:8px;background:'+(d.color||'#888')
+    +';box-shadow:inset 0 0 0 2px rgba(255,255,255,0.25),inset 0 -6px 10px rgba(0,0,0,0.25)"></div>';
+}
+function _collConstraintIcon(d,sz){
+  if(d.iconPng)return '<img src="'+d.iconPng+'" style="width:'+sz+'px;height:'+sz+'px;image-rendering:pixelated">';
+  var em=(COLL_CONSTRAINT_ICONS&&COLL_CONSTRAINT_ICONS[d.id])||'📜';
+  return '<span style="font-size:'+Math.round(sz*0.66)+'px;line-height:1">'+em+'</span>';
+}
+function _collBountyIcon(d,sz){
+  return '<span style="font-size:'+Math.round(sz*0.66)+'px;line-height:1">📜</span>';
+}
+
+// ── Hub / navigation ──
+var _collCurSection=null;
+
 function openCollection(){
-  document.getElementById('menu-dropdown').style.display='none';
-  _refreshCollectionContent();
+  var dd=document.getElementById('menu-dropdown');if(dd)dd.style.display='none';
+  if(typeof discoveryScan==='function')discoveryScan();
+  collShowHub();
   document.getElementById('collection-modal').style.display='flex';
+}
+
+function collShowHub(){
+  _collCurSection=null;
+  document.getElementById('coll-title').textContent='Collection';
+  document.getElementById('coll-back-btn').style.display='none';
+  document.getElementById('coll-section').style.display='none';
+  var hub=document.getElementById('coll-hub');
+  hub.style.display='grid';
+  hub.innerHTML='';
+  var devAll=!!(S&&S.devMode);
+  var secs=_collSections();
+  for(var i=0;i<secs.length;i++){(function(sec){
+    var btn=document.createElement('button');
+    btn.className='coll-hub-btn';
+    btn.setAttribute('data-coll-section',sec.key);
+    var count='';
+    if(sec.special==='dictionary'){
+      count=(typeof _wordbook!=='undefined')?(Object.keys(_wordbook).length+' words'):'';
+    }else{
+      var c=_collSectionCount(sec,devAll);
+      count=c.have+' / '+c.total;
+    }
+    btn.innerHTML='<span class="coll-hub-label">'+sec.label+'</span>'
+      +'<span class="coll-hub-count">'+count+'</span>';
+    btn.onclick=function(){
+      if(sec.special==='dictionary'){openWordbookModal();return;}
+      collShowSection(sec.key);
+    };
+    hub.appendChild(btn);
+  })(secs[i]);}
+}
+
+function _collSectionCount(sec,devAll){
+  var items=sec.items();var have=0;
+  for(var i=0;i<items.length;i++)if(devAll||discHas(sec.cat,sec.id(items[i])))have++;
+  return {have:have,total:items.length};
+}
+
+function collShowSection(key){
+  var secs=_collSections(),sec=null;
+  for(var i=0;i<secs.length;i++)if(secs[i].key===key){sec=secs[i];break;}
+  if(!sec)return;
+  _collCurSection=key;
+  document.getElementById('coll-hub').style.display='none';
+  document.getElementById('coll-title').textContent=sec.label;
+  document.getElementById('coll-back-btn').style.display='';
+  var devAll=!!(S&&S.devMode);
+  var c=_collSectionCount(sec,devAll);
+  document.getElementById('coll-section-sub').textContent=
+    (devAll?'Dev mode — all unlocked · ':'')+c.have+' / '+c.total+' unlocked. Hover an entry for its description.';
+  var grid=document.getElementById('coll-grid');
+  grid.innerHTML='';
+  var items=sec.items();
+  for(var j=0;j<items.length;j++){(function(d){
+    var unlocked=devAll||discHas(sec.cat,sec.id(d));
+    var cell=document.createElement('div');
+    cell.className='coll-cell'+(unlocked?'':' locked');
+    if(unlocked){
+      cell.innerHTML='<div class="coll-cell-icon">'+sec.icon(d,64)+'</div>'
+        +'<div class="coll-cell-name">'+d.name+'</div>';
+      var fg=d.fg||'#e8e0d0',nm=d.name,desc=d.desc||'';
+      cell.onmouseenter=function(){_collTipShow(cell,nm,desc,fg);};
+      cell.onmouseleave=_collTipHide;
+    }else{
+      cell.innerHTML='<div class="coll-cell-icon coll-cell-locked">?</div>'
+        +'<div class="coll-cell-name">???</div>';
+    }
+    grid.appendChild(cell);
+  })(items[j]);}
+  document.getElementById('coll-section').style.display='block';
+  grid.scrollTop=0;
+}
+
+// ── Collection hover tooltip (shared left-of-element positioner) ──
+function _collTipShow(el,name,descHtml,fg){
+  var tt=document.getElementById('shop-sticker-tooltip');if(!tt)return;
+  tt._tkOwner=el;
+  var nm=document.getElementById('shoptt-name');nm.textContent=name;nm.style.color=fg||'#f0e080';
+  document.getElementById('shoptt-desc').innerHTML=descHtml;
+  tt.style.display='block';tt.style.opacity='0';
+  requestAnimationFrame(function(){positionDescTip(tt,el);tt.style.opacity='1';});
+}
+function _collTipHide(){
+  var tt=document.getElementById('shop-sticker-tooltip');
+  if(tt){tt.style.opacity='0';tt.style.display='none';tt._tkOwner=null;}
 }
 
 // ── Settings modal ──

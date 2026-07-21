@@ -7,6 +7,7 @@ var SAVE_KEY = 'lexicon_save';
 function saveGame() {
   if (!S || !S.seed || S.devMode) return;
   if (S.tutorial) return; // mid-tutorial state is never persisted
+  if (typeof discoveryScan === 'function') discoveryScan(); // record owned items for the Collection
   try {
     var data = {
       v: SAVE_VERSION,

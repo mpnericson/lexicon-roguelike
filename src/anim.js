@@ -84,13 +84,17 @@ function _bagSpriteShow(bagEl) {
   return {overlay: overlay, img: img, shakeInterval: null};
 }
 
+// The bag-sprite frame animations (open / rattle loop / close) always run at
+// their natural speed. The anim-speed setting only speeds up the TILES being
+// vacuumed (their flight timing in animHooverTiles), not the loop the bag runs
+// through — so these use raw ms, not AT().
 function _bagSpriteIntro(state, onDone) {
   var frames = [0,1,2,3,4,5];
   var fi = 0;
   function next() {
     state.img.src = 'Assets/animations/bag/bag-frame' + frames[fi] + '.png';
     fi++;
-    if (fi < frames.length) setTimeout(next, AT(80));
+    if (fi < frames.length) setTimeout(next, 80);
     else onDone();
   }
   next();
@@ -104,7 +108,7 @@ function _bagSpriteShakeStart(state) {
     fi++;
   }
   step(); // render the first rattle frame now so a hand-off from the real sprite doesn't hitch
-  state.shakeInterval = setInterval(step, AT(100));
+  state.shakeInterval = setInterval(step, 100);
 }
 
 function _bagSpriteOutro(state, bagEl, onDone) {
@@ -114,7 +118,7 @@ function _bagSpriteOutro(state, bagEl, onDone) {
   function next() {
     state.img.src = 'Assets/animations/bag/bag-frame' + frames[fi] + '.png';
     fi++;
-    if (fi < frames.length) setTimeout(next, AT(80));
+    if (fi < frames.length) setTimeout(next, 80);
     else { state.overlay.remove(); bagEl.style.visibility = ''; if(window._bagSpriteReset)window._bagSpriteReset(); onDone(); }
   }
   next();
@@ -561,6 +565,16 @@ function animWormhole(fromRect, toRect, tileData, onDone) {
 function _burstHandTiles() {
   var layer = document.getElementById('anim-layer');
   layer.innerHTML = '';
+
+  // Re-layout the hand from the CURRENT (post-shop) geometry before we read tile
+  // rects — the elements may still hold stale/collapsed positions computed while
+  // the shop overlay was up, which a fast (sped-up) transition doesn't give the
+  // physics time to spread back out, so the burst would land them squished.
+  // Clearing HP forces renderHand to snap fresh, evenly-spaced rest positions;
+  // the new elements are set to opacity 0 by _burstTilesFromBag in the same tick,
+  // so there's no flash before they fly in.
+  HP.movingCount = 0; HP.x = []; HP.vx = [];
+  renderHand();
 
   var bagEl = document.getElementById('bag-btn');
   var bagR = bagEl.getBoundingClientRect();

@@ -1571,13 +1571,7 @@ function _shopTipRender(id,triggerEl){
   document.getElementById('shoptt-desc').innerHTML=_sqDescHTML(id,null);
   el.style.display='block';el.style.opacity='0';
   requestAnimationFrame(function(){
-    var w=el.offsetWidth,h=el.offsetHeight;
-    var tr=triggerEl.getBoundingClientRect();
-    var left=(tr.left+tr.right)/2-w/2;
-    left=Math.max(8,Math.min(left,window.innerWidth-w-8));
-    var top=tr.top-h-8;
-    if(top<8)top=tr.bottom+8;
-    el.style.left=left+'px';el.style.top=top+'px';
+    positionDescTip(el,triggerEl); // float to the LEFT of the item, vertically centred
     el.style.opacity='1';
   });
 }

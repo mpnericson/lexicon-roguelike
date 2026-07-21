@@ -269,8 +269,8 @@ function renderBoard(){
       }
       var classic=(sid==='dl'||sid==='tl'||sid==='dw'||sid==='tw');
       // Tooltip hover for all placed stickers, including classic bonus squares
-      if(sid&&!bt&&S.phase!=='placing'){(function(idx,did){sq.addEventListener('mouseenter',function(){_sqTooltipShow(idx,did);});sq.addEventListener('mouseleave',_sqTooltipHide);})(i,sid);}
-      if(sid&&!classic&&!bt&&S.phase!=='placing'){sq.style.cursor='pointer';(function(idx,did){if(did.indexOf('chess_')===0){sq.addEventListener('mouseenter',function(){_chessHoverOn(idx,did);});sq.addEventListener('mouseleave',_chessHoverOff);}else if(did==='easy_mode'){sq.addEventListener('mouseenter',_easyHintShow);sq.addEventListener('mouseleave',_easyHintHide);}sq.addEventListener('click',function(){_sqTooltipFreeze(idx,did);});})(i,sid);}
+      if(sid&&!bt&&S.phase!=='placing'){(function(idx,did,el){el.addEventListener('mouseenter',function(){_sqTooltipShow(idx,did,el);});el.addEventListener('mouseleave',_sqTooltipHide);})(i,sid,sq);}
+      if(sid&&!classic&&!bt&&S.phase!=='placing'){sq.style.cursor='pointer';(function(idx,did,el){if(did.indexOf('chess_')===0){el.addEventListener('mouseenter',function(){_chessHoverOn(idx,did);});el.addEventListener('mouseleave',_chessHoverOff);}else if(did==='easy_mode'){el.addEventListener('mouseenter',_easyHintShow);el.addEventListener('mouseleave',_easyHintHide);}el.addEventListener('click',function(){_sqTooltipFreeze(idx,did,el);});})(i,sid,sq);}
       if(S.phase==='placing'&&isSqStaged(i)){
         var si2=S.sqStaged[i];var sq2item=S.sqHand[si2];var d2=sqd(sq2item.id);
         if(d2){var ss2=sqStyle(sq2item.id);sq.style.background=ss2.bg;sq.style.color=ss2.fg;
@@ -345,17 +345,23 @@ function _sqTooltipFillContent(id,p){
   }
 }
 
-function _sqTooltipRender(sqIdx,id){
+// Anchor element the open tooltip is floated to the left of (for reposition on refresh).
+var _sqTooltipAnchor=null;
+function _sqTooltipReposition(){
+  var el=document.getElementById('sq-hover-tooltip');
+  if(el&&el.style.display!=='none'&&_sqTooltipAnchor&&document.contains(_sqTooltipAnchor))
+    positionDescTip(el,_sqTooltipAnchor);
+}
+function _sqTooltipRender(sqIdx,id,anchorEl){
   var d=sqd(id);if(!d)return;
   var el=document.getElementById('sq-hover-tooltip');if(!el)return;
   var p=null;for(var i=0;i<S.placed.length;i++)if(S.placed[i].sqIdx===sqIdx){p=S.placed[i];break;}
   _sqTooltipFillContent(id,p);
   _sqTooltipOpenSqIdx=sqIdx;_sqTooltipOpenId=id;_stampTooltipOpenTs=null;
-  var cb=document.getElementById('constraint-banner');
-  if(cb){el._cbWas=cb.style.display;cb.style.display='none';}
+  if(anchorEl)_sqTooltipAnchor=anchorEl;
   el.style.display='block';
   el.style.opacity='0';
-  requestAnimationFrame(function(){el.style.opacity='1';});
+  requestAnimationFrame(function(){_sqTooltipReposition();el.style.opacity='1';});
 }
 
 // Re-fills the currently-open tooltip's content in place (no fade/animation restart) so
@@ -371,25 +377,26 @@ function _tooltipRefreshIfOpen(){
     if(!p){if(_sqTooltipFrozen)_sqTooltipUnfreeze();else _sqTooltipHide();return;}
     _sqTooltipFillContent(_sqTooltipOpenId,p);
   }
+  _sqTooltipReposition();
 }
 
-function _sqTooltipShow(sqIdx,id){
+function _sqTooltipShow(sqIdx,id,anchorEl){
   var d=sqd(id);if(!d)return;
   var el=document.getElementById('sq-hover-tooltip');if(!el)return;
   clearTimeout(_sqTooltipTimer);
   _sqTooltipTimer=setTimeout(function(){
     _sqTooltipFrozen=false;_sqTooltipFrozenIdx=-1;_sqTooltipFrozenId=null;
     var act=document.getElementById('sqht-actions');if(act)act.style.display='none';
-    _sqTooltipRender(sqIdx,id);
+    _sqTooltipRender(sqIdx,id,anchorEl);
   },250);
 }
 
-function _sqTooltipFreeze(sqIdx,id){
+function _sqTooltipFreeze(sqIdx,id,anchorEl){
   var d=sqd(id);if(!d)return;
   clearTimeout(_sqTooltipTimer);_sqTooltipTimer=null;
   _sqTooltipFrozen=true;_sqTooltipFrozenIdx=sqIdx;_sqTooltipFrozenId=id;
   var act=document.getElementById('sqht-actions');if(act)act.style.display='none';
-  _sqTooltipRender(sqIdx,id);
+  _sqTooltipRender(sqIdx,id,anchorEl);
   var sell=Math.floor(d.cost/2);
   var sellBtn=document.getElementById('sqht-sell-btn');
   if(sellBtn){
@@ -402,60 +409,54 @@ function _sqTooltipFreeze(sqIdx,id){
     };})(sqIdx,id,sell,d.name);
   }
   if(act)act.style.display='flex';
+  _sqTooltipReposition(); // sell actions grew the panel — re-centre on the anchor
 }
 
 function _sqTooltipUnfreeze(){
   _sqTooltipFrozen=false;_sqTooltipFrozenIdx=-1;_sqTooltipFrozenId=null;
-  _sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;
+  _sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;_sqTooltipAnchor=null;
   clearTimeout(_sqTooltipTimer);_sqTooltipTimer=null;
   var el=document.getElementById('sq-hover-tooltip');if(!el)return;
   el.style.opacity='0';el.style.display='none';
   var act=document.getElementById('sqht-actions');if(act)act.style.display='none';
-  var cb=document.getElementById('constraint-banner');
-  if(cb&&el._cbWas!==undefined){cb.style.display=el._cbWas;el._cbWas=undefined;}
 }
 
 function _sqTooltipHide(){
   if(_sqTooltipFrozen)return;
   clearTimeout(_sqTooltipTimer);_sqTooltipTimer=null;
-  _sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;
+  _sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;_sqTooltipAnchor=null;
   var el=document.getElementById('sq-hover-tooltip');if(!el||el.style.display==='none')return;
   el.style.opacity='0';
   el.style.display='none';
-  var cb=document.getElementById('constraint-banner');
-  if(cb&&el._cbWas!==undefined){cb.style.display=el._cbWas;el._cbWas=undefined;}
 }
 
 // ---- Stamp bar hover tooltip (mirrors board sticker tooltip, no freeze/sell) ----
 
-function _stampTooltipRender(ts){
+function _stampTooltipRender(ts,anchorEl){
   var d=sqd(ts.id);if(!d)return;
   var el=document.getElementById('sq-hover-tooltip');if(!el)return;
   _sqTooltipFillContent(ts.id,ts);
   _stampTooltipOpenTs=ts;_sqTooltipOpenSqIdx=-1;_sqTooltipOpenId=null;
+  if(anchorEl)_sqTooltipAnchor=anchorEl;
   var act=document.getElementById('sqht-actions');if(act)act.style.display='none';
-  var cb=document.getElementById('constraint-banner');
-  if(cb&&el._cbWas===undefined){el._cbWas=cb.style.display;cb.style.display='none';}
   el.style.display='block';
   el.style.opacity='0';
-  requestAnimationFrame(function(){el.style.opacity='1';});
+  requestAnimationFrame(function(){_sqTooltipReposition();el.style.opacity='1';});
 }
 
-function _stampTooltipShow(ts){
+function _stampTooltipShow(ts,anchorEl){
   var d=sqd(ts.id);if(!d)return;
   clearTimeout(_sqTooltipTimer);
   _sqTooltipFrozen=false;_sqTooltipFrozenIdx=-1;_sqTooltipFrozenId=null;
-  _sqTooltipTimer=setTimeout(function(){_stampTooltipRender(ts);},250);
+  _sqTooltipTimer=setTimeout(function(){_stampTooltipRender(ts,anchorEl);},250);
 }
 
 function _stampTooltipHide(){
   clearTimeout(_sqTooltipTimer);_sqTooltipTimer=null;
-  _stampTooltipOpenTs=null;
+  _stampTooltipOpenTs=null;_sqTooltipAnchor=null;
   var el=document.getElementById('sq-hover-tooltip');if(!el||el.style.display==='none')return;
   el.style.opacity='0';
   el.style.display='none';
-  var cb=document.getElementById('constraint-banner');
-  if(cb&&el._cbWas!==undefined){cb.style.display=el._cbWas;el._cbWas=undefined;}
 }
 
 function _easyHintShow(){
@@ -558,7 +559,7 @@ function _renderStampBarInto(bar,ph,src){
       face.appendChild(sb);
     }
     if(ts.id==='easy_mode'){face.addEventListener('mouseenter',_easyHintShow);face.addEventListener('mouseleave',_easyHintHide);}
-    face.addEventListener('mouseenter',function(tsRef){return function(){_stampTooltipShow(tsRef);};}(ts));
+    face.addEventListener('mouseenter',function(tsRef,el){return function(){_stampTooltipShow(tsRef,el);};}(ts,face));
     face.addEventListener('mouseleave',_stampTooltipHide);
     bar.appendChild(face);
     attachStampDrag(face,vi,ts,ph,src);

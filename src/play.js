@@ -92,7 +92,7 @@ async function playWord(){
   var _hasBH=hasStamp('bounty_hunter');
   if(_matchedBounties.length){
     var _totBReward=0;
-    for(var _mbi=0;_mbi<_matchedBounties.length;_mbi++){_applyBountyGlow(_matchedBounties[_mbi].idxs,_matchedBounties[_mbi].scrollIdx);_totBReward+=_matchedBounties[_mbi].reward;}
+    for(var _mbi=0;_mbi<_matchedBounties.length;_mbi++){_applyBountyGlow(_matchedBounties[_mbi].idxs,_matchedBounties[_mbi].scrollIdx);_totBReward+=_matchedBounties[_mbi].reward;var _bth=(S.bounties[_matchedBounties[_mbi].scrollIdx]||{}).theme;if(_bth&&typeof discMarkBounty==='function')discMarkBounty(_bth);}
     var _bN=_matchedBounties.length;
     toast(_bN>1?(_bN+' bounties complete! +$'+_totBReward+' + '+_bN+'× '+bountyRewardLabel()):('Bounty complete! +$'+_totBReward+' + '+bountyRewardLabel()));
     S._pendingBountyReward=_bN;
