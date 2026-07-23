@@ -64,6 +64,15 @@
   CENTER_PARAMS.palette = GREEN_RAMP;
   CENTER_PARAMS.dither = 1.4;
 
+  // Focus mode: a darker, cooler (bluer/teal) variant of the green ramp on a
+  // finer pixel grid — the focus view is zoomed in, so drop pixelSize so the
+  // pixels don't read as chunky. This fills the screen behind the zoomed board.
+  var FOCUS_GREEN_RAMP = ['#10181a', '#1a2926', '#253d38', '#33544b', '#497063', '#789a8a'];
+  var FOCUS_PARAMS = {};
+  for (var _f in CENTER_PARAMS) FOCUS_PARAMS[_f] = CENTER_PARAMS[_f];
+  FOCUS_PARAMS.palette = FOCUS_GREEN_RAMP;
+  FOCUS_PARAMS.pixelSize = 6;
+
   function loadImage(src) {
     return new Promise(function (resolve, reject) {
       var img = new Image();
@@ -80,6 +89,17 @@
     var c = document.createElement('canvas');
     c.width = half; c.height = h;
     c.getContext('2d').drawImage(img, side === 'left' ? 0 : (w - half), 0, half, h, 0, 0, half, h);
+    return c;
+  }
+
+  // Central `frac` region of an image, as a canvas — a simple zoom-in crop.
+  function centerCrop(img, frac) {
+    var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    var cw = Math.max(1, Math.floor(w * frac)), ch = Math.max(1, Math.floor(h * frac));
+    var sx = Math.floor((w - cw) / 2), sy = Math.floor((h - ch) / 2);
+    var c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    c.getContext('2d').drawImage(img, sx, sy, cw, ch, 0, 0, cw, ch);
     return c;
   }
 
@@ -113,7 +133,21 @@
     var left = new window.DriftBackground(cLeft, opts(WOOD_PARAMS));
     var center = new window.DriftBackground(cCenter, opts(CENTER_PARAMS));
     var right = new window.DriftBackground(cRight, opts(WOOD_PARAMS));
-    window._driftBackgrounds = { left: left, center: center, right: right, layer: layer };
+
+    // Focus-mode background: a full-screen instance living inside #focus-bg (which
+    // fades in/out with focus mode). Created now but idle — focus.js starts/stops
+    // it on enter/exit. Darker/bluer palette, zoomed-in crop, finer pixel grid.
+    var focus = null;
+    var focusHost = document.getElementById('focus-bg');
+    if (focusHost) {
+      var cFocus = document.createElement('canvas');
+      cFocus.className = 'drift-bg-canvas';
+      cFocus.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated';
+      focusHost.insertBefore(cFocus, focusHost.firstChild);
+      focus = new window.DriftBackground(cFocus, opts(FOCUS_PARAMS));
+      window._driftFocus = focus;
+    }
+    window._driftBackgrounds = { left: left, center: center, right: right, focus: focus, layer: layer };
 
     // wood.png → split behind the two side panels.
     loadImage(IMG_DIR + 'wood.png').then(function (wood) {
@@ -123,9 +157,11 @@
       ]);
     }).catch(onErr);
 
-    // blurry_trees.png → behind the centre column (i.e. behind the board).
+    // blurry_trees.png → behind the centre column (behind the board), and cropped
+    // in tighter as the focus-mode background (seeded now; started by focus.js).
     loadImage(IMG_DIR + 'blurry_trees.png').then(function (bg) {
-      return center.setImage(bg).then(function () { center.start(); });
+      center.setImage(bg).then(function () { center.start(); }).catch(onErr);
+      if (focus) focus.setImage(centerCrop(bg, 0.66)).catch(onErr);
     }).catch(onErr);
 
     // Watch for constraint (boss) rounds and swap the wood drift between calm and

@@ -96,7 +96,10 @@ function _focusZoom(on) {
   if (!on) { bw.style.transform = ''; return; }
   // Rect is untransformed here (transform only ever set while zoomed).
   var r = bw.getBoundingClientRect();
-  var s = (window.innerHeight - FOCUS.ZOOM_PAD * 2) / r.height;
+  // Leave roughly one board cell of border around the zoomed board (top & bottom
+  // are the tight axis) instead of filling to the thin ZOOM_PAD margin.
+  var cell = r.height / BH;
+  var s = window.innerHeight / (r.height + 2 * cell);
   var tx = window.innerWidth / 2 - (r.left + r.width / 2);
   var ty = window.innerHeight / 2 - (r.top + r.height / 2);
   bw.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')';
@@ -602,6 +605,7 @@ function enterFocus() {
 
   _focusBounds();
   _focusZoom(true); // overrides band with the zoomed board's footprint
+  if (window._driftFocus) window._driftFocus.start(); // focus-mode drift background
 
   FOCUS.bodies = [];
   var tiles = S.hand.filter(function (t) { return t && t.state === 'hand'; });
@@ -709,6 +713,7 @@ function _focusFinishExit() {
   window._focusMode = false;
   FOCUS.exiting = false;
   FOCUS.timeScale = 1;
+  if (window._driftFocus) window._driftFocus.stop(); // stop once fully faded out
   var ha = document.getElementById('hand-area');
   if (ha) ha.style.visibility = '';
   renderHand();
