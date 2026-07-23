@@ -570,10 +570,13 @@ function _burstHandTiles() {
   // rects — the elements may still hold stale/collapsed positions computed while
   // the shop overlay was up, which a fast (sped-up) transition doesn't give the
   // physics time to spread back out, so the burst would land them squished.
-  // Clearing HP forces renderHand to snap fresh, evenly-spaced rest positions;
-  // the new elements are set to opacity 0 by _burstTilesFromBag in the same tick,
-  // so there's no flash before they fly in.
-  HP.movingCount = 0; HP.x = []; HP.vx = [];
+  // Clearing HP forces renderHand to snap fresh, evenly-spaced rest positions.
+  // HP.tiles must be cleared too: hpRebuild remaps by tile ID, so if the same
+  // tiles are still listed there it would reuse their (now-wiped) x as 0 and
+  // launch every tile from screen-left, snapping back to rest. Emptying it makes
+  // rebuild fall through to fresh rest positions. The new elements are set to
+  // opacity 0 by _burstTilesFromBag in the same tick, so there's no flash.
+  HP.movingCount = 0; HP.x = []; HP.vx = []; HP.tiles = [];
   renderHand();
 
   var bagEl = document.getElementById('bag-btn');

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DriftBackground — preset background</title>
+<style>
+  /* Non-interactive, full-window background. No controls. */
+  html, body { margin: 0; height: 100%; background: #0c0803; overflow: hidden; }
+  /* The background layer: fixed behind everything. Drop your own content on top
+     of this canvas (higher z-index) when you lift this into a real page. */
+  #bg { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 0;
+        image-rendering: pixelated; image-rendering: crisp-edges; }
+  #err { position: fixed; inset: 0; display: none; place-items: center; color: #e0a0a0;
+         font: 14px/1.5 system-ui, sans-serif; text-align: center; padding: 40px; z-index: 1; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="err"></div>
+
+<script src="../src/render/DriftBackground.js"></script>
+<script src="./drift-presets.js"></script>
+<script>
+const PRESETS = window.DRIFT_PRESETS, DEFAULT_PRESET = window.DRIFT_DEFAULT_PRESET;
+
+// Pick the preset by ?preset=<name> (defaults to DEFAULT_PRESET). This is a URL,
+// not on-screen UI — the page itself stays non-interactive.
+const name = new URLSearchParams(location.search).get('preset') || DEFAULT_PRESET;
+const preset = PRESETS[name] || PRESETS[DEFAULT_PRESET];
+
+const errBox = document.getElementById('err');
+function showError(msg) { errBox.style.display = 'grid'; errBox.textContent = msg; }
+
+let drift;
+try {
+  drift = new DriftBackground(document.getElementById('bg'), {
+    ...preset.params,
+    onError: (e) => showError(e.message),
+  });
+} catch (e) {
+  showError('WebGL2 unavailable: ' + e.message);
+  throw e;
+}
+
+drift.resize();
+drift.setImage(preset.image)
+  .then(() => drift.start())
+  .catch((e) => showError('Could not load "' + preset.image + '": ' + e.message));
+</script>
+</body>
+</html>

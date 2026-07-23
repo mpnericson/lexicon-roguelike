@@ -534,8 +534,10 @@ function _renderStampBarInto(bar,ph,src){
   ph.rebuild(stamps);
   for(var vi=0;vi<stamps.length;vi++){
     var ts=stamps[vi];var d=sqd(ts.id);if(!d)continue;
+    // "Armed" stamps (a pending effect primed to fire, e.g. The Hammer) wobble.
+    var armed=typeof d.isArmed==='function'&&d.isArmed(ts);
     var face=document.createElement('div');
-    face.className='stamp-tile'+(ts.sel?' selected':'');
+    face.className='stamp-tile'+(ts.sel?' selected':'')+(armed?' armed':'');
     face.setAttribute('data-stamp-id',ts.id);
     face.setAttribute('data-stamp-vi',S.stamps.indexOf(ts)); // index into S.stamps — lets _bounceStamp target one copy
     var tw=ph.TILE_W;

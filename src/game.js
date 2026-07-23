@@ -245,10 +245,17 @@ function roundComplete(){
   var ledger=[];
   window._goldLedger=ledger;
 
+  // Interest is computed on the gold you hold right now — the moment the round's
+  // final word finished scoring, before any end-of-round rewards land. You earn
+  // $1 for every power of two you own: floor(log2(gold)) (so $2→$1, $4→$2,
+  // $8→$3, … $17/$27→$4, $32→$5). Guard gold>=1 so $0 pays $0, not -Infinity.
+  var _goldForInterest=S.gold;
+
   // Round reward is flat across the whole run — the same per-round payout you
   // earn on board 1 (rounds 1/2/3 → $2/$4/$6), no board-index scaling.
   goldGain('Round reward',2+S.bi*2);
   goldGain('Remaining hands',S.plays>0?S.plays:0);
+  if(_goldForInterest>=1)goldGain('Interest',Math.floor(Math.log2(_goldForInterest)));
   var hasSheriff=hasStamp('sheriffs_office');
   var sheriffWord='';
   if(hasSheriff){

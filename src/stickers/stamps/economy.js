@@ -166,6 +166,7 @@ SQ.push({id:'safety_net',name:'Safety Net',
 SQ.push({id:'the_hammer',name:'The Hammer',
   desc:'If your first discard of the round is a single tile, gain $3 and destroy that tile.',
   rarity:'uncommon',cost:5,bg:'#2a1408',fg:'#e0a060',icon:'🔨',type:'stamp',
+  isArmed:function(){return !(S.discardsThisRound||0);},
   liveDesc:function(p){return (S.discardsThisRound||0)>0?'Already discarded this round — <span style="color:#ff6060">re-arms next round</span>.':'<span style="color:#f0e040">Armed</span> — discarding a single tile destroys it for $3.';}});
 
 // ── DELAYED GRATIFICATION ─────────────────────────────────────────────────────

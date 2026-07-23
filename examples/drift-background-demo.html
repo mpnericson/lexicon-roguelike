@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DriftBackground — standalone demo</title>
+<style>
+  :root { --cream:#c99263; --tan:#8f563b; --amber:#c99263; --line:#4a3620; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0c0803; color: var(--cream);
+    font: 14px/1.4 Georgia, "Times New Roman", serif; -webkit-font-smoothing: antialiased; overflow: hidden; }
+  #wrap { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  #stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #000; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    image-rendering: pixelated; image-rendering: crisp-edges; }
+  #panel { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center;
+    padding: 12px 16px; background: linear-gradient(#241708, #1a1109);
+    border-top: 2px solid var(--line); box-shadow: 0 -6px 20px rgba(0,0,0,.5); }
+  .ctl { display: flex; flex-direction: column; gap: 4px; min-width: 112px; }
+  .ctl label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--tan); opacity: .85; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .val { font-variant-numeric: tabular-nums; color: var(--amber); min-width: 40px; text-align: right; font-size: 12px; }
+  input[type=range] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 3px;
+    background: #3c2a16; outline: none; width: 112px; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--amber); border: 1px solid #6a4a1a; cursor: pointer; }
+  button, .filebtn { font: inherit; font-size: 12px; color: var(--cream); background: #3a2413;
+    border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+  button:hover, .filebtn:hover { background: #4a3018; }
+  .filebtn { display: inline-block; } input[type=file] { display: none; }
+  .toggle.on { background: #8f563b; border-color: #c99263; color: #1a1109; }
+  #hint { position: absolute; left: 14px; bottom: 12px; font-size: 12px; opacity: .55; pointer-events: none; text-shadow: 0 1px 3px #000; }
+  #hint.err { color: #e0a0a0; opacity: 1; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="hint">initializing…</div>
+  </div>
+  <div id="panel">
+    <div class="ctl"><label>Drift speed</label>
+      <div class="row"><input id="drift" type="range" min="0" max="1" step="0.01" value="0.15"><span class="val" id="driftV">0.15</span></div></div>
+    <div class="ctl"><label>Warp amount</label>
+      <div class="row"><input id="warp" type="range" min="0" max="1" step="0.01" value="0.35"><span class="val" id="warpV">0.35</span></div></div>
+    <div class="ctl"><label>Detail</label>
+      <div class="row"><input id="detail" type="range" min="0.5" max="6" step="0.1" value="2"><span class="val" id="detailV">2.0</span></div></div>
+    <div class="ctl"><label>Pixel size</label>
+      <div class="row"><input id="pixel" type="range" min="1" max="24" step="1" value="1"><span class="val" id="pixelV">1</span></div></div>
+    <div class="ctl"><label>Contrast</label>
+      <div class="row"><input id="contrast" type="range" min="0.4" max="2.5" step="0.05" value="1"><span class="val" id="contrastV">1.0</span></div></div>
+    <div class="ctl"><label>Dither</label>
+      <div class="row"><input id="dither" type="range" min="0" max="2" step="0.05" value="0.9"><span class="val" id="ditherV">0.90</span></div></div>
+    <div class="ctl"><label>Tone</label>
+      <div class="row"><input id="tone" type="range" min="-0.4" max="0.4" step="0.01" value="0"><span class="val" id="toneV">0</span></div></div>
+    <div class="ctl"><label>CRT amount</label>
+      <div class="row"><input id="crtAmt" type="range" min="0" max="1" step="0.01" value="0.6"><span class="val" id="crtAmtV">0.60</span></div></div>
+    <div class="ctl" style="min-width:auto"><label>&nbsp;</label>
+      <div class="row">
+        <button id="crt" class="toggle">CRT</button>
+        <button id="palette" class="toggle on">Palette</button>
+        <button id="levels" class="toggle on">Auto-levels</button>
+      </div></div>
+    <div class="ctl" style="min-width:auto"><label>&nbsp;</label>
+      <div class="row">
+        <button id="btn-proc">Procedural</button>
+        <button id="btn-preview">preview.png</button>
+        <label class="filebtn">Image…<input id="file" type="file" accept="image/*"></label>
+      </div></div>
+  </div>
+</div>
+
+<script src="../src/render/DriftBackground.js"></script>
+<script>
+const RAMP = ['#452620', '#583028', '#663931', '#76473f', '#8f563b', '#c99263'];
+
+const hint = document.getElementById('hint');
+function setHint(msg, isErr) { hint.textContent = msg; hint.classList.toggle('err', !!isErr); }
+
+// Wood-ish procedural seed with LEXICON tiles (ported from the prototype's
+// defaultSeed) so the demo is fully self-contained — no asset dependency.
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function makeProceduralImage(w = 1600, h = 1000) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#8f563b'); g.addColorStop(0.5, '#663931'); g.addColorStop(1, '#3a2018');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 260; i++) {
+    const y = Math.random() * h, amp = h * 0.02 * (Math.random() - 0.5), lw = 0.5 + Math.random() * 3;
+    ctx.strokeStyle = `rgba(${Math.random() < 0.5 ? 60 : 210},${Math.random() < 0.5 ? 34 : 150},${Math.random() < 0.5 ? 26 : 100},${(0.05 + Math.random() * 0.20).toFixed(3)})`;
+    ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(0, y);
+    for (let x = 0; x <= w; x += w / 12) ctx.lineTo(x, y + Math.sin(x / w * Math.PI * 2 + i) * amp);
+    ctx.stroke();
+  }
+  const word = 'LEXICON', n = word.length, tileH = h * 0.24, tileW = tileH * 0.80, gap = tileW * 0.18;
+  let x = (w - (n * tileW + (n - 1) * gap)) / 2; const y = (h - tileH) / 2;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const ch of word) {
+    roundRect(ctx, x, y, tileW, tileH, tileH * 0.10);
+    const wg = ctx.createLinearGradient(x, y, x, y + tileH);
+    wg.addColorStop(0, '#e0b98d'); wg.addColorStop(1, '#a86a44');
+    ctx.fillStyle = wg; ctx.fill();
+    ctx.fillStyle = '#2a1610'; ctx.font = `bold ${Math.round(tileH * 0.60)}px Georgia`;
+    ctx.fillText(ch, x + tileW / 2, y + tileH / 2); x += tileW + gap;
+  }
+  return c;
+}
+function loadImageElement(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('could not load ' + url));
+    img.src = url;
+  });
+}
+
+const canvas = document.getElementById('c');
+let drift;
+try {
+  drift = new DriftBackground(canvas, {
+    onError: (err) => { setHint('error: ' + err.message, true); window.__driftStatus = { ok: false, error: err.message }; },
+  });
+} catch (err) {
+  setHint('WebGL2 init failed: ' + err.message, true);
+  window.__driftStatus = { ok: false, error: err.message };
+  throw err;
+}
+
+// Exposed only so an out-of-tree harness can poll readiness during testing.
+window.__drift = drift;
+window.__driftStatus = { ok: true };
+
+async function init() {
+  drift.resize();
+  await drift.setImage(makeProceduralImage());
+  drift.start();
+  setHint('running — procedural image');
+}
+init().catch((err) => {
+  setHint('setImage failed: ' + err.message, true);
+  window.__driftStatus = { ok: false, error: err.message };
+});
+
+// -- controls ---------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+function slider(id, valId, fmt, apply) {
+  const el = $(id), out = $(valId);
+  const upd = () => { const x = parseFloat(el.value); out.textContent = fmt(x); apply(x); };
+  el.addEventListener('input', upd); upd();
+}
+slider('drift', 'driftV', (x) => x.toFixed(2), (x) => drift.setParams({ driftSpeed: x }));
+slider('warp', 'warpV', (x) => x.toFixed(2), (x) => drift.setParams({ warp: x }));
+slider('detail', 'detailV', (x) => x.toFixed(1), (x) => drift.setParams({ detail: x }));
+slider('pixel', 'pixelV', (x) => String(x | 0), (x) => drift.setParams({ pixelSize: x }));
+slider('contrast', 'contrastV', (x) => x.toFixed(1), (x) => drift.setParams({ contrast: x }));
+slider('dither', 'ditherV', (x) => x.toFixed(2), (x) => drift.setParams({ dither: x }));
+slider('tone', 'toneV', (x) => (x > 0 ? '+' : '') + x.toFixed(2), (x) => drift.setParams({ tone: x }));
+slider('crtAmt', 'crtAmtV', (x) => x.toFixed(2), (x) => drift.setParams({ crt: { amount: x } }));
+
+let crtOn = false, paletteOn = true, levelsOn = true;
+$('crt').addEventListener('click', (e) => { crtOn = !crtOn; e.target.classList.toggle('on', crtOn); drift.setParams({ crt: { enabled: crtOn } }); });
+$('palette').addEventListener('click', (e) => { paletteOn = !paletteOn; e.target.classList.toggle('on', paletteOn); drift.setParams({ palette: paletteOn ? RAMP : null }); });
+$('levels').addEventListener('click', (e) => { levelsOn = !levelsOn; e.target.classList.toggle('on', levelsOn); drift.setParams({ autoLevels: levelsOn }); });
+
+$('btn-proc').addEventListener('click', async () => {
+  await drift.setImage(makeProceduralImage()); setHint('running — procedural image');
+});
+$('btn-preview').addEventListener('click', async () => {
+  try { await drift.setImage(await loadImageElement('../res/preview.png')); setHint('running — res/preview.png'); }
+  catch (err) { setHint('preview load failed: ' + err.message, true); }
+});
+$('file').addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  try { await drift.setImage(f); setHint('running — ' + f.name); }
+  catch (err) { setHint('file load failed: ' + err.message, true); }
+  e.target.value = '';
+});
+</script>
+</body>
+</html>

@@ -64,11 +64,15 @@ document.addEventListener('keydown',function(e){
   if((e.key==='Delete'||e.key==='Backspace')&&S.phase==='play'&&!e.target.closest('input,textarea')){if(window._pdFlash)_pdFlash(5);discardTiles();}
   if(e.key==='Escape'){var _bt=document.getElementById('bag-ui-tiles');if(_bt&&_bt.dataset.expandedLetter)_bagCollapseLetter(_bt);var _sbt=document.getElementById('sbovr-tiles');if(_sbt&&_sbt.dataset.expandedLetter)_bagCollapseLetter(_sbt);}
 });
-// Main UI background animation — normal swell (24 frames) or volatile/constraint (18 frames)
+// Main UI background — single static frame (volatile swell disabled; constraint
+// feedback is handled by the drift background in drift_backgrounds.js)
 (function(){
-  var FRAMES=24,FRAMES_V=18,frame=0,SWELL=12000,SWELL_V=3500;
+  var FRAMES=1,FRAMES_V=18,frame=0,SWELL=12000,SWELL_V=3500;
   var imgs=[],imgsV=[];
-  for(var i=1;i<=FRAMES;i++){var img=new Image();img.src='Assets/sprites/mainui/mainui'+i+'.png';imgs.push(img);}
+  // Normal state is a single static mainui frame that must ALWAYS stay visible —
+  // the idle motion now comes from the drift background behind #app, so this
+  // frame no longer swells/cycles (the old mainui1..24 frames were removed).
+  var _mimg=new Image();_mimg.src='Assets/sprites/mainui/mainui.png';imgs.push(_mimg);
   for(var i=1;i<=FRAMES_V;i++){var img=new Image();img.src='Assets/sprites/mainui_volatile/mainui_volatile'+i+'.png';imgsV.push(img);}
   // Preload the frame-swap sprite animations so they play without flicker.
   // Retaining the Image objects (window scope) is what matters: an unheld Image
@@ -85,7 +89,9 @@ document.addEventListener('keydown',function(e){
   var app=document.getElementById('app');
   var lastVolatile=false;
   function tick(){
-    var isVolatile=typeof currentConstraint==='function'&&!!currentConstraint();
+    // Constraint feedback now comes from the drift background (drift_backgrounds.js
+    // churns the wood side panels) — the mainui frame stays static, no volatile swell.
+    var isVolatile=false;
     if(isVolatile!==lastVolatile){frame=0;lastVolatile=isVolatile;}
     var set=isVolatile?imgsV:imgs;
     var count=isVolatile?FRAMES_V:FRAMES;
@@ -136,12 +142,8 @@ document.addEventListener('click',function(e){
   achvInit();
   wordbookInit();
   if(typeof discoveryInit==='function')discoveryInit();
-  if(hasSave()&&loadGame()){
-    resumeGame();
-    toast('Welcome back!');
-  } else {
-    startGame();
-  }
+  // Always open on the title screen; the player picks New Run / Continue there.
+  showTitleScreen();
   requestAnimationFrame(hpStep);
   requestAnimationFrame(function(){SP.step();});
   requestAnimationFrame(function(){SSP.step();});
