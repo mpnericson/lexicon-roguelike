@@ -233,7 +233,13 @@ function renderBoard(){
         });})(i);
       }
       sq.appendChild(face);
-      if(_lettersUsed&&!bt.isBlank&&bt.letter&&S.usedLetters.has(bt.letter)){var _lov=document.createElement('div');_lov.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;background:rgba(180,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:'+Math.round(sz*0.65)+'px;font-weight:bold;color:#ff3333;pointer-events:none;z-index:5;font-family:monospace;';_lov.textContent='×';sq.appendChild(_lov);}
+      // No-Repeats constraint: an already-scored letter is dead. Re-stamp its
+      // glyph in red (tinted copy of the same sheet, aligned pixel-for-pixel
+      // over the baked letter) instead of slapping an × over the tile.
+      if(_lettersUsed&&!bt.isBlank&&bt.letter&&S.usedLetters.has(bt.letter)){
+        var _rurl=(typeof TL!=='undefined'&&TL.glyphURL)?_tlTintedGlyphs(TL.glyphURL,'#e01a1a','used|#e01a1a'):null;
+        if(_rurl){var _lov=document.createElement('div');_lov.style.cssText='position:absolute;left:0;top:0;width:'+sz+'px;height:'+sz+'px;pointer-events:none;z-index:5;'+_tlGlyphCss(bt.letter,sz,_rurl);sq.appendChild(_lov);}
+      }
     } else {
       var _sqd=sqd(sid);
       var lbl=ss.lbl;if(i===center&&!sid&&!_fm)lbl='*';
@@ -464,6 +470,11 @@ function _easyHintShow(){
   if(!window._easyHint)return;
   var hint=window._easyHint;
   for(var i=0;i<hint.wt.length;i++){
+    // Only squares where a tile actually needs to be placed this turn
+    // (empty squares + Jenga stack-tops). Committed tiles the word merely
+    // passes through carry isNew:false and are left un-highlighted, so with
+    // Jenga active we don't light up a whole committed word.
+    if(!hint.wt[i].isNew)continue;
     var el=document.querySelector('[data-sq-idx="'+hint.wt[i].idx+'"]');
     if(el)el.classList.add('sq-easy-hover');
   }
@@ -561,8 +572,16 @@ function _renderStampBarInto(bar,ph,src){
       face.appendChild(sb);
     }
     if(ts.id==='easy_mode'){face.addEventListener('mouseenter',_easyHintShow);face.addEventListener('mouseleave',_easyHintHide);}
-    face.addEventListener('mouseenter',function(tsRef,el){return function(){_stampTooltipShow(tsRef,el);};}(ts,face));
-    face.addEventListener('mouseleave',_stampTooltipHide);
+    if(src==='shop-stamp'){
+      // The shop screen sits at z-index 200; the play-view #sq-hover-tooltip is z-index 190 and
+      // would render behind it (invisible). Use the shop's own tooltip (#shop-sticker-tooltip,
+      // z-index 210) — it also floats the description to the LEFT of the item.
+      face.addEventListener('mouseenter',function(id,el){return function(){_shopTipShow(id,el);};}(ts.id,face));
+      face.addEventListener('mouseleave',_shopTipHide);
+    }else{
+      face.addEventListener('mouseenter',function(tsRef,el){return function(){_stampTooltipShow(tsRef,el);};}(ts,face));
+      face.addEventListener('mouseleave',_stampTooltipHide);
+    }
     bar.appendChild(face);
     attachStampDrag(face,vi,ts,ph,src);
   }

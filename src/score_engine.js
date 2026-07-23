@@ -37,8 +37,13 @@
 // }
 //
 // Bracket order:
-//   PRE       1. tile-count bonus (+1 mult per tile beyond 3)
-//             2. board-sticker onPreScore per played square (e.g. Gilded)
+//   PRE       1. tile-count mult bonus (4/5/6/7 tiles → +1/+1/+3/+7 mult,
+//                i.e. total word mult 2/2/4/8)
+//             2. tile-count letter bonus (1/2/3/4/5/6/7 tiles →
+//                +2/+2/+4/+8/+16/+24/+48 letters; replaces the old bingo +50).
+//                A starting bonus like the mult bonus; total is unchanged by
+//                its bracket position since letters × mult is folded once.
+//             3. board-sticker onPreScore per played square (e.g. Gilded)
 //   PER TILE  for every tile of every word (cross words first):
 //             1. base letter score (constraint-aware)
 //             2. additive — board onTileAdd on this square, then additive
@@ -51,13 +56,12 @@
 //                this tile triggers for any reason, it triggers again" —
 //                every pass, base or retrigger, is followed by one red
 //                re-pass ((1 + retrigger passes) × 2 total on a red tile)
-//   POST      1. bingo +50
-//             2. gold-tile board sweep — every gold tile on the board pays
+//   POST      1. gold-tile board sweep — every gold tile on the board pays
 //                $1 (boardSweep, see below)
-//             3. board onPostWordAdd, all placed instances
-//             4. board onPostWordMult, all placed instances
-//             5. stamp onPostWord, left → right — stamp bar order matters
-//             6. bounty reward
+//             2. board onPostWordAdd, all placed instances
+//             3. board onPostWordMult, all placed instances
+//             4. stamp onPostWord, left → right — stamp bar order matters
+//             5. bounty reward
 //
 // On-board effects (boardSweep) — POST-bracket effects that fire once for
 // every tile of a certain type ON THE BOARD (committed and just-played
@@ -137,6 +141,30 @@ function _engExtract(tiles, cache, jengaTops, ar, ac, dir) {
     wt.push(c);
   }
   return { word: wt.map(function (t) { return t.letter; }).join(''), tiles: wt };
+}
+
+// Tile-count (word-length) bonuses, shared by the engine, the live preview
+// (scoring.js updateLivePreview) and the solver so the curve exists in one
+// place. n = number of tiles played this turn.
+//   mult delta:   4→+1, 5→+1, 6→+3, 7→+7  (total word mult 2/2/4/8)
+//   letter bonus: 1→+2, 2→+2, 3→+4, 4→+8, 5→+16, 6→+24, 7→+48
+//                 (replaces the old bingo +50)
+// Both cap at the 7-tile value for any larger play (e.g. Jenga stacks).
+function _lenMultBonus(n) {
+  if (n >= 7) return 7;
+  if (n === 6) return 3;
+  if (n >= 4) return 1;
+  return 0;
+}
+function _lenLetterBonus(n) {
+  if (n >= 7) return 48;
+  if (n === 6) return 24;
+  if (n === 5) return 16;
+  if (n === 4) return 8;
+  if (n === 3) return 4;
+  if (n === 2) return 2;
+  if (n === 1) return 2;
+  return 0;
 }
 
 function _engWordDir(tiles, nt) {
@@ -518,13 +546,26 @@ function runScoreEngine(input) {
   }
 
   // ---- PRE ----
-  // 1. Tile-count bonus — always first
+  // 1. Tile-count mult bonus — always first (4/5/6/7 → +1/+1/+3/+7 mult)
   if (ctx.newTileCount >= 4) {
-    var _tcb = ctx.newTileCount - 3;
+    var _tcb = _lenMultBonus(ctx.newTileCount);
     ctx.plusMults.push(_tcb);
     ctx.events.push({type:'plus-mult',delta:_tcb,label:ctx.newTileCount+' tiles +'+_tcb+' mult',silent:true});
   }
-  // 2. Board-sticker pre hooks on played squares (e.g. Gilded)
+  // 2. Tile-count letter bonus — a starting bonus applied here alongside the
+  // mult bonus (1/2/3/4/5/6/7 tiles → +2/+2/+4/+8/+16/+24/+48 letters). The word
+  // mult is folded once in FINAL, so the total is independent of where in the
+  // brackets these letters are added; front-loading it just matches the mult
+  // bonus. Emitted as isSilent (a no-beat display sync, like the per-tile letter
+  // syncs) — runScoreAnim seeds the Letters counter with it so the bonus carries
+  // over from the live preview instead of blinking 0 → bonus when scoring starts.
+  // Replaces the old bingo +50.
+  var _tlb = _lenLetterBonus(ctx.newTileCount);
+  if (_tlb) {
+    ctx.letters += _tlb;
+    ctx.events.push({type:'letter',lettersAfter:ctx.letters,isSilent:true});
+  }
+  // 3. Board-sticker pre hooks on played squares (e.g. Gilded)
   if (!ctx.stickerLocked) {
     for (var pri = 0; pri < nt.length; pri++) {
       var pIdx = nt[pri].idx, pSid = ctx.boardStickers[pIdx];
@@ -576,35 +617,32 @@ function runScoreEngine(input) {
   _engScoreWord(main.tiles, main.word, cx);
 
   // ---- POST ----
-  // 1. Bingo (game mechanic, not a sticker)
-  if (bingo) {
-    ctx.letters += 50;
-    ctx.events.push({type:'letter',lettersAfter:ctx.letters,label:'Bingo +50',bingo:true});
-  }
-  // 2. Gold tiles — every gold tile on the board pays $1 (game mechanic,
+  // (The tile-count letter bonus is applied in PRE, alongside the mult bonus.
+  // The `bingo` boolean above still drives the "use all 7 tiles" achievement.)
+  // 1. Gold tiles — every gold tile on the board pays $1 (game mechanic,
   // like bingo: not gated by stickerLocked). Metallic gold tiles pay twice.
   boardSweep(ctx, function(t){ return t.variant === 'gold'; }, function(t, gi){
     ctx.tgold++;
     ctx.events.push({type:'gold',delta:1,sqIdx:gi,label:'Gold tile +$1'});
   });
-  // 2b. Jade tiles — every jade tile on the board gives ×1.5 mult, every play
+  // 1b. Jade tiles — every jade tile on the board gives ×1.5 mult, every play
   // (same shape as a Y under Yuan; metallic jade fires twice per sweep).
   boardSweep(ctx, function(t){ return t.variant === 'jade'; }, function(t, ji){
     ctx.xmults.push(1.5);
     ctx.events.push({type:'x-mult',factor:1.5,sqIdx:ji,label:'Jade ×1.5'});
   });
   if (!ctx.stickerLocked) {
-    // 3. Board stickers — additive effects
+    // 2. Board stickers — additive effects
     for (var pai = 0; pai < ctx.placed.length; pai++) {
       var pad = sqd(ctx.placed[pai].id);
       if (pad && pad.onPostWordAdd) pad.onPostWordAdd(main.word, main.tiles, ctx, ctx.placed[pai]);
     }
-    // 4. Board stickers — multiplicative effects
+    // 3. Board stickers — multiplicative effects
     for (var pmi = 0; pmi < ctx.placed.length; pmi++) {
       var pmd = sqd(ctx.placed[pmi].id);
       if (pmd && pmd.onPostWordMult) pmd.onPostWordMult(main.word, main.tiles, ctx, ctx.placed[pmi]);
     }
-    // 5. Stamps — left → right, each fires all its effects in turn. Every
+    // 4. Stamps — left → right, each fires all its effects in turn. Every
     // event a hook pushes is tagged with the instance index (_stampInst) so
     // two copies of the same stamp keep separate animation beats and each
     // bounces its own bar face, in bar order.
@@ -624,7 +662,7 @@ function runScoreEngine(input) {
     }
     ctx._stampIdx = null;
   }
-  // 6. Bounty reward — applied last so it multiplies everything. Count is the
+  // 5. Bounty reward — applied last so it multiplies everything. Count is the
   // number of bounty scrolls completed this play (each applies its own reward).
   if (state.pendingBountyReward && !ctx.preview) {
     var _bqty = (typeof state.pendingBountyReward === 'number') ? state.pendingBountyReward : 1;

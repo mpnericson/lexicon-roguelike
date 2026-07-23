@@ -327,8 +327,11 @@ function collShowSection(key){
     var cell=document.createElement('div');
     cell.className='coll-cell'+(unlocked?'':' locked');
     if(unlocked){
+      // Colour stamp/sticker names by rarity (other sections carry no rarity).
+      var rcol=_collRarityColor(d.rarity);
+      var nameStyle=rcol?' style="color:'+rcol+(d.rarity==='legendary'?';text-shadow:0 0 8px rgba(255,180,0,0.7)':'')+'"':'';
       cell.innerHTML='<div class="coll-cell-icon">'+sec.icon(d,64)+'</div>'
-        +'<div class="coll-cell-name">'+d.name+'</div>';
+        +'<div class="coll-cell-name"'+nameStyle+'>'+d.name+'</div>';
       var fg=d.fg||'#e8e0d0',nm=d.name,desc=d.desc||'';
       cell.onmouseenter=function(){_collTipShow(cell,nm,desc,fg);};
       cell.onmouseleave=_collTipHide;
@@ -340,6 +343,11 @@ function collShowSection(key){
   })(items[j]);}
   document.getElementById('coll-section').style.display='block';
   grid.scrollTop=0;
+}
+
+// Rarity → name colour (matches the shop's .rc/.ru/.rr/.rl scheme). null = no rarity.
+function _collRarityColor(r){
+  return r==='legendary'?'#ffd700':r==='rare'?'#c060ff':r==='uncommon'?'#60c060':r==='common'?'#a0a0a0':null;
 }
 
 // ── Collection hover tooltip (shared left-of-element positioner) ──

@@ -128,6 +128,7 @@ SQ.push({id:'the_eagle',name:'The Eagle',desc:'Retriggers all on-board effects (
 SQ.push({id:'crossroads',name:'Crossroads',desc:'Every crossword you form permanently adds +2 mult to this stamp.',
   rarity:'uncommon',cost:5,bg:'#2a1800',fg:'#f0c040',icon:'CR',type:'stamp',
   liveDesc:function(p){var n=(S._crossroadsLiveCount!=null)?S._crossroadsLiveCount:(S.crossroadsCount||0);return 'Each crossword adds +2 permanent mult. Currently: <span style="color:#f0e040">+'+(n*2)+' mult</span> ('+n+' crossword'+(n!==1?'s':'')+').';},
+  onAcquire:function(){S.crossroadsCount=0;},
   onCrossword:function(ctx){ctx.events.push({type:'crossword-tick',isSilent:true,scaleBounce:'crossroads'});},
   onPostWord:function(w,wt,ctx){
     var n=(ctx.state.crossroadsCount||0)+(ctx.crossWordCount||0);

@@ -93,7 +93,7 @@ function startGame(seed){
      constraintOrder:_co.slice(0,BOARDS.length),usedLetters:new Set(),stickersSoldThisBoard:0,crossroadsCount:0,ouroborosBonus:0,gamblerSpins:0,
      stamps:[],bagBlueAnchors:{},pool:_bag.slice(),
      consumables:[],lastTicket:null,
-     bounties:_generateBounties(3,[])};
+     bounties:[]};
   window._easyHint=null;bagVacuumReset();
   shopPool={sq:[],packs:[],bounties:[]};activeDrag=null;
   document.getElementById('shop-screen').style.display='none';
@@ -742,8 +742,9 @@ function _renderBagFloatTiles(cont,tiles,sz){
   var groups={},order=[];
   for(var i=0;i<tiles.length;i++){
     var t=tiles[i],key=t.isBlank?'_':(t.letter||'_');
-    if(!groups[key]){groups[key]={letter:t.isBlank?'':t.letter,isBlank:!!t.isBlank,count:0,variants:{},materials:{}};order.push(key);}
+    if(!groups[key]){groups[key]={letter:t.isBlank?'':t.letter,isBlank:!!t.isBlank,count:0,variants:{},materials:{},tileList:[]};order.push(key);}
     groups[key].count++;
+    groups[key].tileList.push(t);
     if(t.variant)groups[key].variants[t.variant]=(groups[key].variants[t.variant]||0)+1;
     if(t.material)groups[key].materials[t.material]=(groups[key].materials[t.material]||0)+1;
   }
@@ -756,12 +757,24 @@ function _renderBagFloatTiles(cont,tiles,sz){
   for(var oi=0;oi<order.length;oi++){
     var g=groups[order[oi]],f=fc[oi%fc.length];
     var _gkey=order[oi];
-    // Determine if a varnished tile is the anchor for this group:
-    // (a) explicitly promoted, or (b) the only tile of this letter and it's varnished
-    var _isBlueAnchor=false;
+    // Face tile: normally a bare letter. A varnished tile is promoted to the face
+    // when it's the draw-priority anchor ((a) explicitly promoted, or (b) the only
+    // tile of this letter and it's varnished). Beyond that, when EVERY remaining
+    // tile of this letter is special (coloured or has a material), show the pile's
+    // representative tile with its real look instead of a bare face + a redundant dot.
+    var _faceTile=null;
     var _pref=S.bagBlueAnchors&&S.bagBlueAnchors[_gkey];
-    if(_pref){for(var _ai=0;_ai<tiles.length;_ai++){if(tiles[_ai].id===_pref&&tiles[_ai].material==='varnished'){_isBlueAnchor=true;break;}}}
-    if(!_isBlueAnchor&&g.count===1&&g.materials.varnished===1)_isBlueAnchor=true;
+    if(_pref){for(var _ai=0;_ai<g.tileList.length;_ai++){if(g.tileList[_ai].id===_pref&&g.tileList[_ai].material==='varnished'){_faceTile=g.tileList[_ai];break;}}}
+    if(!_faceTile&&g.count===1&&g.materials.varnished===1){for(var _ai=0;_ai<g.tileList.length;_ai++){if(g.tileList[_ai].material==='varnished'){_faceTile=g.tileList[_ai];break;}}}
+    if(!_faceTile){
+      var _plain=0;for(var _ti=0;_ti<g.tileList.length;_ti++){if(!g.tileList[_ti].variant&&!g.tileList[_ti].material)_plain++;}
+      // Every remaining tile of this letter is special (coloured or has a material):
+      // show one of them with its real look instead of a bare face + redundant dot.
+      // Pick fresh each time the bag opens (Math.random, not _rng — this is cosmetic
+      // and must not perturb the seeded gameplay stream).
+      if(g.count>0&&_plain===0)_faceTile=g.tileList[Math.floor(Math.random()*g.tileList.length)];
+    }
+    var _faceVariant=_faceTile?(_faceTile.variant||null):null;
     var item=document.createElement('div');
     item.className='bag-float-item';
     item.dataset.letter=g.isBlank?'_':(g.letter||'_');
@@ -772,14 +785,14 @@ function _renderBagFloatTiles(cont,tiles,sz){
     var te=document.createElement('div');
     te.className='tile tile-spr'+(g.isBlank?' blank-t':'');
     te.style.cssText='width:'+sz+'px;height:'+sz+'px;position:relative;flex-shrink:0;'+spr;
-    if(_isBlueAnchor)applyTileLayers(te,{letter:g.isBlank?null:g.letter,isBlank:g.isBlank,material:'varnished',variant:null},sz,spr);
+    if(_faceTile)applyTileLayers(te,{letter:g.isBlank?null:g.letter,isBlank:g.isBlank,material:_faceTile.material||null,variant:_faceTile.variant||null},sz,spr);
     inner.appendChild(te);
     var ct=document.createElement('div');
     ct.style.cssText='color:#7ac07a;font-family:\'Jersey 10\',Georgia;font-size:'+Math.round(sz*0.38)+'px;margin-top:4px;line-height:1;text-align:center';
     ct.textContent='×'+g.count;inner.appendChild(ct);
     item.appendChild(inner);
     // Variant dots float independently ABOVE the tile
-    var vkeys=(['red','blue','gold','jade','purple']).filter(function(v){return g.variants[v];});
+    var vkeys=(['red','blue','gold','jade','purple']).filter(function(v){return g.variants[v]&&v!==_faceVariant;});
     if(vkeys.length){
       var dotAnims=[{a:'bfloat0',d:'1.9s',dl:'0s'},{a:'bfloat2',d:'2.2s',dl:'0.35s'},{a:'bfloat4',d:'1.7s',dl:'0.7s'}];
       var dotsRow=document.createElement('div');

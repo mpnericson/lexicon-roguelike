@@ -63,20 +63,42 @@ function getAllWords(nt,dir){
 }
 
 // Live scoreboard preview shown while placing tiles. At rest it reads 0 × 0;
-// once the placed (isNew) tiles sit in a straight line it previews the
-// tile-count mult only — ×1 for 1-3 tiles, then +1 mult per tile beyond 3
-// (matches the engine PRE bracket). If the tiles aren't in a legal line the
-// mult drops back to 0. Word/letter validity is deliberately NOT evaluated
-// here (it waits for scoring, so an illegal word isn't given away early).
+// once the placed (isNew) tiles form a straight, gap-free line it previews the
+// tile-count bonuses: the letter bonus (4/5/6/7 tiles → +8/+16/+24/+48) in the
+// Letters slot and the length mult (×1 for 1-3 tiles, then 2/2/4/8 at 4/5/6/7)
+// in the Mult slot — both from the shared engine curve. If the tiles aren't in
+// a legal, contiguous line the display drops back to 0 × 0. The per-tile letter
+// values / word validity are deliberately NOT previewed (they wait for scoring,
+// so an illegal word isn't given away early) — the Score slot stays 0.
 function updateLivePreview(){
   var row=document.getElementById('live-score-row');
   if(!row||row.classList.contains('scoring'))return;
   var lsC=document.getElementById('ls-letters'),lsM=document.getElementById('ls-mult'),lsS=document.getElementById('ls-score');
-  var nt=newTiles(),mult=0;
-  if(nt.length&&wordDir(nt))mult=1+Math.max(0,nt.length-3);
-  if(lsC)lsC.textContent='0';
+  var nt=newTiles(),mult=0,letters=0;
+  var dir=nt.length?wordDir(nt):null;
+  // Gaps only exist with 2+ tiles; a single tile just needs a direction.
+  if(dir&&(nt.length<2||_previewNoGap(nt,dir))){
+    mult=1+_lenMultBonus(nt.length);
+    letters=_lenLetterBonus(nt.length);
+  }
+  if(lsC){var wasC=lsC.textContent;lsC.textContent=letters;if(String(letters)!==wasC)bumpSA('ls-letters');}
   if(lsM){var was=lsM.textContent;lsM.textContent=mult;if(String(mult)!==was)bumpSA('ls-mult');}
   if(lsS)lsS.textContent='0';
+}
+
+// True when every new tile falls inside a single contiguous run along `dir`
+// (no empty squares between them). Extracts the maximal run through the first
+// new tile and checks all others are part of it — collinear-but-gapped
+// placements (which _engWordDir still accepts) fail here, so the preview reads
+// 0 × 0 for them.
+function _previewNoGap(nt,dir){
+  var lv=_liveTiles();
+  var run=_engExtract(lv.tiles,{},lv.jengaTops,nt[0].row,nt[0].col,dir);
+  if(!run)return false;
+  var inRun={};
+  for(var i=0;i<run.tiles.length;i++)inRun[run.tiles[i].idx]=1;
+  for(var j=0;j<nt.length;j++)if(!inRun[nt[j].idx])return false;
+  return true;
 }
 
 // ---- Engine adapters — build runScoreEngine input from live game state ----
@@ -676,7 +698,12 @@ async function runScoreAnim(events,total){
   var saS=document.getElementById('ls-score');
   var lsTileDelta=document.getElementById('ls-tile-delta');
   row.classList.add('scoring');
-  saL.textContent='0';saM.textContent='1';saS.textContent='0';
+  // Seed the Letters counter with the tile-count starting bonus (the first
+  // 'letter' event — a PRE isSilent sync) so it carries over from the live
+  // preview rather than blinking to 0 and popping back when scoring starts.
+  var _startLetters=0;
+  for(var _bi=0;_bi<events.length;_bi++){if(events[_bi].type==='letter'){_startLetters=events[_bi].lettersAfter||0;break;}}
+  saL.textContent=_startLetters;saM.textContent='1';saS.textContent='0';
   saL.style.color='';
   if(lsTileDelta){lsTileDelta.textContent='';lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');}
 
@@ -685,7 +712,7 @@ async function runScoreAnim(events,total){
   // a +mult adds to it, a ×mult multiplies it (a +mult after a ×mult is NOT
   // retroactively multiplied). Starts at 1.
   var animMult=1;_scoreDingN=0;
-  var _saLSynced=0; // tracks last value written to saL, to skip redundant isSilent updates
+  var _saLSynced=_startLetters; // tracks last value written to saL, to skip redundant isSilent updates
   var _deltaActive=false,_deltaTileBase=0;
   var _pendingTick=null; // {fV,tV} — last tile's score waiting to be ticked up
   var _tickVer=0; // incremented to cancel in-flight tick animations
@@ -933,13 +960,13 @@ async function runScoreAnim(events,total){
           else await scoreDelay(1);
         }
       }else{
-        // Non-tile-local letter event (bingo +50, sticker/stamp bonus, etc.)
+        // Non-tile-local letter event (sticker/stamp bonus, tile-count length
+        // bonus, etc.)
         var curDelay=await _evBeatStart(ev);
         // Gilded: flip the tile to its gold face on this beat, so it visibly
         // becomes gold the instant it's gilded (PRE bracket, before it scores).
         if(ev.goldifySq!=null)_goldifyTileEl(ev.goldifySq);
         if(!ev._skip)_binkEl(_evTileEl(ev));
-        if(ev.bingo)saL.style.color='#2e9d72'; // jade — bingo bonus landed
         saL.textContent=ev.lettersAfter;bumpSA('ls-letters');_saLSynced=ev.lettersAfter;
         _runLetters=ev.lettersAfter;_bagVacuumCheck();
         _applyCoApply(ev);
