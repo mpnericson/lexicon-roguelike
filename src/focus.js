@@ -75,7 +75,7 @@ var FOCUS = {
 var _fbAnimating = false;
 function _fbFrame(n) {
   var el = document.getElementById('focus-btn-sprite');
-  if (el) el.src = 'Assets/animations/focus mode button/focus_mode_button' + n + '.png';
+  if (el) el.src = 'Assets/main_ui/buttons/focus mode button/focus_mode_button' + n + '.png';
 }
 function _fbPlay(frames) {
   _fbAnimating = true;

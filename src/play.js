@@ -257,6 +257,15 @@ async function playWord(){
   // sequence (reset each round in _doBoardAnimation).
   var _rwCross=[];for(var _cwi=0;_cwi<_words.length;_cwi++){if(!_words[_cwi].main)_rwCross.push(_words[_cwi].word);}
   (S.roundWords=S.roundWords||[]).push({word:main.word,pts:(res?res.total:0),cross:_rwCross});
+  // Run-level log for the Run Info popup's Words tab — every main word played
+  // this run, keeping its best score if replayed. Persists across rounds (unlike
+  // roundWords, which resets each round).
+  (function(){
+    var _w=String(main.word||'').toUpperCase(),_p=Math.round(res?res.total:0);
+    if(!_w)return;S.runWords=S.runWords||[];
+    for(var _i=0;_i<S.runWords.length;_i++){if(S.runWords[_i].word===_w){S.runWords[_i].count++;if(_p>S.runWords[_i].pts)S.runWords[_i].pts=_p;return;}}
+    S.runWords.push({word:_w,pts:_p,count:1});
+  })();
   // Purple tiles: the ×2 already scored; every scored purple now rolls its
   // 1-in-4 vanish (rolled here at commit with _rng, never in preview/solver).
   if(res&&res.purpleScored&&res.purpleScored.length){
@@ -322,7 +331,15 @@ async function playWord(){
   // after the shop (_boardToShopReset → _burstHandTiles). Refilling now would
   // just spit tiles out of the bag a beat before the board vacuums them back in.
   // Reflow the leftover tiles under the rising popup instead.
-  if(S.score>=tgt())renderAll();
+  if(S.score>=tgt()){
+    renderAll();
+    // Restore kept-tile positions so the spring reflows them from where they
+    // were. HP.x was wiped above, so hpRebuild would otherwise remap every kept
+    // tile to x=0 and the spring would fly them in from screen-left (visible glitch).
+    var _rvi=0;
+    for(var _rki=0;_rki<S.hand.length;_rki++){var _rt=S.hand[_rki];if(_rt){if(pwKept[_rt.id]!==undefined){HP.x[_rvi]=pwKept[_rt.id];HP.vx[_rvi]=0;}_rvi++;}}
+    hpDraw();
+  }
   else await _animateDrawPhase(pwKept,pwKeptN,_pwTotalN);
   window._scoring=false;
   if(_playBtn)_playBtn.disabled=false;

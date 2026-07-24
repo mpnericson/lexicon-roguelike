@@ -80,6 +80,7 @@ function buildBag(){
 function startGame(seed){
   clearSave();
   closeAllModals();
+  window._goldDisplay=null; // clear any leftover end-of-round gold override
   var s=(seed!==undefined&&seed!==null)?((parseInt(seed)>>>0)||1):Math.floor(Math.random()*900000)+100000;
   _rngSeed(s);
   var _bag=buildBag();
@@ -89,7 +90,7 @@ function startGame(seed){
   S={bag:_bag,hand:[],board:Array(BN).fill(null),bt:Array(BN).fill(null),btTop:Array(BN).fill(null),
      ai:0,bi:0,score:0,gold:4,plays:4,disc:3,wtr:0,ts:0,placed:[],discPressure:0,discardsThisRound:0,palUnlocked:false,devMode:false,
      phase:'play',stickerInventory:[],sqHand:[],sqStaged:{},seed:s,bhMult:1,palMult:1,playerMult:1,cartographerMult:1,palWords:[],
-     lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,roundWords:[],
+     lastWordLen:0,endless:false,endlessRound:0,roundsCompleted:0,drunkStreak:0,magicStreak:0,roundWords:[],runWords:[],
      constraintOrder:_co.slice(0,BOARDS.length),usedLetters:new Set(),stickersSoldThisBoard:0,crossroadsCount:0,ouroborosBonus:0,gamblerSpins:0,
      stamps:[],bagBlueAnchors:{},pool:_bag.slice(),
      consumables:[],lastTicket:null,
@@ -99,6 +100,7 @@ function startGame(seed){
   document.getElementById('shop-screen').style.display='none';
   document.getElementById('play-controls').style.display='flex';
   document.getElementById('placing-controls').style.display='none';
+  var _hcr=document.getElementById('hand-controls-row');if(_hcr)_hcr.style.display='flex';
   HP.x=[];HP.vx=[];HP.tiles=[];
   if(typeof _resetArcQueue==='function')_resetArcQueue();
   if(typeof _resetZoom==='function')_resetZoom();
@@ -251,6 +253,12 @@ function roundComplete(){
   // $8→$3, … $17/$27→$4, $32→$5). Guard gold>=1 so $0 pays $0, not -Infinity.
   var _goldForInterest=S.gold;
 
+  // Freeze the HUD gold counter at its pre-reward value so the goldGain calls
+  // below (which credit S.gold immediately) don't jump it. The end-of-round
+  // animation ticks this display up in step with the dollar signs, then clears
+  // it (advanceRound / startGame) so the HUD reverts to the real S.gold.
+  window._goldDisplay=S.gold;
+
   // Round reward is flat across the whole run — the same per-round payout you
   // earn on board 1 (rounds 1/2/3 → $2/$4/$6), no board-index scaling.
   goldGain('Round reward',2+S.bi*2);
@@ -278,7 +286,7 @@ function roundComplete(){
   if(won){
     // Tracker frame 25 = every board window filled.
     var _wSpr=document.getElementById('progress-tracker-sprite');
-    if(_wSpr)_wSpr.src='Assets/animations/progress tracker/progress_tracker25.png';
+    if(_wSpr)_wSpr.src='Assets/main_ui/progress tracker/progress_tracker25.png';
     achvCheck('win');
     // Same rising-panel treatment as a round clear, ending on a "You win!"
     // finale with Endless-mode / New-run buttons.
@@ -374,6 +382,8 @@ function animateEndDisplay(opts){
   function addRow(el){seq.appendChild(el);seq.scrollTop=seq.scrollHeight;}
 
   // 1) Panel pulls up from the bottom of the screen (opacity-toggled frames).
+  //    The resting height is set by #round-display-panel's box size (sized to
+  //    cover the board), not by which frame we stop on — we rest on the full frame.
   for(var fr=1;fr<=_RD_FRAMES;fr++){
     (function(n){steps.push({after:AT(24),fn:function(){_rdShowFrame(n);}});})(fr);
   }
@@ -464,17 +474,26 @@ function animateEndDisplay(opts){
         var amt=document.createElement('span');amt.className='gold-row-amt';amt.textContent='';
         row.appendChild(lab);row.appendChild(signs);row.appendChild(amt);
         var need=Math.min(e.amount,MAXSIGNS);
+        // Credited-so-far for this row, so the HUD gold counter (window._goldDisplay,
+        // frozen at pre-reward in roundComplete) ticks up by exactly this row's
+        // share as each dollar sign lands — in step with the +$ readout.
+        var rowShown=0;
+        function tickGold(disp){
+          if(window._goldDisplay==null)return;
+          window._goldDisplay+=(disp-rowShown);rowShown=disp;renderHUD();
+        }
         steps.push({after:AT(150),fn:function(){addRow(row);row.classList.add('rg-show');}});
         for(var g=0;g<need;g++){
           (function(gi){
             steps.push({after:AT(105),fn:function(inst){
               var s=document.createElement('span');s.className='gold-sign';s.textContent='$';signs.appendChild(s);
               if(!inst)_playCoinClink(false);
-              amt.textContent='+$'+Math.round((gi+1)/need*e.amount);
+              var disp=Math.round((gi+1)/need*e.amount);
+              amt.textContent='+$'+disp;tickGold(disp);
             }});
           })(g);
         }
-        steps.push({after:AT(240),fn:function(){amt.textContent='+$'+e.amount;}});
+        steps.push({after:AT(240),fn:function(){amt.textContent='+$'+e.amount;tickGold(e.amount);}});
       })(ledger[gi2]);
     }
     // 5c) Full-run win: a big "You win!" finale after the gold.
@@ -553,6 +572,7 @@ function winNewRun(){
 
 function advanceRound(){
   _rgClear();_rgSkip=null;
+  window._goldDisplay=null; // gold breakdown done — HUD shows the real S.gold again
   var modal=document.getElementById('round-modal');modal.onclick=null;
   // When the end-of-round popup is up, its tiles were already hoovered off the
   // board (roundComplete). When it isn't (Safety Net, endless win-modal), the

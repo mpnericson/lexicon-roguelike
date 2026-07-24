@@ -43,6 +43,7 @@ function saveGame() {
       endlessRound: S.endlessRound || 0,
       roundsCompleted: S.roundsCompleted || 0,
       drunkStreak: S.drunkStreak || 0,
+      runWords: (S.runWords||[]).map(function(w){return{word:w.word,pts:w.pts||0,count:w.count||1};}),
       constraintOrder: S.constraintOrder||[],
       usedLetters: Array.from(S.usedLetters||[]),
       stickersSoldThisBoard: S.stickersSoldThisBoard||0,
@@ -112,6 +113,7 @@ function loadGame() {
       endlessRound: d.endlessRound || 0,
       roundsCompleted: d.roundsCompleted || 0,
       drunkStreak: d.drunkStreak || 0,
+      runWords: (d.runWords||[]).map(function(w){return{word:w.word,pts:w.pts||0,count:w.count||1};}),
       constraintOrder: d.constraintOrder||[],
       usedLetters: new Set(d.usedLetters||[]),
       stickersSoldThisBoard: d.stickersSoldThisBoard||d.stickersSoldThisStage||0, // d.stickersSoldThisStage: pre-rename saves

@@ -53,7 +53,7 @@ function _tutWordHoles(lock){
     if(!_bt||_bt.state==='dragging')need++;
   }
   holes.push(_tutRect('#hand-area',8));
-  if(!need)holes.push(_tutRect('#pd-play-hit',4));
+  if(!need)holes.push(_tutRect('#play-btn-wrap',4));
   return holes.filter(Boolean);
 }
 // Slot-tray pillow holding a specific prize id (post-spin claim step).
@@ -459,11 +459,11 @@ function _tutBuildScript(){
      text:'Earned from winning rounds, unused plays, and bounties. Spent in the shop between rounds.'},
 
     {title:'Plays',next:true,popHole:0,
-     holes:function(){return[_tutRect('#stat-plays-box',4),_tutRect('#pd-play-hit',4)];},
+     holes:function(){return[_tutRect('#stat-plays-box',4),_tutRect('#play-btn-wrap',4)];},
      text:'Playing a word costs <b>1 Play</b> — the green button, bottom-right. If you run out of plays before reaching the target, the run ends.'},
 
     {title:'Discards',next:true,popHole:0,
-     holes:function(){return[_tutRect('#stat-disc-box',4),_tutRect('#pd-disc-hit',4)];},
+     holes:function(){return[_tutRect('#stat-disc-box',4),_tutRect('#disc-btn-wrap',4)];},
      text:'A discard — the red button, bottom-right — swaps your selected tiles for new ones. You get 3 per round.'},
 
     {title:'Progress',next:true,
@@ -594,15 +594,15 @@ function _tutBuildScript(){
      text:'Playing a listed word pays its gold and <b>doubles the word\'s multiplier</b>. AMAZON is worth the most here. You\'re missing its letters — use discards to find them while the Pressure Cooker builds mult.'},
 
     {title:'Discard 1 of 3',passthrough:true,sqLock:{},discardSet:['I','L','R','U','D','G'],advanceOn:'discard',popHole:0,
-     holes:function(){return[_tutRect('#hand-area',8),_tutRect('#pd-disc-hit',4)];},
+     holes:function(){return[_tutRect('#hand-area',8),_tutRect('#disc-btn-wrap',4)];},
      text:'Only the <b>M</b> is an AMAZON letter — keep it and discard the other six, then press <b>Discard</b>. (+1 mult stored.)'},
 
     {title:'Discard 2 of 3',passthrough:true,sqLock:{},discardSet:['T','E','W','I'],advanceOn:'discard',popHole:0,
-     holes:function(){return[_tutRect('#hand-area',8),_tutRect('#pd-disc-hit',4)];},
+     holes:function(){return[_tutRect('#hand-area',8),_tutRect('#disc-btn-wrap',4)];},
      text:'The <b>A</b> and <b>Z</b> arrived. Keep them and discard the <b>T, E, W</b> and <b>I</b>. (+2 stored.)'},
 
     {title:'Discard 3 of 3',passthrough:true,sqLock:{},discardSet:['S','U','G'],advanceOn:'discard',popHole:0,
-     holes:function(){return[_tutRect('#hand-area',8),_tutRect('#pd-disc-hit',4)];},
+     holes:function(){return[_tutRect('#hand-area',8),_tutRect('#disc-btn-wrap',4)];},
      text:'There\'s the <b>O</b>. Discard the <b>S, U</b> and <b>G</b> to dig for the N. (+3 stored.)'},
 
     {title:'Play the Bounty',passthrough:true,sqLock:_TUT_AMAZON,advanceOn:'round-complete',method:'click-group',methodDir:'v',
@@ -700,7 +700,7 @@ function _tutBuildScript(){
      text:'The varnished Y is queued up. Press <b>Close</b>.'},
 
     {title:'Dig It Out',passthrough:true,sqLock:{},discardSet:['I','E','U','G','D','S'],advanceOn:'discard',popHole:0,
-     holes:function(){return[_tutRect('#hand-area',8),_tutRect('#pd-disc-hit',4)];},
+     holes:function(){return[_tutRect('#hand-area',8),_tutRect('#disc-btn-wrap',4)];},
      text:'Keep the <b>L</b> and discard the other six. The varnished Y is drawn first.'},
 
     {title:'The Payoff',passthrough:true,sqLock:_TUT_PYLON,advanceOn:'round-complete',

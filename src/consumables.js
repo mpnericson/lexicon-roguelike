@@ -11,7 +11,7 @@
 // Assets/consumables/{id}/{id}.png (same pattern as stickers/stamps).
 // =====================================================================
 
-var TK_MAX=4;      // consumable inventory slots
+var TK_MAX=2;      // consumable inventory slots
 var TK_TILE_SZ=64; // shown-tile size in the pack overlay
 
 function tkd(id){for(var i=0;i<TK.length;i++)if(TK[i].id===id)return TK[i];return null;}
@@ -327,7 +327,7 @@ function renderConsumables(){
   var inv=S.consumables||[];
   if(_tkInvSel>=inv.length)_tkInvSel=-1;
   var targets=[
-    {el:document.getElementById('consumable-row'),mini:'tk-mini'},
+    {el:document.getElementById('consumable-row'),mini:'tk-mini',play:true},
     {el:document.getElementById('shop-consumables'),mini:'tk-mini'}
   ];
   targets.forEach(function(tg){
@@ -356,13 +356,29 @@ function renderConsumables(){
       };
       row.appendChild(m);
     });
-    if(inv.length){
+    // Shop view keeps its inline counter (only when there are consumables). The
+    // play-view counter is handled separately below so it can show at 0.
+    if(inv.length&&!tg.play){
       var ctr=document.createElement('span');
       ctr.className='tk-mini-count';
       ctr.textContent=inv.length+'/'+TK_MAX;
       row.appendChild(ctr);
     }
   });
+  // Play-view "n/2" counter: anchored to the consumable tray's bottom-right corner
+  // (fill ends at x=190/256=74.22% / y=22/160=13.75% of the 256×160 mainui art,
+  // stretched to 100vw×100vh) and ALWAYS shown — even at 0, mirroring the stamp
+  // "0/5". It lives on #hotbar-row rather than #consumable-row, which is display:none
+  // when empty (a display:none parent would hide even a fixed child). The opaque
+  // #shop-screen overlay (z-index 200) covers it in the shop, and focus mode fades
+  // it out — exactly like the stamp counter.
+  var hb=document.getElementById('hotbar-row');
+  if(hb){
+    var pctr=document.getElementById('consumable-count');
+    if(!pctr){pctr=document.createElement('div');pctr.id='consumable-count';hb.appendChild(pctr);}
+    pctr.style.cssText='position:fixed;left:calc(74.22vw - 8px);top:calc(13.75vh - 4px);transform:translate(-100%,-100%);font-size:clamp(13px,3vh,28px);color:#8880a8;pointer-events:none;line-height:1;z-index:6';
+    pctr.textContent=inv.length+'/'+TK_MAX;
+  }
   _tkTipHideStale();
 }
 

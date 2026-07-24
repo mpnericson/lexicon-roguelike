@@ -8,17 +8,26 @@
 @font-face{font-family:'Jersey 10';src:url('Assets/fonts/Jersey10-Regular.ttf') format('truetype');font-weight:normal;font-style:normal}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;height:100vh;overflow:hidden;user-select:none;touch-action:none}
-#app{display:flex;flex-direction:row;height:100vh;background-image:url(Assets/sprites/mainui/mainui.png);background-size:100% 100%;background-repeat:no-repeat;image-rendering:pixelated}
+#app{display:flex;flex-direction:row;height:100vh;background-image:url(Assets/main_ui/mainui/mainui1.png);background-size:100% 100%;background-repeat:no-repeat;image-rendering:pixelated}
 /* LEFT PANEL — 25% width */
 #left-panel{display:flex;flex-direction:column;width:25vw;flex-shrink:0;overflow:hidden}
-/* CENTER COLUMN — fills remaining space */
-#center-col{display:flex;flex-direction:column;flex:1;gap:6px;min-width:0}
+/* CENTER COLUMN — fills remaining space. Bottom padding lifts the hand + button
+   row up onto the wood shelf painted in the background (which sits at a fixed
+   fraction of viewport height), instead of letting them flex to the very bottom. */
+#center-col{display:flex;flex-direction:column;flex:1;gap:6px;min-width:0;padding-bottom:0.4vh}
 /* RIGHT PANEL — 25% width */
 #right-panel{display:flex;flex-direction:column;gap:8px;width:25vw;flex-shrink:0;position:relative}
 #bounty-section{flex:1;min-height:0;max-height:80vh;overflow-y:auto}
 #board-area{flex:1;display:flex;justify-content:center;align-items:center;overflow:hidden;min-height:0;position:relative}
 #hand-wrap{position:relative;display:flex;align-items:center;gap:10px;height:80px;flex-shrink:0}
 #hand-area{position:relative;flex:1;height:68px;overflow:visible}
+/* Tile rack — rendered at the SAME scale as the mainui background (256×160 art
+   stretched to 100vw×100vh): 104×32 → 40.625vw × 20vh. Centred in the middle
+   column (between the two 25vw side panels) and pinned to the screen bottom.
+   z-index:-1 puts it in the background layer (behind tiles/buttons, above the
+   drift art), where it used to live baked into mainui.png; the mainui's
+   centre-bottom is fully transparent so it shows through cleanly. */
+#tile-rack-bg{position:fixed;left:29.6875vw;bottom:0;width:40.625vw;height:20vh;z-index:-1;image-rendering:pixelated;pointer-events:none}
 #shop-screen{position:fixed;top:0;left:0;width:100%;height:100%;background:#06060e;z-index:200;display:none;align-items:center;justify-content:center}
 #shop-canvas{position:relative;width:min(100vw,calc(100vh * 16 / 10));aspect-ratio:256/160;flex-shrink:0;overflow:hidden}
 #shop-reel-layer{position:absolute;left:0;top:0;width:100%;height:100%}
@@ -186,8 +195,8 @@ body{background:#0f0f1e;color:#e8e0d0;font-family:'Jersey 10','Georgia',serif;he
 #hand-area.glass-sac .hand-tile:nth-child(3n){animation-delay:-.21s}
 @keyframes glassShake{0%,100%{transform:translate(0,0) rotate(0)}25%{transform:translate(1.5px,-1px) rotate(1.6deg)}50%{transform:translate(-1.2px,1px) rotate(-1.5deg)}75%{transform:translate(1px,1.4px) rotate(1.1deg)}}
 /* Focus mode: fade all peripheral UI, keep board + tiles + eye */
-#left-panel,#stamp-bar,#hand-wrap,#bounty-row,#play-controls{transition:opacity .45s ease}
-body.focus-mode #left-panel,body.focus-mode #stamp-bar,body.focus-mode #hand-wrap,body.focus-mode #bounty-row,body.focus-mode #play-controls{opacity:0;pointer-events:none}
+#left-panel,#hotbar-row,#hand-wrap,#bounty-row,#play-controls,#disc-btn-wrap,#play-btn-wrap,#shuffle-btn-wrap{transition:opacity .45s ease}
+body.focus-mode #left-panel,body.focus-mode #hotbar-row,body.focus-mode #hand-wrap,body.focus-mode #bounty-row,body.focus-mode #play-controls,body.focus-mode #disc-btn-wrap,body.focus-mode #play-btn-wrap,body.focus-mode #shuffle-btn-wrap{opacity:0;pointer-events:none}
 /* Focus backdrop — covers the animated mainui background. Swap in a custom
    focus-mode background by adding background-image to #focus-bg. */
 #focus-bg{position:fixed;inset:0;background:#0f0f1e;opacity:0;transition:opacity .45s ease;pointer-events:none;z-index:890}
@@ -195,10 +204,10 @@ body.focus-mode #focus-bg{opacity:1}
 /* Board + eye ride above the backdrop; board zooms via transform (focus.js) */
 #board-wrap{transition:transform .55s cubic-bezier(.22,.9,.3,1);transform-origin:center center}
 body.focus-mode #board-area{z-index:895;overflow:visible}
-body.focus-mode #rp-top-row{z-index:895}
-/* Focus button slides right into the vacated menu slot; menu fades out */
-#focus-btn-wrap{transition:transform .45s ease}
-body.focus-mode #focus-btn-wrap{transform:translateX(100%)}
+/* Focus (eye) button stays centred under the hand and visible above the
+   backdrop — no slide when entering/exiting focus mode. */
+#focus-btn-wrap{position:relative;z-index:5}
+body.focus-mode #focus-btn-wrap{z-index:896}
 #menu-wrap{transition:opacity .45s ease}
 body.focus-mode #menu-wrap{opacity:0;pointer-events:none}
 .focus-tile{cursor:grab;touch-action:none;transition:none;filter:drop-shadow(0 3px 5px rgba(0,0,0,0.55));will-change:transform}
@@ -207,9 +216,7 @@ body.focus-mode #menu-wrap{opacity:0;pointer-events:none}
 /* Modals (blank chooser etc.) must clear the focus backdrop/overlay */
 body.focus-mode .modal-overlay{z-index:950}
 /* Exit beat 1: focus-mode is kept (peripheral UI stays hidden) but focus-exiting
-   lets the eye slide back home and the backdrop fade out while the board shrinks.
-   Rules come after their focus-mode counterparts so they win on source order. */
-body.focus-exiting #focus-btn-wrap{transform:none}
+   lets the backdrop fade out while the board shrinks back home. */
 body.focus-exiting #focus-bg{opacity:0}
 .btn-icon{height:80px;border-radius:10px;border:none;cursor:pointer;font-size:34px;display:flex;align-items:center;justify-content:center;flex:1;font-family:'Jersey 10',Georgia}
 .btn-icon:active{transform:scale(.95)}
@@ -235,7 +242,11 @@ body.focus-exiting #focus-bg{opacity:0}
    mainui bg is 256x160 stretched to 100vw x 100vh, and the panel art is
    128x142, so it maps to 50vw wide (left 25vw) and 88.75vh tall. */
 #round-modal{background:none}
-#round-display-panel{position:fixed;left:25vw;bottom:0;width:50vw;height:88.75vh;
+/* height is sized so the fully-risen scroll (frame 18 fills the box) rests with
+   its top edge just above the board grid (~16.5vh) — covering the board but no
+   higher. bottom:0 keeps the scroll anchored to the screen bottom so the action
+   buttons stay on-screen regardless of the shorter height. */
+#round-display-panel{position:fixed;left:25vw;bottom:0;width:50vw;height:84vh;
   background:none;
   border:none;border-radius:0;padding:0;margin:0;max-width:none;max-height:none;overflow:visible;box-shadow:none}
 /* Panel art as 18 stacked <img> layers instead of a swapped src/background: all
@@ -256,7 +267,11 @@ body.focus-exiting #focus-bg{opacity:0}
 @keyframes rdBlinkOut{0%{opacity:1}25%{opacity:0}50%{opacity:1}75%{opacity:0}100%{opacity:0}}
 /* The animated sequence: words-as-tiles, the total/beating line, then the
    gold-reward rows — each element revealed one beat at a time. */
-#round-seq-list{width:100%;display:flex;flex-direction:column;align-items:stretch;gap:10px;flex:1 1 auto;overflow-y:auto;overflow-x:hidden}
+/* padding-top gives the first (top) row headroom: rd-tiles pop in with
+   goldSignPop (scale 1.4 + translateY, origin bottom) which grows upward, and
+   this list clips vertical overflow — without the pad the top row's tiles get
+   their tops cut off at the container edge. */
+#round-seq-list{width:100%;display:flex;flex-direction:column;align-items:stretch;gap:10px;flex:1 1 auto;overflow-y:auto;overflow-x:hidden;padding-top:30px}
 /* Word rows: a 3-column grid — word | hyphen | score — so every hyphen lines up
    down the centre, words trail out to the left, scores out to the right. */
 .rd-word-row{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;column-gap:10px;color:#ffe6c8;font-size:40px;text-shadow:0 1px 2px rgba(0,0,0,.5)}
@@ -294,6 +309,106 @@ body.focus-exiting #focus-bg{opacity:0}
 .rd-win-banner.rg-show{opacity:1;transform:none}
 .rd-win-big{font-size:78px;color:#ffe36a;text-shadow:0 0 16px rgba(255,200,40,.7),0 3px 4px rgba(0,0,0,.55);letter-spacing:2px}
 .rd-win-sub{font-size:34px;color:#ffd24a;text-shadow:0 1px 2px rgba(0,0,0,.5);margin-top:2px}
+/* ── Run Info / Menu rising popup — reuses the end-of-round panel art (the same
+   18-frame rise/descend) but shows tabbed content instead of a score breakdown.
+   Geometry mirrors #round-display-panel exactly. ── */
+/* The overlay is click-through (pointer-events:none) so the rest of the screen
+   stays interactive while the popup is up — only the visible panel captures
+   clicks. This also lets the Run Info / Menu buttons collapse/switch the popup
+   with a real click while it's risen. */
+#info-modal{background:none;pointer-events:none}
+#info-display-panel{position:fixed;left:25vw;bottom:0;width:50vw;height:84vh;pointer-events:auto;
+  background:none;border:none;border-radius:0;padding:0;margin:0;max-width:none;max-height:none;overflow:visible;box-shadow:none}
+#info-frames{position:absolute;inset:0;pointer-events:none;z-index:0}
+#info-panel-content{position:absolute;left:9%;right:9%;top:9%;bottom:6%;z-index:1;
+  display:flex;flex-direction:column;align-items:stretch;opacity:0;transition:opacity .3s ease}
+#info-panel-content.rg-content-show{opacity:1}
+#info-panel-content.rd-blink-out{animation:rdBlinkOut .3s linear forwards}
+#info-title{text-align:center;color:#ffe6c8;font-size:clamp(24px,3.2vw,46px);line-height:1;
+  text-shadow:0 2px 3px rgba(0,0,0,.55);margin-bottom:8px;flex:0 0 auto}
+/* Tab row */
+#info-tabs{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;flex:0 0 auto;margin-bottom:10px}
+.ip-tab{font-family:'Jersey 10',Georgia;font-size:clamp(15px,1.9vw,30px);color:#e8c8a0;
+  background:rgba(0,0,0,.22);border:1px solid rgba(255,220,180,.28);border-radius:8px;
+  padding:5px 16px;cursor:pointer;transition:background .12s ease,color .12s ease,transform .08s ease}
+.ip-tab:hover{background:rgba(0,0,0,.34);color:#fff0d8}
+.ip-tab:active{transform:scale(.96)}
+.ip-tab.active{background:#ffdf9a;color:#3a2410;border-color:#ffdf9a;text-shadow:none}
+/* Scrollable body */
+#info-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:2px 6px 2px 2px}
+#info-body::-webkit-scrollbar{width:7px}
+#info-body::-webkit-scrollbar-thumb{background:rgba(255,220,180,.35);border-radius:4px}
+#info-body::-webkit-scrollbar-track{background:transparent}
+/* Footer (Back + optional centred Give Up) */
+#info-footer{position:relative;flex:0 0 auto;display:flex;align-items:center;justify-content:center;min-height:52px;margin-top:8px}
+.ip-back-btn{position:absolute;left:0;top:50%;transform:translateY(-50%);
+  font-family:'Jersey 10',Georgia;font-size:clamp(16px,2vw,32px);color:#e8c8a0;
+  background:rgba(0,0,0,.25);border:1px solid rgba(255,220,180,.3);border-radius:8px;padding:6px 18px;cursor:pointer}
+.ip-back-btn:hover{background:rgba(0,0,0,.4);color:#fff0d8}
+.ip-back-btn:active{transform:translateY(-50%) scale(.96)}
+.ip-giveup-btn{font-family:'Jersey 10',Georgia;font-size:clamp(18px,2.3vw,34px);color:#ffd0d0;
+  background:#7a2d2d;border:1px solid #b05a5a;border-radius:8px;padding:7px 26px;cursor:pointer;box-shadow:0 3px 0 #4a1a1a}
+.ip-giveup-btn:hover{background:#8a3a3a}
+.ip-giveup-btn:active{transform:scale(.96);box-shadow:0 1px 0 #4a1a1a}
+/* Menu hub buttons */
+#info-hub{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.ip-hub-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;
+  font-family:'Jersey 10',Georgia;font-size:clamp(16px,2vw,32px);color:#f2e2c8;
+  background:rgba(0,0,0,.2);border:1px solid rgba(255,220,180,.28);border-radius:10px;
+  padding:12px 16px;cursor:pointer;transition:background .12s ease,transform .08s ease,border-color .12s ease}
+.ip-hub-btn:hover{background:rgba(0,0,0,.34);border-color:rgba(255,220,180,.55);transform:translateY(-2px)}
+.ip-hub-btn:active{transform:translateY(0) scale(.98)}
+.ip-hub-val{font-size:.8em;color:#c8a878}
+.ip-hub-btn.dev-only-hub{border-style:dashed;color:#b8d0ff}
+/* Progress-tab rows: one per round, showing target + (round 3) constraint */
+.ip-prog-board{margin-bottom:14px}
+.ip-prog-board-head{color:#ffdf9a;font-size:clamp(16px,2.2vw,34px);letter-spacing:.04em;
+  border-bottom:1px solid rgba(255,220,180,.25);padding-bottom:4px;margin-bottom:8px}
+.ip-prog-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;
+  font-size:clamp(16px,2.2vw,34px);color:#f0e0cc;padding:5px 6px;border-radius:6px}
+.ip-prog-row.done{color:#a8d8a0}
+.ip-prog-row.current{background:rgba(255,223,154,.16);color:#fff2d8}
+.ip-prog-row.future{color:#cbb89e;opacity:.85}
+.ip-prog-mark{width:1.4em;text-align:center;font-size:1.05em}
+.ip-prog-name{min-width:0}
+.ip-prog-tgt{color:#ffd24a;white-space:nowrap;text-shadow:0 0 6px rgba(255,190,0,.4)}
+.ip-prog-con{grid-column:1 / -1;font-size:clamp(16px,2.2vw,34px);color:#e0b0e8;padding:4px 6px 4px 1.4em;line-height:1.25}
+.ip-prog-con b{color:#f0c8f8;font-weight:normal}
+/* Words-tab list */
+.ip-words-sub{text-align:center;color:#d8c0a0;font-size:clamp(13px,1.6vw,24px);margin-bottom:8px}
+.ip-word-row{display:grid;grid-template-columns:auto 1fr auto;align-items:baseline;gap:10px;
+  font-size:clamp(14px,1.7vw,27px);color:#f0e0cc;padding:3px 8px;border-bottom:1px solid rgba(255,220,180,.12)}
+.ip-word-w{letter-spacing:2px;color:#ffe6c8}
+.ip-word-x{color:#c8a878;font-size:.8em;justify-self:start}
+.ip-word-pts{color:#ffd24a;white-space:nowrap;text-shadow:0 0 6px rgba(255,190,0,.4)}
+.ip-empty{text-align:center;color:#d0b898;font-size:clamp(16px,2vw,30px);margin-top:24px}
+/* Collection + Achievements are embedded in the panel — recolour their reused
+   .coll-* / .achv-* elements from the indigo modal theme to the panel's warm
+   parchment palette. Scoped to #info-body so the standalone modals are untouched. */
+#info-body .coll-hub-btn{background:rgba(0,0,0,.2);border:1px solid rgba(255,220,180,.28);color:#f2e2c8}
+#info-body .coll-hub-btn:hover{border-color:rgba(255,220,180,.55);background:rgba(0,0,0,.34)}
+#info-body .coll-hub-label{color:#ffe6c8}
+#info-body .coll-hub-count{color:#c8a878}
+#info-body .coll-cell{background:rgba(0,0,0,.2);border:1px solid rgba(255,220,180,.24)}
+#info-body .coll-cell:not(.locked):hover{border-color:rgba(255,220,180,.55)}
+#info-body .coll-cell-name{color:#f0e0cc}
+#info-body .coll-cell.locked .coll-cell-name{color:#a08a70}
+#info-body .coll-cell-icon.coll-cell-locked{color:#8a7458}
+#info-body .achv-item{background:rgba(0,0,0,.2);border:1px solid rgba(255,220,180,.2)}
+#info-body .achv-item.achv-done{border-color:rgba(255,220,180,.5)}
+#info-body .achv-name{color:#ffe6c8}
+#info-body .achv-desc{color:#c8a878}
+#info-body .achv-item:not(.achv-done) .achv-name{color:#b09a80}
+/* Embedded Dictionary (.wb-*) + Settings ticks — warm palette. */
+#info-body .wb-row{border-bottom:1px solid rgba(255,220,180,.14)}
+#info-body .wb-word{color:#ffe6c8}
+#info-body .wb-score{color:#ffd24a}
+#info-body .wb-head-name{color:#ffdf9a}
+#info-body .wb-head-pct{color:#c8a878}
+#info-body .wb-mini-track{background:rgba(0,0,0,.28);border-color:rgba(255,220,180,.24)}
+#info-body .wb-mini-fill{background:linear-gradient(90deg,#c79a3a,#ffdf9a)}
+#info-body .msub{color:#d0b898}
+#info-body .set-ticks{color:#c8a878}
 .msub{color:#8880a8;font-size:30px;margin-bottom:16px}
 .set-row{margin-bottom:20px}
 .set-row:last-child{margin-bottom:6px}
@@ -308,7 +423,7 @@ body.focus-exiting #focus-bg{opacity:0}
 .wb-head-pct{color:#6f9f6f;font-size:24px;white-space:nowrap}
 .wb-mini-track{height:8px;background:#1a1a30;border:1px solid #2a2a4a;border-radius:5px;overflow:hidden;margin-top:3px}
 .wb-mini-fill{height:100%;background:linear-gradient(90deg,#4a8a4a,#7ac07a);border-radius:5px 0 0 5px}
-.wb-row{display:grid;grid-template-columns:1fr 68px;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #1e1e3a;font-family:'Jersey 10',Georgia}
+.wb-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #1e1e3a;font-family:'Jersey 10',Georgia}
 .wb-word{color:#e8e0d0;font-size:32px;letter-spacing:2px}
 .wb-score{color:#f0c060;font-size:30px;text-align:right}
 .wb-bar-track{height:16px;background:#1e1e3a;border:1px solid #3a3a5a;border-radius:8px;overflow:hidden}
@@ -436,34 +551,73 @@ body.focus-exiting #focus-bg{opacity:0}
 .bounty-scroll{cursor:pointer;user-select:none}
 /* ── STAT PANEL ── */
 #stat-panel{position:relative;flex:1}
-/* Split box left (y=4-21, x=5-25): letter score */
-#stat-word-score-box{position:absolute;top:2.5%;left:7.8125%;width:32.8125%;height:11.25%;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#ls-letters-wrap{display:flex;align-items:center;gap:4px}
-#ls-letters{font-size:clamp(16px,2.8vw,48px);font-weight:normal;color:#1a3a80;line-height:1}
+/* Big top box (y=4-17, x=4-54): total score — "Score" heading + x/target */
+#stat-score-box{position:absolute;top:2.5%;left:6.25%;width:78.125%;height:8.75%;display:flex;flex-direction:column;align-items:stretch;justify-content:center;overflow:hidden;line-height:1;gap:2%;padding:0 4%;box-sizing:border-box}
+#stat-score-head{font-size:clamp(13px,2.4vw,42px);color:#3a2800;line-height:1;letter-spacing:0.5px}
+/* Split box left (y=25-42, x=5-25): letter score */
+#stat-word-score-box{position:absolute;top:15.625%;left:7.8125%;width:32.8125%;height:11.25%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#ls-letters-wrap{display:flex;align-items:center;gap:4px;animation:mu-bob-a 3.4s ease-in-out infinite}
+/* Idle "floating on a pond" bob for the Letter / Mult / Score numbers. Applied to
+   wrappers (not the numbers) so it composes with the per-number ls-bump scale,
+   which is a transform on the child — one transform per element. Three phases so
+   the numbers ripple out of sync rather than bobbing in unison. */
+@keyframes mu-bob-a{0%,100%{transform:translate(0,0) rotate(0deg)}25%{transform:translate(.5px,-1.6px) rotate(.7deg)}50%{transform:translate(0,-2.6px) rotate(0deg)}75%{transform:translate(-.5px,-1.3px) rotate(-.7deg)}}
+@keyframes mu-bob-b{0%,100%{transform:translate(0,0) rotate(0deg)}25%{transform:translate(-.6px,-1.3px) rotate(-.6deg)}50%{transform:translate(0,-3px) rotate(0deg)}75%{transform:translate(.6px,-1.7px) rotate(.9deg)}}
+@keyframes mu-bob-c{0%,100%{transform:translate(0,0) rotate(0deg)}25%{transform:translate(.4px,-1.1px) rotate(.5deg)}50%{transform:translate(0,-2.2px) rotate(0deg)}75%{transform:translate(-.4px,-1.4px) rotate(-.5deg)}}
+.mu-mult-float{display:inline-flex;animation:mu-bob-b 3.9s ease-in-out infinite}
+.mu-score-float{display:inline-flex;animation:mu-bob-c 3.1s ease-in-out infinite}
+#ls-letters{font-size:clamp(16px,2.8vw,48px);font-weight:normal;color:#1a3a80;line-height:1;text-shadow:0 2px 3px rgba(0,0,0,.25)}
 #ls-tile-delta{font-size:clamp(10px,2vw,36px);font-weight:normal;color:#5890c8;line-height:1;opacity:0;max-width:0;overflow:hidden;white-space:nowrap;transition:opacity 0.15s ease,max-width 0.2s ease;transform-origin:left center}
 #ls-tile-delta.delta-active{opacity:1;max-width:120px}
 @keyframes ls-delta-enter{0%{transform:scale(0.55)}55%{transform:scale(1.22)}80%{transform:scale(0.94)}100%{transform:scale(1)}}
 .delta-enter{animation:ls-delta-enter 0.24s ease-out}
-/* Split box right (y=4-21, x=34-54): multiplier */
-#stat-progress-box{position:absolute;top:2.5%;left:53.125%;width:32.8125%;height:11.25%;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#ls-mult{font-size:clamp(16px,2.8vw,48px);font-weight:normal;color:#801a0a;line-height:1}
+/* Split box right (y=25-42, x=33-53): multiplier */
+#stat-progress-box{position:absolute;top:15.625%;left:51.5625%;width:32.8125%;height:11.25%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#ls-mult{font-size:clamp(16px,2.8vw,48px);font-weight:normal;color:#801a0a;line-height:1;text-shadow:0 2px 3px rgba(0,0,0,.25)}
 /* × between top boxes — absolutely positioned in stat-panel */
-#ls-op{position:absolute;left:46.09%;transform:translateX(-50%);top:2.5%;height:11.25%;display:flex;align-items:center;font-size:clamp(9px,1.6vw,26px);color:#3a2800;line-height:1;pointer-events:none}
-/* Second row (y=28-33): word score (left) and total/target (right) */
-#live-score-row{position:absolute;top:17.5%;left:0;right:0;height:3.75%;margin:0;padding:0;background:none;border:none}
-#stat-letters-box{position:absolute;left:6.25%;width:37.5%;top:0;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#stat-mult-box{position:absolute;left:50%;width:37.5%;top:0;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#ls-score{font-size:clamp(10px,2vw,34px);font-weight:normal;color:#3a2800;line-height:1}
-#run-progress{font-size:clamp(8px,1.3vw,22px);font-weight:normal;color:#3a2800;line-height:1.1;white-space:normal;word-break:break-word;overflow:hidden;text-align:center;width:100%}
-/* Three boxes (y=43-57): gold, plays, disc */
-#stat-gold-box{position:absolute;top:26.875%;left:4.6875%;width:25%;height:9.375%;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#stat-plays-box{position:absolute;top:26.875%;left:34.375%;width:25%;height:9.375%;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#stat-disc-box{position:absolute;top:26.875%;left:64.0625%;width:25%;height:9.375%;display:flex;align-items:center;justify-content:center;overflow:hidden}
-#hud-gold{font-size:clamp(16px,2.6vw,46px);color:#5a3800;line-height:1}
-#hud-plays{font-size:clamp(16px,2.6vw,46px);color:#2a2a2a;line-height:1}
-#hud-disc{font-size:clamp(16px,2.6vw,46px);color:#6a1a1a;line-height:1}
-/* Bottom info box (y=140-155, x=4-55): upcoming constraint */
-#stat-rounds-box{position:absolute;top:87.5%;left:6.25%;width:81.25%;height:10%;display:flex;align-items:stretch;overflow:hidden}
+#ls-op{position:absolute;left:45.31%;transform:translateX(-50%);top:15.625%;height:11.25%;display:flex;align-items:center;font-size:clamp(9px,1.6vw,26px);color:#3a2800;line-height:1;pointer-events:none}
+/* Thin result strip (y=48-52, x=9-48): "= <word score>", drains up into the top box */
+#live-score-row{position:absolute;top:29.69%;left:12.5%;width:64%;height:5%;margin:0;padding:0;background:none;border:none;display:flex;align-items:center;justify-content:center;gap:4px;overflow:visible}
+#ls-eq{font-size:clamp(9px,1.6vw,26px);color:#3a2800;line-height:1}
+#ls-score{font-size:clamp(11px,2vw,34px);font-weight:normal;color:#3a2800;line-height:1;text-shadow:0 2px 3px rgba(0,0,0,.25)}
+/* Scoreboard reveal states (driven by setMainuiState in init.js). The mainui
+   art animates the boxes open (frames 1→6) and drops the result strip (7→10);
+   the numbers fade in to match so a bare "0 × 0" is never shown over the
+   compressed board. mu-open = tiles placed; mu-score = scoring in progress. */
+#stat-word-score-box,#stat-progress-box,#live-score-row{opacity:0;transition:opacity .2s ease}
+#stat-panel.mu-open #stat-word-score-box,#stat-panel.mu-open #stat-progress-box{opacity:1}
+#stat-panel.mu-score #live-score-row{opacity:1}
+#run-progress{font-size:clamp(15px,2.9vw,50px);font-weight:normal;color:#3a2800;line-height:1.05;white-space:nowrap;overflow:hidden;text-align:right;max-width:100%}
+/* Gold / plays / disc row. top is the compressed (frame-1) position; init.js
+   overrides it inline per mainui frame so the numbers ride the boxes down as the
+   scoreboard expands. */
+#stat-gold-box{position:absolute;top:23.75%;left:4.6875%;width:25%;height:9.375%;display:flex;align-items:center;justify-content:center;overflow:visible}
+#stat-plays-box{position:absolute;top:23.75%;left:34.375%;width:25%;height:9.375%;display:flex;align-items:center;justify-content:center;overflow:visible}
+#stat-disc-box{position:absolute;top:23.75%;left:64.0625%;width:25%;height:9.375%;display:flex;align-items:center;justify-content:center;overflow:visible}
+#hud-gold{font-size:clamp(24px,3.9vw,69px);color:#5a3800;line-height:1;position:relative;top:-5px}
+#hud-plays{font-size:clamp(24px,3.9vw,69px);color:#2a2a2a;line-height:1;position:relative;top:-5px}
+#hud-disc{font-size:clamp(24px,3.9vw,69px);color:#6a1a1a;line-height:1;position:relative;top:-5px}
+.hud-label{position:absolute;top:100%;left:0;width:100%;text-align:center;font-size:clamp(10px,1.6vw,26px);font-weight:700;line-height:1;letter-spacing:.03em;text-transform:uppercase;margin-top:-28px;white-space:nowrap;pointer-events:none}
+#hud-gold-label{color:#5a3800}
+#hud-plays-label{color:#2a2a2a}
+#hud-disc-label{color:#6a1a1a}
+/* Bottom-left box (painted recess spans art x≈2-58, y≈136-159): holds the Run
+   Info + Menu buttons. The buttons are 24x20 sprites rendered at mainui scale
+   (9.375vw x 12.5vh) so their pixels match the background; two of them plus a
+   ~2px-art gap and ~2px-art edges fill the beveled box. */
+#stat-rounds-box{position:absolute;top:85%;left:3.125%;width:87.5%;height:15%;
+  display:flex;align-items:center;justify-content:center;gap:0.78vw;overflow:visible}
+.lp-box-btn{position:relative;flex:0 0 auto;cursor:pointer;line-height:0}
+.lp-box-btn img{width:9.375vw;height:12.5vh;image-rendering:pixelated;display:block;pointer-events:none}
+/* "RUN INFO" label overlaid on the run_info sprite — big, stacked on two lines.
+   Lightens on hover; shrinks only while the button is held down (matches the
+   pressed-in run_info2 frame). */
+#run-info-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:none;font-family:'Jersey 10',Georgia;color:#c8b898;
+  font-size:clamp(17px,2.8vw,42px);letter-spacing:0.03em;line-height:0.9;
+  text-shadow:0 1px 2px rgba(0,0,0,.55);transition:color .12s ease,transform .08s ease;transform-origin:center}
+#run-info-wrap:hover #run-info-label{color:#f6ecd6}
+#run-info-wrap:active #run-info-label{transform:scale(.86)}
 .stat-box-label{font-size:clamp(5px,0.75vw,11px);color:#7a5a40;line-height:1;text-transform:uppercase;letter-spacing:0.5px}
 /* Max-height = open-scroll footprint (95% width square ≈ 24vw): ~3 furled scrolls
    show before it scrolls, and an unfurled scroll still fits without clipping.
@@ -484,12 +638,38 @@ body.focus-exiting #focus-bg{opacity:0}
 @keyframes confetti-fall{0%{transform:translateY(0) translateX(0) rotate(0deg);opacity:1}100%{transform:translateY(105vh) translateX(var(--d)) rotate(var(--s));opacity:0.1}}
 @keyframes rank-pop{0%{transform:translate(-50%,-50%) scale(0.4);opacity:0}15%{transform:translate(-50%,-50%) scale(1.12);opacity:1}25%{transform:translate(-50%,-50%) scale(1);opacity:1}75%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(-50%,-50%) scale(0.9);opacity:0}}
 #live-score-row.scoring #ls-score{font-size:clamp(14px,2.5vw,44px)}
-#live-score-row.scoring #run-progress{font-size:clamp(10px,1.8vw,30px)}
 /* Right panel controls */
 #rp-top-row .btn-icon{height:90px;font-size:22px}
 #play-controls .btn-icon{height:90px;font-size:24px}
-/* Stamp bar */
-#stamp-bar{height:80px;flex-shrink:0;position:relative;overflow:visible}
+/* Hotbar row: stamps (large, left) + consumables (small, right) share the
+   green tray. Consumables only appear when owned, so early game stamps use the
+   whole bar. */
+#hotbar-row{display:flex;align-items:center;gap:min(2vw,26px);height:80px;flex-shrink:0}
+/* Stamp + consumable bars overlay their trays painted into the mainui background
+   (256x160, stretched to 100vw x 100vh). Fixed vw/vh boxes match the tray rects
+   exactly (same anchoring the n/5 counters use), so physics/flex centring lands
+   content in the middle of each tray. Stamp tray fill: x 64-158 (25-61.72vw),
+   consumable tray: x 160-190 (62.5-74.22vw), both y 0-22 (0-13.75vh). */
+#stamp-bar{position:fixed;left:25vw;top:0;width:36.72vw;height:13.75vh;overflow:visible;z-index:5}
+#consumable-row{display:none;position:fixed;left:62.5vw;top:0;width:11.72vw;height:13.75vh;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;overflow:visible;z-index:5}
+#consumable-row .tk-mini{width:min(3.4vw,40px);height:min(4.6vw,54px);font-size:min(2vw,22px)}
+#consumable-row .tk-use-btn.mini{font-size:min(1.6vw,16px);bottom:-20px}
+#consumable-row .tk-mini-count{font-size:clamp(8px,1.3vw,18px)}
+/* Discard | (Shuffle over Focus) | Play button row, centred under the hand.
+   Buttons are scaled in vh so their pixel-art matches the chunky scale of the
+   mainui background (stretched to 100vh). Sprites: play/discard 30x20,
+   focus 30x17, shuffle 30x15. Discard/Play align with the shuffle (top of the
+   centre stack); the focus button hangs below it, near the bottom of the screen. */
+#hand-controls-row{display:flex;align-items:flex-start;justify-content:center;gap:min(4vw,56px);flex-shrink:0;margin-top:0.4vh}
+/* Shuffle + Focus are stacked; together they fit inside the Discard/Play height
+   so the pair sits between the tiles and the bottom of the screen. */
+#center-btn-stack{display:flex;flex-direction:column;align-items:center;gap:0.6vh}
+.hand-ctrl-btn{cursor:pointer;line-height:0}
+.hand-ctrl-btn img{image-rendering:pixelated;display:block;pointer-events:none}
+#disc-btn-sprite,#play-btn-sprite{height:10.5vh;width:auto}
+#shuffle-btn-sprite{height:4.5vh;width:auto}
+#focus-btn-sprite{height:5vh;width:auto}
+.hand-ctrl-btn:active{transform:translateY(2px)}
 .stamp-tile{width:68px;height:68px;cursor:grab;position:absolute;top:8px;transition:transform 0.12s ease,filter 0.12s ease}
 .stamp-tile:hover{transform:translateY(-5px) scale(1.06);filter:brightness(1.22) drop-shadow(0 0 8px rgba(200,160,255,0.45));z-index:10}
 .stamp-tile.selected{transform:translateY(12px);filter:brightness(1.15) drop-shadow(0 0 8px rgba(240,224,128,.45));z-index:9}
@@ -545,23 +725,34 @@ body.focus-exiting #focus-bg{opacity:0}
 <div id="toast"></div>
 <div id="app">
 
+  <!-- Wooden tile rack — background-layer element (was baked into the old mainui.png) -->
+  <img id="tile-rack-bg" src="Assets/main_ui/tile_rack.png" draggable="false">
+
   <!-- LEFT PANEL: mainui.png stat panel -->
   <div id="left-panel">
     <div id="stat-panel">
+      <div id="stat-score-box"><div id="stat-score-head">Score:</div><div id="run-progress">0 / 0</div></div>
       <div id="stat-word-score-box"><div id="ls-letters-wrap"><div id="ls-letters">0</div><div id="ls-tile-delta"></div></div></div>
-      <div id="stat-progress-box"><div id="ls-mult">0</div></div>
+      <div id="stat-progress-box"><span class="mu-mult-float"><div id="ls-mult">0</div></span></div>
       <div id="ls-op" style="display:none">×</div>
-      <div id="live-score-row">
-        <div id="stat-letters-box"><div id="ls-score">0</div></div>
-        <div id="stat-mult-box"><div id="run-progress">0 / 0</div></div>
+      <div id="live-score-row"><span id="ls-eq">=</span><span class="mu-score-float"><div id="ls-score">0</div></span></div>
+      <div id="stat-gold-box"><div id="hud-gold">$0</div><div class="hud-label" id="hud-gold-label">Gold</div></div>
+      <div id="stat-plays-box"><div id="hud-plays">4</div><div class="hud-label" id="hud-plays-label">Plays</div></div>
+      <div id="stat-disc-box"><div id="hud-disc">3</div><div class="hud-label" id="hud-disc-label">Discards</div></div>
+      <!-- Bottom-left box: Run Info + Menu buttons (replaced the upcoming-constraint
+           text, which now lives in the Run Info popup's Progress tab). Both sprites
+           render at mainui scale (24x20 art → 9.375vw x 12.5vh) so their pixels line
+           up with the painted background box. -->
+      <div id="stat-rounds-box">
+        <div id="run-info-wrap" class="lp-box-btn">
+          <img id="run-info-sprite" src="Assets/main_ui/buttons/run_info/run_info1.png">
+          <span id="run-info-label"><span>RUN</span><span>INFO</span></span>
+        </div>
+        <div id="menu-wrap" class="lp-box-btn">
+          <img id="menu-btn-sprite" src="Assets/main_ui/buttons/menu button/menu_button1.png">
+        </div>
       </div>
-      <div id="stat-gold-box"><div id="hud-gold">$0</div></div>
-      <div id="stat-plays-box"><div id="hud-plays">4</div></div>
-      <div id="stat-disc-box"><div id="hud-disc">3</div></div>
-      <div id="stat-rounds-box" style="display:none">
-        <div id="stat-constraint-upcoming" style="width:100%;display:flex;align-items:flex-start;justify-content:flex-start;padding:3px 6px;text-align:left;font-size:clamp(10px,1.4vw,22px);color:#3a2800;line-height:1.3;overflow:hidden"></div>
-      </div>
-      <img id="progress-tracker-sprite" src="Assets/animations/progress tracker/progress_tracker1.png" draggable="false" style="position:absolute;bottom:14.375%;left:1.5625%;width:90.625%;height:auto;image-rendering:pixelated">
+      <img id="progress-tracker-sprite" src="Assets/main_ui/progress tracker/progress_tracker1.png" draggable="false" style="position:absolute;bottom:14.375%;left:1.5625%;width:90.625%;height:auto;image-rendering:pixelated">
       <div id="score-bar-wrap">
         <div id="score-bar"></div>
       </div>
@@ -573,45 +764,38 @@ body.focus-exiting #focus-bg{opacity:0}
 
   <!-- CENTER COLUMN: board + tiles (flex:1, ~50%) -->
   <div id="center-col">
-    <!-- Stamp bar -->
-    <div id="stamp-bar"></div>
+    <!-- Hotbar: stamps (large, left) + consumables (small, right) -->
+    <div id="hotbar-row">
+      <div id="stamp-bar"></div>
+      <!-- Tickets & Keys inventory (hidden while empty) -->
+      <div id="consumable-row"></div>
+    </div>
     <!-- Board -->
     <div id="board-area">
       <div id="board-wrap"></div>
     </div>
-    <!-- Tiles + shuffle button + zoom buttons -->
+    <!-- Tiles -->
     <div id="hand-wrap">
-      <button id="shuffle-btn" onclick="shuffleHand()" title="Shuffle hand">⇄</button>
       <div id="hand-area"></div>
-      <!-- zoom buttons hidden; code preserved in ui.js (zoomBoard/zoomOut) and anim.js (animBoardZoomIn/Out)
-      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-        <button class="zoom-btn" id="zoom-top-btn" onclick="zoomBoard('top')" title="Zoom top half">▲</button>
-        <button class="zoom-btn" id="zoom-bot-btn" onclick="zoomBoard('bot')" title="Zoom bottom half">▼</button>
-        <button class="zoom-btn" id="zoom-out-btn" onclick="zoomOut()" title="Zoom out" style="display:none;height:68px">↕</button>
+    </div>
+    <!-- Discard | (Shuffle over Focus) | Play buttons, centred under the hand -->
+    <div id="hand-controls-row">
+      <div id="disc-btn-wrap" class="hand-ctrl-btn"><img id="disc-btn-sprite" src="Assets/main_ui/buttons/discard/discard1.png"></div>
+      <div id="center-btn-stack">
+        <div id="shuffle-btn-wrap" class="hand-ctrl-btn"><img id="shuffle-btn-sprite" src="Assets/main_ui/buttons/shuffle/shuffle1.png"></div>
+        <div id="focus-btn-wrap" class="hand-ctrl-btn"><img id="focus-btn-sprite" src="Assets/main_ui/buttons/focus mode button/focus_mode_button1.png"></div>
       </div>
-      -->
+      <div id="play-btn-wrap" class="hand-ctrl-btn"><img id="play-btn-sprite" src="Assets/main_ui/buttons/play/play1.png"></div>
     </div>
   </div>
 
   <!-- RIGHT PANEL: bounties + controls (24vw) -->
   <div id="right-panel">
-    <!-- Top group: buttons + bounties -->
+    <!-- Bounties (the menu button moved to the bottom-left box beside Run Info) -->
     <div style="display:flex;flex-direction:column;gap:20px">
-      <!-- Top row: focus-mode eye + menu buttons -->
-      <div id="rp-top-row" style="position:relative;flex-shrink:0;width:93.75%;align-self:flex-end;margin-right:0.78125vw;margin-top:0.625vh;display:flex;will-change:transform">
-        <div id="focus-btn-wrap" style="width:50%;cursor:pointer">
-          <img id="focus-btn-sprite" src="Assets/animations/focus mode button/focus_mode_button1.png" style="width:100%;image-rendering:pixelated;display:block;pointer-events:none">
-        </div>
-        <div id="menu-wrap" style="width:50%;cursor:pointer">
-          <img id="menu-btn-sprite" src="Assets/animations/menu button/menu_button1.png" style="width:100%;image-rendering:pixelated;display:block;pointer-events:none">
-        </div>
-      </div>
-      <!-- Tickets & Keys inventory (hidden while empty) -->
-      <div id="consumable-row" style="display:none;flex-wrap:wrap;gap:6px;width:93.75%;align-self:flex-end;margin-right:0.78125vw"></div>
-      <!-- Bounties -->
       <div id="bounty-row"></div>
     </div>
-    <!-- Play controls -->
+    <!-- Play controls: tile bag sits at the bottom of the right wood panel -->
     <div id="play-controls">
       <div style="display:flex;align-items:flex-end;padding-left:12px">
         <div id="bag-count" style="margin-left:0.78125vw">98</div>
@@ -619,11 +803,6 @@ body.focus-exiting #focus-bg{opacity:0}
         <div id="bag-btn" onclick="openBagModal()">
           <img id="bag-sprite" src="Assets/animations/bag/bag-frame0.png">
         </div>
-      </div>
-      <div id="play-disc-wrap" style="position:relative;width:93.75%;align-self:flex-end;margin-right:0.78125vw;will-change:transform">
-        <img id="play-disc-sprite" src="Assets/animations/play and discard buttons/play_discard_buttons1.png" style="width:100%;image-rendering:pixelated;display:block">
-        <div id="pd-play-hit" style="position:absolute;left:0;top:0;width:50%;height:100%;cursor:pointer"></div>
-        <div id="pd-disc-hit" style="position:absolute;right:0;top:0;width:50%;height:100%;cursor:pointer"></div>
       </div>
       <!-- check word button hidden; checkWordCost() preserved in ui.js
       <button class="btn btn-gray" onclick="checkWordCost()" style="font-size:30px;padding:6px 6px;margin:0;width:100%">Check $1</button>
@@ -860,6 +1039,19 @@ body.focus-exiting #focus-bg{opacity:0}
     </div>
   </div>
 </div>
+<!-- Run Info / Menu rising popup (see #info-display-panel CSS). Same panel art
+     and rise/descend as #round-modal; content is swapped in by src/infopanel.js. -->
+<div id="info-modal" class="modal-overlay" style="display:none">
+  <div id="info-display-panel" class="modal">
+    <div id="info-frames"></div>
+    <div id="info-panel-content">
+      <div id="info-title"></div>
+      <div id="info-tabs"></div>
+      <div id="info-body"></div>
+      <div id="info-footer"></div>
+    </div>
+  </div>
+</div>
 <div id="win-modal" class="modal-overlay" style="display:none">
   <div class="modal" style="text-align:center"><h2 style="color:#f0c060">You won!</h2>
     <p style="color:#a0a0c0;font-size:32px;margin-bottom:8px" id="win-msg"></p>
@@ -903,6 +1095,7 @@ body.focus-exiting #focus-bg{opacity:0}
 <script src="src/save.js"></script>
 <script src="src/achievements.js"></script>
 <script src="src/wordbook.js"></script>
+<script src="src/infopanel.js"></script>
 <script src="src/focus.js"></script>
 <script src="src/tutorial.js"></script>
 <script src="src/tips.js"></script>

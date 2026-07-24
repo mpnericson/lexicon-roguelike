@@ -11,7 +11,7 @@ function _makeBountyScroll(bounty){
   var div=document.createElement('div');
   div.className='bounty-scroll';
   div.style.cssText='position:relative;width:95%;margin:0 auto;overflow:hidden;'
-    +'background-image:url(\'Assets/animations/bounty scroll/bounty_scroll1.png\');'
+    +'background-image:url(\'Assets/main_ui/bounty scroll/bounty_scroll1.png\');'
     +'background-size:100% auto;background-repeat:no-repeat;background-position:top center;'
     +'image-rendering:pixelated;padding-top:30%';
 
@@ -47,7 +47,7 @@ function _makeBountyScroll(bounty){
   }
   div.appendChild(content);
 
-  function _bImg(f){div.style.backgroundImage='url(\'Assets/animations/bounty scroll/bounty_scroll'+f+'.png\')';}
+  function _bImg(f){div.style.backgroundImage='url(\'Assets/main_ui/bounty scroll/bounty_scroll'+f+'.png\')';}
 
   function _getSiblings(){
     var brow=document.getElementById('bounty-row');if(!brow)return [];
@@ -138,7 +138,11 @@ function renderHUD(){
 
   if(S.devMode&&typeof _devTab!=='undefined'&&_devTab==='stickers'&&dp&&dp.style.display!=='none')devRenderPalette();
   var solb=document.getElementById('solver-btn');if(solb)solb.style.display=S.devMode?'':'none';
-  document.getElementById('hud-gold').textContent=S.devMode?'∞ DEV':'$'+S.gold;
+  // window._goldDisplay overrides the shown value during the end-of-round gold
+  // breakdown so the HUD counter ticks up in step with the dollar signs (set in
+  // roundComplete, animated in animateEndDisplay, cleared on leaving the panel).
+  var _hudGold=(window._goldDisplay!=null)?window._goldDisplay:S.gold;
+  document.getElementById('hud-gold').textContent=S.devMode?'∞ DEV':'$'+_hudGold;
   // During shop phase the visible gold counter is the shop's, not the left panel's —
   // keep both in sync so mid-shop gold changes (stamp sells, slot payouts) show immediately.
   var _shg=document.getElementById('shop-gold-display');if(_shg)_shg.textContent='$'+S.gold;
@@ -157,14 +161,9 @@ function renderHUD(){
   // Endless loops back through the tracker from board 1 (frame 1), one
   // window per endless board.
   var _ptSpr=document.getElementById('progress-tracker-sprite');
-  if(_ptSpr){var _ptF=S.endless?(endlessBoard()%BOARDS.length)*3+S.bi+1:Math.min(BOARDS.length*3,S.ai*3+S.bi+1);_ptSpr.src='Assets/animations/progress tracker/progress_tracker'+_ptF+'.png';}
-  var _scrb=document.getElementById('stat-rounds-box'),_scru=document.getElementById('stat-constraint-upcoming');
-  if(_scrb&&_scru){
-    var _ucdef=null;
-    if(!S.endless&&S.constraintOrder){var _ucid=S.constraintOrder[S.ai];if(_ucid){for(var _ui=0;_ui<CONSTRAINTS.length;_ui++){if(CONSTRAINTS[_ui].id===_ucid){_ucdef=CONSTRAINTS[_ui];break;}}}}
-    if(_ucdef){_scru.textContent=((S.bi===2)?'Constraint':'Upcoming Constraint')+': '+_ucdef.name+' — '+_ucdef.desc;_scrb.style.display='';}
-    else{_scrb.style.display='none';}
-  }
+  if(_ptSpr){var _ptF=S.endless?(endlessBoard()%BOARDS.length)*3+S.bi+1:Math.min(BOARDS.length*3,S.ai*3+S.bi+1);_ptSpr.src='Assets/main_ui/progress tracker/progress_tracker'+_ptF+'.png';}
+  // The bottom-left box now holds the Run Info + Menu buttons (always visible);
+  // the upcoming/current constraint moved to the Run Info popup's Progress tab.
 }
 
 function sqStyle(id){
@@ -176,8 +175,17 @@ function sqStyle(id){
 function renderBoard(){
   if(typeof _clearStickerFloats==='function')_clearStickerFloats();
   var wrap=document.getElementById('board-wrap');
-  var sz=Math.max(30,Math.min(64,Math.floor(Math.min((window.innerWidth*0.52-80)/B,(window.innerHeight-250)/BH))))+2;
+  // Height budget reserves room for the stamp hotbar, hand, and the button row
+  // now sitting under the hand. On wide screens the board is width-constrained,
+  // so it keeps its size and just floats up a little to free the bottom room.
+  var sz=Math.max(30,Math.min(64,Math.floor(Math.min((window.innerWidth*0.52-80)/B,(window.innerHeight-360)/BH))))+2;
   wrap.style.gridTemplateColumns='repeat('+B+','+sz+'px)';wrap.innerHTML='';
+  // Nudge the whole board down ~2/3 of a square. Equal-and-opposite margins
+  // shift a flex-centered element by exactly the top value without the
+  // half-factor plain centering would introduce (and without touching the
+  // transform anim.js drives during board↔shop transitions).
+  var _boardDrop=Math.round(sz*2/3);
+  wrap.style.marginTop=_boardDrop+'px';wrap.style.marginBottom=(-_boardDrop)+'px';
   var center=Math.floor(BH/2)*B+Math.floor(B/2);
   var _bcon=currentConstraint();
   var _stickerLocked=_bcon==='c_stickers'&&!(S.stickersSoldThisBoard>0);
@@ -189,7 +197,7 @@ function renderBoard(){
     var _fm=window._focusMode;
     var sid=_fm?null:S.board[i];var ss=sqStyle(sid);
     if(!sid){
-      sq.style.backgroundImage='url(Assets/sprites/board-tile.png)';
+      sq.style.backgroundImage='url(Assets/main_ui/board-tile.png)';
       sq.style.backgroundSize=sz+'px '+sz+'px';
       sq.style.imageRendering='pixelated';
       sq.style.border='none';sq.style.borderRadius='0';
@@ -552,8 +560,11 @@ function _renderStampBarInto(bar,ph,src){
     face.setAttribute('data-stamp-id',ts.id);
     face.setAttribute('data-stamp-vi',S.stamps.indexOf(ts)); // index into S.stamps — lets _bounceStamp target one copy
     var tw=ph.TILE_W;
-    var topPx=src==='shop-stamp'?2:8;
-    var baseCss='position:absolute;width:'+tw+'px;height:'+tw+'px;top:'+topPx+'px;left:'+(ph.x[vi]-tw/2-ph.left)+'px;';
+    // Shop bar keeps its top-anchored layout; the play stamp bar overlays the
+    // painted tray (height 13.75vh) — centre vertically, nudged ~1vh lower to sit
+    // nicely inside the tray art.
+    var topCss=src==='shop-stamp'?'2px':'calc(50% - '+(tw/2)+'px + 1vh)';
+    var baseCss='position:absolute;width:'+tw+'px;height:'+tw+'px;top:'+topCss+';left:'+(ph.x[vi]-tw/2-ph.left)+'px;';
     if(d.iconPng){
       // Rounded clip on an inner wrap, not the face — the face must be free to host
       // the sell button above itself when selected.
@@ -591,10 +602,14 @@ function renderStampBar(){
   SP.bounds();
   var bar=document.getElementById('stamp-bar');if(!bar)return;
   _renderStampBarInto(bar,SP,'stamp');
-  // n/5 counter on right side of box
+  // n/5 counter anchored to the bottom-right corner of the stamp tray baked into
+  // the mainui background. That art (256×160) is stretched to 100vw×100vh, and the
+  // tray fill ends at x=158/256 (61.72%) / y=22/160 (13.75%) — so a fixed vw/vh
+  // anchor tracks the corner at any resolution. translate(-100%,-100%) pins the
+  // counter's own bottom-right corner there (small inset via the px offsets).
   var stamps=S.stamps||[];
   var ctr=document.createElement('div');
-  ctr.style.cssText='position:absolute;right:16px;bottom:-15px;font-size:28px;color:#8880a8;pointer-events:none;line-height:1';
+  ctr.style.cssText='position:fixed;left:calc(61.72vw - 8px);top:calc(13.75vh - 4px);transform:translate(-100%,-100%);font-size:clamp(13px,3vh,28px);color:#8880a8;pointer-events:none;line-height:1;z-index:6';
   ctr.textContent=stamps.length+"/5";
   bar.appendChild(ctr);
   // Update shop stamp bar

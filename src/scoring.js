@@ -84,6 +84,9 @@ function updateLivePreview(){
   if(lsC){var wasC=lsC.textContent;lsC.textContent=letters;if(String(letters)!==wasC)bumpSA('ls-letters');}
   if(lsM){var was=lsM.textContent;lsM.textContent=mult;if(String(mult)!==was)bumpSA('ls-mult');}
   if(lsS)lsS.textContent='0';
+  // Expand the scoreboard art once anything is on the board; collapse it back to
+  // the compressed frame when the board is empty so a bare "0 × 0" is never shown.
+  if(typeof setMainuiState==='function')setMainuiState(nt.length?'expanded':'compressed');
 }
 
 // True when every new tile falls inside a single contiguous run along `dir`
@@ -248,7 +251,7 @@ function _buildStickerFloatEl(sqIdx){
 
   // Hide the board cell sticker — flatEl takes its place visually from the start.
   sqEl.style.background='';
-  sqEl.style.backgroundImage='url(Assets/sprites/board-tile.png)';
+  sqEl.style.backgroundImage='url(Assets/main_ui/board-tile.png)';
   sqEl.style.backgroundSize=w+'px '+h+'px';
   sqEl.style.imageRendering='pixelated';
   sqEl.style.border='none';sqEl.style.borderRadius='0';
@@ -308,7 +311,7 @@ function _hideBoardCell(f){
   var sqEl=f.sqEl;if(!sqEl||!sqEl.isConnected)return;
   var w=f._w,h=f._h;
   sqEl.style.background='';
-  sqEl.style.backgroundImage='url(Assets/sprites/board-tile.png)';
+  sqEl.style.backgroundImage='url(Assets/main_ui/board-tile.png)';
   sqEl.style.backgroundSize=w+'px '+h+'px';
   sqEl.style.imageRendering='pixelated';
   sqEl.style.border='none';sqEl.style.borderRadius='0';
@@ -698,6 +701,8 @@ async function runScoreAnim(events,total){
   var saS=document.getElementById('ls-score');
   var lsTileDelta=document.getElementById('ls-tile-delta');
   row.classList.add('scoring');
+  // Drop the "= score" result strip open (frames 7→10) for the scoring pass.
+  if(typeof setMainuiState==='function')setMainuiState('scoring');
   // Seed the Letters counter with the tile-count starting bonus (the first
   // 'letter' event — a PRE isSilent sync) so it carries over from the live
   // preview rather than blinking to 0 and popping back when scoring starts.
@@ -1088,4 +1093,8 @@ async function runScoreAnim(events,total){
   saL.textContent='0';saM.textContent='0';saL.style.color='';
   if(lsTileDelta){lsTileDelta.textContent='';lsTileDelta.style.transition='';lsTileDelta.style.opacity='';lsTileDelta.classList.remove('delta-active','delta-enter');}
   row.classList.remove('scoring');
+  // Scoring done — the played tiles are now committed (no longer "new"), so
+  // collapse the scoreboard back to the compressed frame. The next play render
+  // re-expands it as soon as a fresh tile goes down.
+  if(typeof setMainuiState==='function')setMainuiState('compressed');
 }

@@ -261,7 +261,8 @@ function enterPlacingPhase(){
   HP.x=[];HP.vx=[];HP.tiles=[];
   document.getElementById('play-controls').style.display='none';
   document.getElementById('placing-controls').style.display='flex';
-  document.getElementById('shuffle-btn').style.display='none';
+  document.getElementById('shuffle-btn-wrap').style.display='none';
+  var _hcr=document.getElementById('hand-controls-row');if(_hcr)_hcr.style.display='none';
   renderSqHand();renderBoard();
 }
 
@@ -278,7 +279,8 @@ function confirmPlacement(){
   document.getElementById('play-controls').style.display='flex';
   document.getElementById('placing-controls').style.display='none';
   document.getElementById('dev-cancel-placing-btn').style.display='none';
-  document.getElementById('shuffle-btn').style.display='';
+  document.getElementById('shuffle-btn-wrap').style.display='';
+  var _hcr=document.getElementById('hand-controls-row');if(_hcr)_hcr.style.display='flex';
   HP.x=[];HP.vx=[];HP.tiles=[];
   renderHand();renderBoard();renderHUD();renderStampBar();
   if(unplacedSqs.length>0)toast(unplacedSqs.length+' unplaced sticker'+(unplacedSqs.length>1?'s':'')+' returned to inventory.');
@@ -303,7 +305,8 @@ function cancelDevPlacing(){
   document.getElementById('play-controls').style.display='flex';
   document.getElementById('placing-controls').style.display='none';
   document.getElementById('dev-cancel-placing-btn').style.display='none';
-  document.getElementById('shuffle-btn').style.display='';
+  document.getElementById('shuffle-btn-wrap').style.display='';
+  var _hcr=document.getElementById('hand-controls-row');if(_hcr)_hcr.style.display='flex';
   HP.x=[];HP.vx=[];HP.tiles=[];
   renderHand();renderBoard();renderHUD();
   _rankObserve();
@@ -345,15 +348,15 @@ function renderShop(){
 
       var scrollWrap=document.createElement('div');
       scrollWrap.style.cssText='position:relative;width:90%;margin:0 auto;overflow:hidden;'
-        +'background-image:url(\'Assets/animations/bounty scroll/bounty_scroll'+(b.accepted?'3':'1')+'.png\');'
+        +'background-image:url(\'Assets/main_ui/bounty scroll/bounty_scroll'+(b.accepted?'3':'1')+'.png\');'
         +'background-size:100% auto;background-repeat:no-repeat;background-position:top center;'
         +'image-rendering:pixelated;padding-top:30%;'
         +(b.accepted?'opacity:0.55;cursor:default':'cursor:pointer');
 
       if(!b.accepted){
         (function(wrap,idx){
-          wrap.addEventListener('mouseenter',function(){wrap.style.backgroundImage='url(\'Assets/animations/bounty scroll/bounty_scroll2.png\')';});
-          wrap.addEventListener('mouseleave',function(){wrap.style.backgroundImage='url(\'Assets/animations/bounty scroll/bounty_scroll1.png\')';});
+          wrap.addEventListener('mouseenter',function(){wrap.style.backgroundImage='url(\'Assets/main_ui/bounty scroll/bounty_scroll2.png\')';});
+          wrap.addEventListener('mouseleave',function(){wrap.style.backgroundImage='url(\'Assets/main_ui/bounty scroll/bounty_scroll1.png\')';});
           wrap.addEventListener('click',function(){acceptBounty(idx);});
         })(scrollWrap,bi);
       }

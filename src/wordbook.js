@@ -102,8 +102,10 @@ function _wbFmtPct(pct) {
 }
 
 function _wbRowHtml(e) {
+  // fmtNum: commas below 1e9, scientific notation (e.g. 1.23e9) above — matches
+  // the score display everywhere else in the game.
   return '<div class="wb-row"><span class="wb-word">' + e.word + '</span>'
-    + '<span class="wb-score">' + e.score + '</span></div>';
+    + '<span class="wb-score">' + fmtNum(e.score) + '</span></div>';
 }
 
 // Section heading with its own progress bar: played / total playable words that
@@ -141,18 +143,23 @@ function renderWordbook() {
   var fill = document.getElementById('wb-bar-fill');
   if (fill) fill.style.width = pct + '%';
 
-  if (!entries.length) {
-    cont.innerHTML = '<p class="msub" style="text-align:center;padding:24px 0">No words yet — play a word to start your dictionary!</p>';
-    return;
-  }
+  cont.innerHTML = _wordbookListHtml();
+}
+
+// The word-list body HTML (empty message, flat high-score list, or letter/length
+// sections with per-section bars) — shared by the modal and the embedded panel
+// Dictionary so their rendering never drifts. Honours the current _wbSort.
+function _wordbookListHtml() {
+  var entries = _wordbookEntries();
+  if (!entries.length)
+    return '<p class="msub" style="text-align:center;padding:24px 0">No words yet — play a word to start your dictionary!</p>';
   var dist = _wordbookDist();
   // High-score sort is a flat list; alpha/length break into sections, each with
   // its own progress bar (played / total playable words in that section).
   if (_wbSort === 'score') {
     var flat = '';
     for (var i = 0; i < entries.length; i++) flat += _wbRowHtml(entries[i]);
-    cont.innerHTML = flat;
-    return;
+    return flat;
   }
   // Group consecutive entries into sections by first letter / word length.
   var sections = [], cur = null;
@@ -170,7 +177,7 @@ function renderWordbook() {
   var html = '';
   for (var s = 0; s < sections.length; s++)
     html += _wbHeadHtml(sections[s].head, sections[s].played, sections[s].total) + sections[s].rows;
-  cont.innerHTML = html;
+  return html;
 }
 
 function openWordbookModal() {
